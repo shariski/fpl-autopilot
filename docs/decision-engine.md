@@ -21,6 +21,21 @@ The decision engine consumes the following from the Analytics Layer:
 
 The official FPL FDR is based on team rank and is noisy. The system computes its own.
 
+### v1 (current) — FPL-strength quintile
+
+FDR v1 derives difficulty from FPL's own team strength ratings (`strength_attack_home/away`, `strength_defence_home/away`), which are finer-grained than FPL's rank-based FDR. Team xG (the v2 basis) is not obtainable — Understat exposes only per-player season aggregates as of 2026-05-22.
+
+For a fixture `Home H vs Away A`, each team is rated from the opponent's venue-specific strength:
+
+- `fdr_attack[H]  = quintile(A.strength_defence_away)`   `fdr_defense[H] = quintile(A.strength_attack_away)`
+- `fdr_attack[A]  = quintile(H.strength_defence_home)`   `fdr_defense[A] = quintile(H.strength_attack_home)`
+
+`quintile(value)` ranks the value against the 20-team distribution for that venue/column and returns 1–5 (5 = strongest opponent = hardest): `min(below*5 // n + 1, 5)` where `below` = count strictly less than `value`. `fdr_attack` keys off the opponent's defense; `fdr_defense` off the opponent's attack. Venue advantage is intrinsic to FPL's separate home/away columns (no extra ±0.3 factor). A single current rating, not rolling form.
+
+### v2 (target) — xG-based
+
+Deferred: blocked on team per-match xG ingestion (xG conceded/scored), unavailable from Understat as of 2026-05-22. The original xG-based definition:
+
 For each fixture `(team_a vs team_b)`:
 
 ```
@@ -241,3 +256,4 @@ Every decision writes one row:
 | Version | Date | Change |
 |---|---|---|
 | v0.1 | (initial) | First version. Phase 1 + Phase 2 decision rules captured. |
+| v0.2 | 2026-05-22 | FDR versioned: v1 = FPL-strength quintile (implemented); v2 = xG-based (deferred, team xG unavailable). |
