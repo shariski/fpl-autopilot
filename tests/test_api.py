@@ -69,3 +69,60 @@ def test_get_fixtures_planner(seeded):
 def test_get_activity_empty(seeded):
     a = queries.get_activity(seeded)
     assert a == {"entries": []}
+
+
+from fastapi.testclient import TestClient
+import sqlite3 as _sqlite3
+
+
+@pytest.fixture
+def client():
+    from src.interface.api import app
+    from src.interface.deps import get_db
+    from src.data.db import init_db
+
+    conn = _sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = _sqlite3.Row
+    init_db(conn)
+    seed(conn)
+
+    app.dependency_overrides[get_db] = lambda: conn
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+    conn.close()
+
+
+def test_status_endpoint(client):
+    r = client.get("/api/status")
+    assert r.status_code == 200
+    assert "mode" in r.json()
+
+
+def test_squad_endpoint(client):
+    r = client.get("/api/squad")
+    assert r.status_code == 200
+    assert len(r.json()["players"]) == 15
+
+
+def test_planner_endpoint(client):
+    r = client.get("/api/fixtures/planner")
+    assert r.status_code == 200
+    assert len(r.json()["horizon"]) == 5
+
+
+def test_activity_endpoint(client):
+    r = client.get("/api/activity")
+    assert r.status_code == 200
+    assert r.json() == {"entries": []}
+
+
+def test_stub_endpoints(client):
+    assert client.get("/api/captain").json() == {"picks": [], "vice_player_id": None}
+    t = client.get("/api/transfers").json()
+    assert t["suggestions"] == [] and t["empty_reason"]
+    assert client.get("/api/chips").json() == {"recommendation": None}
+
+
+def test_cors_header(client):
+    r = client.get("/api/status", headers={"origin": "http://localhost:5173"})
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
