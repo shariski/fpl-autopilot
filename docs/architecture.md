@@ -307,6 +307,8 @@ H-30 minutes (Phase 2):
   - If state is still PENDING, run deadguard.
 ```
 
+**Phase 1 implementation (2026-05-23):** the implemented scheduler runs only `scheduler.refresh_and_recompute` (FPL/Understat refresh + FDR/xP recompute) on two cron triggers — weekly (Tue 03:00 UTC, post-settle) and hourly (cache-aware, cheap). It uses APScheduler's **in-memory** job store: jobs are code-defined and re-registered on every start, so the persistent SQLite job store described above is deferred to Phase 2 (when dynamic deadline/deadguard jobs are added). Started in-process by `fpl-autopilot serve`, or standalone via `fpl-autopilot scheduler`. The deadline-relative (H-48/H-24/H-2) and deadguard (H-120/H-30) jobs are Phase 2.
+
 ## Security
 
 - All credentials encrypted at rest using a key derived from a master password (Argon2id, default parameters).
