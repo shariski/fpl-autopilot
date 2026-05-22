@@ -2,7 +2,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vitest/config';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
 	plugins: [
 		sveltekit(),
 		SvelteKitPWA({
@@ -41,5 +41,5 @@ export default defineConfig({
 		setupFiles: ['./vitest-setup.ts'],
 		include: ['src/**/*.{test,spec}.{js,ts}']
 	},
-	resolve: process.env.VITEST ? { conditions: ['browser'] } : undefined
-});
+	resolve: mode === 'test' ? { conditions: ['browser'] } : undefined
+}));
