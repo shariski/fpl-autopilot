@@ -1,0 +1,38 @@
+fpl:
+  team_id: 3122849
+
+storage:
+  db_path: data/fpl_autopilot.db
+
+mode:
+  current: manual  # auto | manual | hybrid
+
+thresholds:
+  min_ep_delta_for_transfer: 2.0
+  min_ep_delta_for_hit_minus4: 4.0
+  confidence_floor: 70
+  max_transfers_per_gw_auto: 2
+  max_hit_per_gw_auto: 4
+
+deadguard:
+  enabled: true
+  warning_window_minutes: 120
+  trigger_window_minutes: 30
+  scope:
+    captain_vice: true
+    bench_order: true
+    auto_sub_flagged: true
+    transfer_if_flagged: true
+    transfer_if_underperform: false
+    allow_hit: false
+    min_ep_delta_for_transfer: 3.0
+
+notifications:
+  channel: telegram
+  schedule:
+    chip_preview_hours_before: 48
+    transfer_preview_hours_before: 24
+    final_reminder_hours_before: 2
+
+xp_model:
+  version: v1
