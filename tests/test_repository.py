@@ -86,3 +86,13 @@ def test_encrypted_unknown_column_rejected(db):
         repository.set_encrypted(db, "id; DROP TABLE credentials", b"x")
     with pytest.raises(ValueError):
         repository.get_encrypted(db, "not_a_column")
+
+
+def test_touch_session_refreshed(db):
+    from src.data import repository
+    repository.touch_session_refreshed(db)
+    row = db.execute("SELECT session_last_refreshed FROM credentials WHERE id=1").fetchone()
+    assert row["session_last_refreshed"] is not None
+    # idempotent: still one row after a second call
+    repository.touch_session_refreshed(db)
+    assert db.execute("SELECT COUNT(*) c FROM credentials").fetchone()["c"] == 1

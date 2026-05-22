@@ -175,3 +175,13 @@ def get_encrypted(conn, column):
         raise ValueError(f"unknown credential column: {column!r}")
     row = conn.execute(f"SELECT {column} FROM credentials WHERE id=1").fetchone()
     return row[column] if row else None
+
+
+def touch_session_refreshed(conn):
+    """Set credentials.session_last_refreshed to the current UTC time (row id=1)."""
+    conn.execute(
+        "INSERT INTO credentials (id, session_last_refreshed) VALUES (1, ?) "
+        "ON CONFLICT(id) DO UPDATE SET session_last_refreshed=excluded.session_last_refreshed",
+        (_now(),),
+    )
+    conn.commit()
