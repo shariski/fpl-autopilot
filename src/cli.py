@@ -111,6 +111,43 @@ def _init_master_password_cli(salt_path=None, verify_path=None):
     print("If lost, stored credentials become unreadable and you must re-run init-fpl after a reset.")
 
 
+def _init_fpl_cli(conn=None, login_fn=None, salt_path=None, verify_path=None):
+    import os
+    import json
+    import getpass
+    from .auth import master, crypto, fpl_login
+    from .data import repository
+    mkw = {}
+    if salt_path is not None:
+        mkw["salt_path"] = salt_path
+    if verify_path is not None:
+        mkw["verify_path"] = verify_path
+    if not master.is_initialized(**mkw):
+        print("Master password not set — run `fpl-autopilot init-master-password` first.")
+        return
+    key = master.get_master_key(**mkw)
+    email = os.getenv("FPL_EMAIL") or input("FPL email: ")
+    password = os.getenv("FPL_PASSWORD") or getpass.getpass("FPL password: ")
+    login_fn = login_fn or fpl_login.login
+    try:
+        result = login_fn(email, password, expected_team_id=cfg_team_id())
+    except fpl_login.FPLLoginError as exc:
+        print(f"FPL login failed: {exc}")
+        return
+    owns_conn = conn is None
+    conn = conn or connect(cfg_db_path())
+    init_db(conn)
+    repository.set_encrypted(conn, "fpl_email_encrypted", crypto.encrypt(key, email))
+    repository.set_encrypted(conn, "fpl_password_encrypted", crypto.encrypt(key, password))
+    repository.set_encrypted(conn, "session_cookie_encrypted",
+                             crypto.encrypt(key, json.dumps(result.cookies)))
+    repository.set_encrypted(conn, "csrf_token_encrypted", crypto.encrypt(key, result.csrf or ""))
+    repository.touch_session_refreshed(conn)
+    if owns_conn:
+        conn.close()
+    print(f"Authenticated as entry {result.entry_id}; session stored.")
+
+
 def serve(host="0.0.0.0", port=None, scheduler=True):
     import os
     import uvicorn
@@ -141,6 +178,7 @@ def main(argv=None):
                          help="run the API without the background scheduler")
     sub.add_parser("scheduler", help="run the background refresh scheduler (blocking)")
     sub.add_parser("init-master-password", help="set the master password that encrypts stored credentials")
+    sub.add_parser("init-fpl", help="log in to FPL and store the encrypted session")
     args = parser.parse_args(argv)
     if args.command == "refresh":
         sources = (args.source,) if args.source else ("fpl", "understat")
@@ -152,6 +190,8 @@ def main(argv=None):
         run_scheduler_blocking()
     elif args.command == "init-master-password":
         _init_master_password_cli()
+    elif args.command == "init-fpl":
+        _init_fpl_cli()
 
 
 if __name__ == "__main__":
