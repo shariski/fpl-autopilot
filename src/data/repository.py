@@ -185,3 +185,34 @@ def touch_session_refreshed(conn):
         (_now(),),
     )
     conn.commit()
+
+
+def get_auth_state(conn):
+    row = conn.execute("SELECT auth_state FROM credentials WHERE id=1").fetchone()
+    return row["auth_state"] if row else None
+
+
+def set_auth_state(conn, state):
+    conn.execute(
+        "INSERT INTO credentials (id, auth_state) VALUES (1, ?) "
+        "ON CONFLICT(id) DO UPDATE SET auth_state=excluded.auth_state",
+        (state,),
+    )
+    conn.commit()
+
+
+def increment_relogin_failures(conn):
+    conn.execute(
+        "INSERT INTO credentials (id, relogin_failures) VALUES (1, 1) "
+        "ON CONFLICT(id) DO UPDATE SET relogin_failures=COALESCE(relogin_failures, 0) + 1"
+    )
+    conn.commit()
+    return conn.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()["relogin_failures"]
+
+
+def mark_session_ok(conn):
+    conn.execute(
+        "INSERT INTO credentials (id, auth_state, relogin_failures) VALUES (1, 'active', 0) "
+        "ON CONFLICT(id) DO UPDATE SET auth_state='active', relogin_failures=0"
+    )
+    conn.commit()

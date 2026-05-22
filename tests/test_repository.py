@@ -96,3 +96,28 @@ def test_touch_session_refreshed(db):
     # idempotent: still one row after a second call
     repository.touch_session_refreshed(db)
     assert db.execute("SELECT COUNT(*) c FROM credentials").fetchone()["c"] == 1
+
+
+def test_auth_state_get_set(db):
+    from src.data import repository
+    assert repository.get_auth_state(db) is None  # no row yet
+    repository.set_auth_state(db, "frozen")
+    assert repository.get_auth_state(db) == "frozen"
+
+
+def test_increment_relogin_failures(db):
+    from src.data import repository
+    assert repository.increment_relogin_failures(db) == 1
+    assert repository.increment_relogin_failures(db) == 2
+    row = db.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()
+    assert row["relogin_failures"] == 2
+
+
+def test_mark_session_ok_resets(db):
+    from src.data import repository
+    repository.set_auth_state(db, "frozen")
+    repository.increment_relogin_failures(db)
+    repository.mark_session_ok(db)
+    assert repository.get_auth_state(db) == "active"
+    row = db.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()
+    assert row["relogin_failures"] == 0
