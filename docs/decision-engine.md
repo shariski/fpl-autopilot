@@ -130,6 +130,8 @@ Output: top 5 with reasoning string. The reasoning must include the xP value, th
 
 Vice-captain = #2 on the same ranking.
 
+**v1 implementation (2026-05-22):** no explicit `rotation_risk` metric exists yet, so Tiebreaker 1 uses `xminutes` (expected minutes, from the xP row) as the rotation-risk proxy — higher expected minutes = lower rotation risk.
+
 ## Transfer engine (Phase 1: suggest only)
 
 Algorithm:
@@ -150,6 +152,8 @@ Algorithm:
    - -4 hit → suggest if `EP_delta > 4`.
    - -8 hit → suggest only if `EP_delta > 8`. Mark as "rare."
 5. **Return top 3** transfer pairs by EP delta, regardless of hit cost.
+
+**v1 implementation (2026-05-22) — three data-forced substitutions:** (1) the `form_adjusted_delta` sell criterion is dropped (needs per-GW actual points, not yet ingested); (2) `sell_price` = the player's current `price` (true selling price is auth-only, Phase 2); (3) free transfers are assumed = 1, so a single suggested transfer is free (hit 0); the −4/−8 hit path is deferred to multi-transfer planning when the FT count is known.
 
 The user always sees the hit cost and the EP delta. The system does not hide tradeoffs.
 
@@ -279,3 +283,5 @@ Every decision writes one row:
 | v0.1 | (initial) | First version. Phase 1 + Phase 2 decision rules captured. |
 | v0.2 | 2026-05-22 | FDR versioned: v1 = FPL-strength quintile (implemented); v2 = xG-based (deferred, team xG unavailable). |
 | v0.3 | 2026-05-22 | xP v1 made concrete: appearance_points (not raw xMinutes), FDR-strength attack multiplier, cs_prob(fdr_defense) for clean sheet; constants pinned. |
+| v0.4 | 2026-05-22 | Captain ranker v1: xminutes used as rotation-risk tiebreaker proxy. |
+| v0.5 | 2026-05-22 | Transfer engine v1: dropped form_adjusted_delta (no per-GW actuals), selling price = current price, FT assumed 1; hit -4/-8 path deferred to multi-transfer. |
