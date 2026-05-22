@@ -95,4 +95,30 @@ def test_rate_limit_sleeps_between_calls():
     )
     client.bootstrap_static()
     client.bootstrap_static()
-    assert any(s > 0 for s in sleeps)
+    assert 1.0 in sleeps
+
+
+def test_retries_on_429_then_succeeds():
+    sleeps = []
+    client = _client(
+        [FakeResponse(429), FakeResponse(200, EMPTY_BOOTSTRAP)],
+        sleeps=sleeps,
+    )
+    result = client.bootstrap_static()
+    assert isinstance(result, BootstrapStatic)
+    assert sleeps == [1]
+
+
+def test_raises_after_exhausting_retries():
+    # 4 attempts (initial + 3 retries), all 500 -> must raise after the last
+    session = FakeSession([FakeResponse(500), FakeResponse(500),
+                           FakeResponse(500), FakeResponse(500)])
+    client = _client([])  # placeholder, replaced below
+    client = FPLClient(
+        session=session,
+        sleep=lambda s: None,
+        monotonic=lambda: 0.0,
+    )
+    with pytest.raises(requests.HTTPError):
+        client.bootstrap_static()
+    assert len(session.calls) == 4
