@@ -117,6 +117,9 @@ def test_get_captain_picks_integration(db):
     assert top["fixture"] == "MCI v BOU (H)"
     assert "gap 1.1" in top["reason"]
 
+    # away player renders the (A) venue with the opponent listed second
+    assert result["picks"][2]["fixture"] == "BOU v MCI (A)"
+
     # vice = #2 pick
     assert result["vice_player_id"] == result["picks"][1]["player_id"] == 102
 
@@ -125,3 +128,33 @@ def test_get_captain_picks_no_upcoming_gw_returns_empty(db):
     db.execute("INSERT INTO gameweeks (id, name, finished) VALUES (1,'GW1',1)")
     db.commit()
     assert captain.get_captain_picks(db) == {"picks": [], "vice_player_id": None}
+
+
+def test_get_captain_picks_no_xp_row_ranks_last(db):
+    # a squad player with no xp row for the GW (blank GW / unmatched) ranks last,
+    # treated as xp 0.0 with a "—" fixture (spec §4).
+    db.execute("INSERT INTO teams (id, name, short_name) "
+               "VALUES (1,'Man City','MCI'),(2,'Bournemouth','BOU')")
+    db.execute("INSERT INTO gameweeks (id, name, finished) VALUES (10,'GW10',0)")
+    db.execute("INSERT INTO fixtures (id, gw, home_team_id, away_team_id, finished) "
+               "VALUES (1,10,1,2,0)")
+    db.execute("INSERT INTO fdr (team_id, gw, fdr_attack, fdr_defense, computed_at) "
+               "VALUES (1,10,2,3,'t'),(2,10,4,3,'t')")
+    db.execute("INSERT INTO players (id, name, web_name, team_id, position, status) "
+               "VALUES (201,'Has XP','HasXP',1,'FWD','a'),(202,'No XP','NoXP',2,'FWD','a')")
+    # player 201 has an xp row; player 202 deliberately does NOT
+    db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, "
+               "xassists, xcs, computed_at) VALUES (201,10,'v1',5.0,85.0,0,0,0,'t')")
+    picks_json = json.dumps([
+        {"element": pid, "position": i + 1, "multiplier": 1,
+         "is_captain": False, "is_vice_captain": False}
+        for i, pid in enumerate([201, 202])])
+    db.execute("INSERT INTO my_team (gw, picks_json, bank, team_value, snapshot_at) "
+               "VALUES (10, ?, 0, 0, 't')", (picks_json,))
+    db.commit()
+
+    result = captain.get_captain_picks(db)
+    assert [p["player_id"] for p in result["picks"]] == [201, 202]
+    last = result["picks"][1]
+    assert last["xp"] == 0.0
+    assert last["fixture"] == "—"
