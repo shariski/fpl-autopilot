@@ -82,3 +82,17 @@ def test_xp_5gw_sums_five_gws():
     assert out[1] == 10.0   # 5 * 2.0; gw 15 excluded
     assert out[2] == 1.0
     assert 99.0 not in out.values()
+
+
+# ── Task 2: hit_cost + is_worth_hit ───────────────────────────────────────────
+
+def test_hit_cost_thresholds():
+    assert transfers.hit_cost(1, 1) == 0
+    assert transfers.hit_cost(2, 1) == -4
+    assert transfers.hit_cost(3, 1) == -8
+    assert transfers.hit_cost(2, 2) == 0          # 2 FT covers 2 transfers
+    # is_worth_hit: ep_delta must exceed the absolute hit
+    assert transfers.is_worth_hit(5.0, -4) is True    # 5 > 4
+    assert transfers.is_worth_hit(3.0, -4) is False   # 3 < 4
+    assert transfers.is_worth_hit(0.1, 0) is True     # free transfer, any positive gain
+    assert transfers.is_worth_hit(0.0, 0) is False    # free transfer, no gain
