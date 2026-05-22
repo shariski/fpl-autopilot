@@ -87,6 +87,27 @@ Where:
 | MID | 1 |
 | FWD | 0 |
 
+### v1 implementation (current, 2026-05-22)
+
+Two corrections vs. the structural sketch above: (1) the leading `xMinutes` term was a typo — raw minutes must not be added to a points total; the minutes contribution to points is `appearance_points`. `xMinutes` only scales xGoals/xAssists and gates the clean sheet. (2) `xCleanSheet` uses `cs_prob(fdr_defense)` instead of Poisson(opponent xG/90), because team xG is unavailable (see FDR v2 note). FDR here is FDR v1 (FPL-strength).
+
+```
+GOAL_PTS = {GKP:6, DEF:6, MID:5, FWD:4}     CS_PTS = {GKP:4, DEF:4, MID:1, FWD:0}
+STATUS_MULT = {a:1.0, d:0.5, i:0.0, s:0.0, u:0.0}   # unknown -> 1.0
+FDR_ATTACK_MULT = {1:1.20, 2:1.10, 3:1.00, 4:0.90, 5:0.80}
+CS_PROB         = {1:0.55, 2:0.45, 3:0.35, 4:0.22, 5:0.12}
+
+xMin       = min(minutes/games, 90) * STATUS_MULT[status]      # 0 if games==0
+p_appear   = clamp(xMin/20, 0, 1);  p60 = clamp((xMin-30)/30, 0, 1)
+appearance = p_appear + p60
+xGoals     = xg_per_90 * (xMin/90) * FDR_ATTACK_MULT[fdr_attack]
+xAssists   = xa_per_90 * (xMin/90) * FDR_ATTACK_MULT[fdr_attack]
+xCleanSheet= CS_PROB[fdr_defense] * p60
+xP         = appearance + xGoals*GOAL_PTS[pos] + xAssists*3 + xCleanSheet*CS_PTS[pos]
+```
+
+Inputs come from `understat_players` (per-90 rates, season minutes/games — a v1 proxy for rolling) and `fdr`. Computed only for players with a matched Understat row whose team has an FDR row that GW. Stored in `xp` with `model_version='v1'` and all components, for the next 6 GW.
+
 ### Deliberately deferred
 
 - **xBonus.** Bonus points are hard to model. Phase 1 omits them. Phase 1.5 may add a BPS-history proxy.
@@ -257,3 +278,4 @@ Every decision writes one row:
 |---|---|---|
 | v0.1 | (initial) | First version. Phase 1 + Phase 2 decision rules captured. |
 | v0.2 | 2026-05-22 | FDR versioned: v1 = FPL-strength quintile (implemented); v2 = xG-based (deferred, team xG unavailable). |
+| v0.3 | 2026-05-22 | xP v1 made concrete: appearance_points (not raw xMinutes), FDR-strength attack multiplier, cs_prob(fdr_defense) for clean sheet; constants pinned. |
