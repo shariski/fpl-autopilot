@@ -1,7 +1,7 @@
 # Phase 1 PWA Dashboard (Interface Layer) — Design Spec
 
 - **Date:** 2026-05-22
-- **Status:** Approved for planning
+- **Status:** Implemented. **Update 2026-05-23:** the backend's `/api` endpoints landed (PRs #5–#9), so the dashboard is now **wired to the live API** (§10 amended) — the `(forthcoming)` fields (xP, captain, transfers, chips) are live, not null.
 - **Scope:** The entire Phase 1 Interface layer — a single-page, installable, mobile-first PWA that renders all seven dashboard sections from `product-spec.md` against the shapes in `api-contract.md`. Built with **mock fixtures only**; wiring to the real `/api` is a deliberate, single-file, out-of-scope follow-up.
 - **Slice goal:** `npm run dev` serves an installable PWA that renders Header, My Team, Captain, Transfers, Chip, Fixture Planner, and Activity Log — including the graceful null/empty states for all _(forthcoming)_ fields — driven entirely by typed mock data behind one swappable client module.
 
@@ -158,7 +158,7 @@ Five CSS custom properties `--fdr-1 … --fdr-5` on an FPL-familiar green→red 
 
 ## 10. Out of scope (explicit)
 
-- **Wiring to the real backend.** Single integration point: the body of `getDashboard` in `client.ts`, marked `// INTEGRATION POINT`. No real network calls on this branch.
+- ~~**Wiring to the real backend.**~~ **Done (2026-05-23):** `client.ts` `fetchDashboard()` fans out to the seven live `/api` endpoints (dev-proxied to FastAPI on `:8000`); `getMockDashboard()` remains for `?mock=` demo/offline. Decision endpoints degrade gracefully; service worker caches `/api` network-first.
 - Anything Phase 2+: auth UI, mode switching controls, Telegram, executing actions, write endpoints.
 - Multi-user / social / light theme / native app (B3, locked decisions).
 - Any change under `src/` or to existing `docs/` files (only this spec + its plan are added under `docs/superpowers/`).

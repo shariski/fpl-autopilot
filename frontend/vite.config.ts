@@ -30,11 +30,27 @@ export default defineConfig(({ mode }) => ({
 				]
 			},
 			workbox: {
-				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2,html}']
+				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2,html}'],
+				// Network-first for the API: fresh when online, last-known data when offline.
+				runtimeCaching: [
+					{
+						urlPattern: /\/api\//,
+						handler: 'NetworkFirst',
+						options: {
+							cacheName: 'fpl-api',
+							networkTimeoutSeconds: 5,
+							expiration: { maxEntries: 16, maxAgeSeconds: 60 * 60 * 24 },
+							cacheableResponse: { statuses: [0, 200] }
+						}
+					}
+				]
 			},
 			devOptions: { enabled: true, type: 'module', navigateFallback: '/' }
 		})
 	],
+	// Dev/preview: same-origin /api proxied to the FastAPI backend (`fpl-autopilot serve`).
+	server: { proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } } },
+	preview: { proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } } },
 	test: {
 		environment: 'jsdom',
 		globals: true,
