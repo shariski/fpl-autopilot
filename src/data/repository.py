@@ -97,6 +97,19 @@ def snapshot_my_team(conn, gw, picks):
     conn.commit()
 
 
+def upsert_fdr(conn, rows):
+    now = _now()
+    conn.executemany(
+        """INSERT INTO fdr (team_id, gw, fdr_attack, fdr_defense, computed_at)
+           VALUES (?,?,?,?,?)
+           ON CONFLICT(team_id, gw) DO UPDATE SET
+             fdr_attack=excluded.fdr_attack, fdr_defense=excluded.fdr_defense,
+             computed_at=excluded.computed_at""",
+        [(r["team_id"], r["gw"], r["fdr_attack"], r["fdr_defense"], now) for r in rows],
+    )
+    conn.commit()
+
+
 def _per90(value, minutes):
     return round(value / (minutes / 90.0), 4) if minutes else 0.0
 
