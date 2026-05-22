@@ -33,7 +33,7 @@ const opp: Record<number, ([string, boolean, number, number] | null)[]> = {
 	7: [['BOU', true, 2, 3], ['NEW', false, 3, 4], ['LIV', true, 4, 4], ['BHA', false, 3, 3], ['EVE', true, 2, 2]],
 	8: [['EVE', true, 2, 2], ['WOL', false, 2, 2], ['ARS', true, 5, 5], ['NEW', false, 4, 4], ['FUL', true, 2, 2]],
 	9: [['FUL', true, 2, 2], ['TOT', false, 4, 3], ['EVE', true, 2, 2], ['LIV', false, 5, 5], ['CRY', true, 2, 2]],
-	10: [['BOU', false, 3, 3], ['AVL', true, 3, 3], ['CHE', false, 4, 4], ['SOU', true, 1, 1], ['FUL', false, 2, 2]],
+	10: [['BOU', true, 3, 3], ['AVL', false, 3, 3], ['CHE', true, 4, 4], ['SOU', false, 1, 1], ['FUL', true, 2, 2]],
 	11: [['ARS', true, 4, 5], ['MCI', false, 5, 5], ['WHU', true, 2, 2], ['BRE', false, 3, 3], ['EVE', true, 2, 2]],
 	12: [['CHE', true, 4, 4], ['BHA', false, 3, 3], ['MUN', true, 3, 4], ['WHU', false, 2, 2], ['LEE', true, 1, 1]],
 	13: [['LEE', true, 1, 1], ['BUR', false, 1, 1], ['NEW', true, 4, 4], ['ARS', false, 5, 5], ['SUN', true, 1, 1]],
