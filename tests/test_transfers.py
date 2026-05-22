@@ -168,3 +168,54 @@ def test_buy_respects_3_per_club_property():
                 new_squad = [p for p in squad if p["player_id"] != sell["player_id"]] + [buy]
                 counts = Counter(p["team_id"] for p in new_squad)
                 assert max(counts.values()) <= MAX_PER_CLUB
+
+
+# ── Task 5: suggest_transfers ─────────────────────────────────────────────────
+
+def test_suggest_orders_by_ep_delta_and_caps_at_three():
+    # Three sellable FWDs (below market median ~5.45) + one keeper (xp=6.9, above median).
+    squad = [
+        _p(1, "FWD", 1, 8.0, "a", 2.0),
+        _p(2, "FWD", 2, 8.0, "a", 3.0),
+        _p(3, "FWD", 3, 8.0, "a", 4.0),
+        _p(4, "FWD", 4, 8.0, "a", 6.9),  # above median -> not a sell candidate
+    ]
+    buys = [
+        _p(11, "FWD", 11, 8.0, "a", 30.0),   # delta 28 with sell 1
+        _p(12, "FWD", 12, 8.0, "a", 25.0),   # delta 22 with sell 2
+        _p(13, "FWD", 13, 8.0, "a", 20.0),   # delta 16 with sell 3
+        _p(14, "FWD", 14, 8.0, "a", 10.0),   # delta 9  with sell 4
+    ]
+    market = squad + buys
+    pairs = transfers.suggest_transfers(squad, market, bank=0.0)
+    assert len(pairs) == 3                                  # capped at top 3
+    deltas = [pr["ep_delta_5gw"] for pr in pairs]
+    assert deltas == sorted(deltas, reverse=True)           # descending by delta
+    assert pairs[0]["out"]["player_id"] == 1 and pairs[0]["in"]["player_id"] == 11
+    assert all(pr["hit_cost"] == 0 for pr in pairs)         # v1 single free transfer
+
+
+def test_empty_reason_when_no_positive_delta():
+    # squad players are the entire market for their position, identical xp, available -> no sells
+    squad = [_p(i, "MID", i, 6.0, "a", 10.0) for i in range(1, 4)]
+    assert transfers.suggest_transfers(squad, squad, bank=2.0) == []
+
+
+def test_property_suggestions_leave_valid_squad():
+    for seed in range(60):
+        market, squad, bank = _random_market_and_squad(seed)
+        squad_ids = {p["player_id"] for p in squad}
+        before_pos = Counter(p["position"] for p in squad)
+        pairs = transfers.suggest_transfers(squad, market, bank)
+        assert len(pairs) <= 3
+        for pr in pairs:
+            sell, buy = pr["out"], pr["in"]
+            assert sell["player_id"] in squad_ids
+            assert buy["player_id"] not in squad_ids
+            assert sell["position"] == buy["position"]        # same-position swap
+            assert pr["ep_delta_5gw"] > 0                      # only positive deltas
+            new_squad = [p for p in squad if p["player_id"] != sell["player_id"]] + [buy]
+            assert len(new_squad) == 15                        # 15-man squad preserved
+            assert Counter(p["position"] for p in new_squad) == before_pos
+            assert max(Counter(p["team_id"] for p in new_squad).values()) <= MAX_PER_CLUB
+            assert bank - (buy["price"] - sell["price"]) >= -1e-9   # within budget
