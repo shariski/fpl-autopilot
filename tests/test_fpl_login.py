@@ -43,3 +43,31 @@ def test_login_success():
     assert res.entry_id == 3122849
     assert res.cookies["pl_profile"] == "abc"
     assert res.csrf == "tok"
+
+
+def test_login_team_id_mismatch():
+    sess = _FakeSession(me_payload={"player": {"entry": 999}},
+                        cookies={"pl_profile": "abc"})
+    with pytest.raises(fpl_login.FPLLoginError):
+        fpl_login.login("me@example.com", "throwaway-pw",
+                        expected_team_id=3122849, session=sess)
+
+
+def test_login_not_authenticated():
+    sess = _FakeSession(me_payload={}, cookies={})  # no "player" key
+    with pytest.raises(fpl_login.FPLLoginError):
+        fpl_login.login("me@example.com", "throwaway-pw",
+                        expected_team_id=3122849, session=sess)
+
+
+def test_login_bad_credentials():
+    # /me would look authenticated, but the login POST signalled failure
+    sess = _FakeSession(
+        me_payload={"player": {"entry": 3122849}},
+        post_url="https://fantasy.premierleague.com/a/login?state=fail",
+        cookies={"pl_profile": "abc"},
+    )
+    with pytest.raises(fpl_login.FPLLoginError) as exc:
+        fpl_login.login("me@example.com", "throwaway-pw",
+                        expected_team_id=3122849, session=sess)
+    assert "throwaway-pw" not in str(exc.value)  # password never in the message

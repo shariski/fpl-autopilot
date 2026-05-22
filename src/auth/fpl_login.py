@@ -22,13 +22,27 @@ class LoginResult:
 def login(email, password, *, expected_team_id, session=None):
     session = session or requests.Session()
     session.headers.update({"User-Agent": USER_AGENT})
-    session.post(
+    resp = session.post(
         LOGIN_URL,
         data={"login": email, "password": password,
               "app": "plfpl-web", "redirect_uri": REDIRECT_URI},
         timeout=TIMEOUT,
     )
-    me = session.get(ME_URL, timeout=TIMEOUT).json()
-    entry_id = me["player"]["entry"]
+    # Best-effort early failure. The /me check below is authoritative.
+    if "state=fail" in (resp.url or ""):
+        raise FPLLoginError("login failed — check FPL email/password")
+
+    me_resp = session.get(ME_URL, timeout=TIMEOUT)
+    if me_resp.status_code != 200:
+        raise FPLLoginError("login appeared to succeed but session is not authenticated")
+    me = me_resp.json()
+    player = me.get("player")
+    if not player or "entry" not in player:
+        raise FPLLoginError("login appeared to succeed but session is not authenticated")
+    entry_id = player["entry"]
+    if entry_id != expected_team_id:
+        raise FPLLoginError(
+            f"authenticated as entry {entry_id} but config team_id is {expected_team_id}")
+
     cookies = {c.name: c.value for c in session.cookies}
     return LoginResult(cookies=cookies, csrf=session.cookies.get("csrftoken"), entry_id=entry_id)
