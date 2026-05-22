@@ -73,12 +73,14 @@ def free_hit_trigger(conn, squad, gws):
 
 def bench_boost_trigger(conn, squad, gws):
     for gw in gws:
-        # Require a true DGW: every squad player has at least 2 fixtures.
-        if all(dgw.team_fixture_count(conn, r["team_id"], gw) >= 2 for r in squad):
+        counts = [dgw.team_fixture_count(conn, r["team_id"], gw) for r in squad]
+        # Per decision-engine.md: a DGW is upcoming (some squad player's team plays twice)
+        # AND all 15 have at least one fixture (no blanks). NOT all 15 doubling.
+        if counts and all(c >= 1 for c in counts) and any(c >= 2 for c in counts):
             bench = [r for r in squad if r["pick_position"] >= 12]
             bench_xp = round(sum(_player_gw_xp(conn, r, gw) for r in bench), 1)
             if bench_xp > BENCH_BOOST_THRESHOLD:
-                return f"GW{gw}: all 15 have fixtures; bench xP {bench_xp} (> {BENCH_BOOST_THRESHOLD})."
+                return f"GW{gw}: DGW with all 15 playing; bench xP {bench_xp} (> {BENCH_BOOST_THRESHOLD})."
     return None
 
 
