@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Squad, Position } from '$lib/types';
+	import { dash } from '$lib/format';
 	import PlayerCard from './PlayerCard.svelte';
 	let { squad }: { squad: Squad } = $props();
 	const starters = $derived(squad.players.filter((p) => p.multiplier > 0));
@@ -9,7 +10,7 @@
 </script>
 
 <div class="summary tnum">
-	Bank {squad.bank.toFixed(1)} · Value {squad.team_value.toFixed(1)}
+	Bank {dash(squad.bank, 1)} · Value {dash(squad.team_value, 1)}
 	{#if squad.free_transfers !== null}· {squad.free_transfers} FT{/if}
 </div>
 
