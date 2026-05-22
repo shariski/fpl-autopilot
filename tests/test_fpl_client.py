@@ -113,7 +113,6 @@ def test_raises_after_exhausting_retries():
     # 4 attempts (initial + 3 retries), all 500 -> must raise after the last
     session = FakeSession([FakeResponse(500), FakeResponse(500),
                            FakeResponse(500), FakeResponse(500)])
-    client = _client([])  # placeholder, replaced below
     client = FPLClient(
         session=session,
         sleep=lambda s: None,
