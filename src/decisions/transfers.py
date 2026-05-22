@@ -32,12 +32,12 @@ def hit_cost(num_transfers, free_transfers=1):
     return -max(0, num_transfers - free_transfers) * 4
 
 
-def is_worth_hit(ep_delta, hit_cost):
+def is_worth_hit(ep_delta, points_hit):
     """True when the EP gain beats the (absolute) points hit.
 
-    When `hit_cost` is 0 (free), this reduces to `ep_delta > 0`.
+    `points_hit` is a hit_cost(...) result. When it is 0 (free), this reduces to `ep_delta > 0`.
     """
-    return ep_delta > abs(hit_cost)
+    return ep_delta > abs(points_hit)
 
 
 def _median_by_position(all_players):
