@@ -151,3 +151,27 @@ def upsert_xp(conn, rows):
           r["xgoals"], r["xassists"], r["xcs"], now) for r in rows],
     )
     conn.commit()
+
+
+_CRED_COLUMNS = {
+    "fpl_email_encrypted", "fpl_password_encrypted",
+    "session_cookie_encrypted", "csrf_token_encrypted",
+}
+
+
+def set_encrypted(conn, column, token):
+    if column not in _CRED_COLUMNS:
+        raise ValueError(f"unknown credential column: {column!r}")
+    conn.execute(
+        f"INSERT INTO credentials (id, {column}) VALUES (1, ?) "
+        f"ON CONFLICT(id) DO UPDATE SET {column}=excluded.{column}",
+        (token,),
+    )
+    conn.commit()
+
+
+def get_encrypted(conn, column):
+    if column not in _CRED_COLUMNS:
+        raise ValueError(f"unknown credential column: {column!r}")
+    row = conn.execute(f"SELECT {column} FROM credentials WHERE id=1").fetchone()
+    return row[column] if row else None

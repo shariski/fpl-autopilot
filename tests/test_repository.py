@@ -54,3 +54,35 @@ def test_snapshot_my_team(db, load):
     assert len(parsed) == 15
     assert row["free_transfers"] is None  # public-API limitation (spec §6)
     assert row["bank"] == picks.entry_history.bank / 10.0
+
+
+from src.auth import crypto
+
+
+def test_set_get_encrypted_roundtrip(db):
+    key = crypto.derive_key("throwaway", b"0123456789abcdef")
+    token = crypto.encrypt(key, "you@example.com")
+    repository.set_encrypted(db, "fpl_email_encrypted", token)
+    back = repository.get_encrypted(db, "fpl_email_encrypted")
+    assert crypto.decrypt(key, back) == "you@example.com"
+
+
+def test_set_encrypted_updates_same_row(db):
+    key = crypto.derive_key("throwaway", b"0123456789abcdef")
+    repository.set_encrypted(db, "fpl_password_encrypted", crypto.encrypt(key, "a"))
+    repository.set_encrypted(db, "fpl_password_encrypted", crypto.encrypt(key, "b"))
+    rows = db.execute("SELECT COUNT(*) c FROM credentials").fetchone()["c"]
+    assert rows == 1  # single id=1 row, updated in place
+    assert crypto.decrypt(key, repository.get_encrypted(db, "fpl_password_encrypted")) == "b"
+
+
+def test_get_encrypted_missing_returns_none(db):
+    assert repository.get_encrypted(db, "session_cookie_encrypted") is None
+
+
+def test_encrypted_unknown_column_rejected(db):
+    import pytest
+    with pytest.raises(ValueError):
+        repository.set_encrypted(db, "id; DROP TABLE credentials", b"x")
+    with pytest.raises(ValueError):
+        repository.get_encrypted(db, "not_a_column")
