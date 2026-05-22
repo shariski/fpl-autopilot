@@ -1,42 +1,26 @@
-# sv
+# FPL Autopilot — Dashboard (Phase 1, Interface layer)
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+Installable, mobile-first SvelteKit PWA. Renders all seven Phase 1 dashboard
+sections from typed mock data behind a single swappable client.
 
-## Creating a project
+## Run
 
-If you're seeing this, you've probably already done this step. Congrats!
-
-```sh
-# create a new project
-npx sv create my-app
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:5173
+npm test           # Vitest
+npm run build && npm run preview
 ```
 
-To recreate this project with the same configuration:
+## Mock scenarios
 
-```sh
-# recreate this project
-npx sv@0.15.3 create --template minimal --types ts --install npm frontend
-```
+- `/?mock=full` (default) — every field populated.
+- `/?mock=launch` — the real day-one: `(forthcoming)` fields (xP, captain,
+  transfers, chips) are null/empty; live data (status, squad, FDR, activity) shows.
 
-## Developing
+## Wiring to the real backend (single integration point)
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+`src/lib/api/client.ts` → `getDashboard()` is the only place that knows where
+data comes from. Replace its body (marked `INTEGRATION POINT`) with parallel
+`fetch('/api/...')` calls per `docs/api-contract.md`. Nothing else changes.
