@@ -26,7 +26,7 @@ def test_refresh_populates_db(load):
     client = FakeClient(bs, fx, picks)
     cfg = {"fpl": {"team_id": 3122849}, "storage": {"db_path": ":memory:"}}
 
-    cli.refresh(full=True, cfg=cfg, conn=conn, client=client)
+    cli.refresh(full=True, cfg=cfg, conn=conn, client=client, sources=("fpl",))  # FPL-only: no live Understat call
 
     assert conn.execute("SELECT COUNT(*) c FROM players").fetchone()["c"] == len(bs.elements)
     assert conn.execute("SELECT COUNT(*) c FROM teams").fetchone()["c"] == len(bs.teams)

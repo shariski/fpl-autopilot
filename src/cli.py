@@ -25,6 +25,8 @@ def _load_name_overrides():
     if not NAME_RESOLUTION_PATH.exists():
         return {}
     data = yaml.safe_load(NAME_RESOLUTION_PATH.read_text()) or {}
+    if not isinstance(data, dict):  # a list/other shape -> treat as no overrides
+        return {}
     return {str(k): int(v) for k, v in data.items()}
 
 
@@ -69,7 +71,8 @@ def _refresh_understat(conn, understat_client, cfg, full):
 
 def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None, sources=None):
     cfg = cfg or load_config()
-    sources = sources or ("fpl", "understat")
+    if sources is None:  # explicit: an empty tuple means "no sources", not "both"
+        sources = ("fpl", "understat")
     owns_conn = conn is None
     conn = conn or connect(cfg_db_path(cfg))
     init_db(conn)
