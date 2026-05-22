@@ -104,7 +104,7 @@ SQLite schema. Tables only — indexes and constraints inferred.
 | name | TEXT | |
 | web_name | TEXT | Short display name |
 | team_id | INTEGER | FK to teams |
-| position | TEXT | GK / DEF / MID / FWD |
+| position | TEXT | GKP / DEF / MID / FWD |
 | price | REAL | Current price |
 | status | TEXT | a (available), d (doubt), i (injured), s (suspended), u (unavailable) |
 | ownership | REAL | % |

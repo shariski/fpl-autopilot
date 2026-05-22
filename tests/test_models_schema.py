@@ -31,3 +31,10 @@ def test_schema_drift_fails_loudly(load):
     del data["elements"][0]["id"]  # required field removed -> must raise
     with pytest.raises(ValidationError):
         BootstrapStatic.model_validate(data)
+
+
+def test_schema_drift_type_change_fails_loudly(load):
+    data = load("bootstrap-static.json")
+    data["elements"][0]["now_cost"] = "not-a-number"  # int field, non-coercible -> must raise
+    with pytest.raises(ValidationError):
+        BootstrapStatic.model_validate(data)

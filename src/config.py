@@ -19,4 +19,8 @@ def team_id(cfg=None):
 
 def db_path(cfg=None):
     cfg = cfg or load_config()
-    return cfg.get("storage", {}).get("db_path", DEFAULT_DB_PATH)
+    raw = cfg.get("storage", {}).get("db_path", DEFAULT_DB_PATH)
+    if raw == ":memory:":
+        return raw
+    p = pathlib.Path(raw).expanduser()
+    return str(p if p.is_absolute() else ROOT / p)
