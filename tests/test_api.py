@@ -72,20 +72,17 @@ def test_get_activity_empty(seeded):
 
 
 from fastapi.testclient import TestClient
-import sqlite3 as _sqlite3
 
 
 @pytest.fixture
 def client():
     from src.interface.api import app
     from src.interface.deps import get_db
-    from src.data.db import init_db
+    from src.data.db import connect, init_db
 
-    conn = _sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = _sqlite3.Row
+    conn = connect(":memory:", check_same_thread=False)
     init_db(conn)
     seed(conn)
-
     app.dependency_overrides[get_db] = lambda: conn
     yield TestClient(app)
     app.dependency_overrides.clear()
