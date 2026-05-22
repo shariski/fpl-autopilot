@@ -86,11 +86,20 @@ def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None,
         conn.close()
 
 
-def serve(host="0.0.0.0", port=None):
+def serve(host="0.0.0.0", port=None, scheduler=True):
     import os
     import uvicorn
     port = port or int(os.getenv("PORT", "8000"))
-    uvicorn.run("src.interface.api:app", host=host, port=port)
+    sched = None
+    if scheduler:
+        from .scheduler import build_scheduler
+        sched = build_scheduler()
+        sched.start()
+    try:
+        uvicorn.run("src.interface.api:app", host=host, port=port)
+    finally:
+        if sched is not None:
+            sched.shutdown(wait=False)
 
 
 def main(argv=None):
@@ -103,12 +112,18 @@ def main(argv=None):
     p_serve = sub.add_parser("serve", help="run the FastAPI server")
     p_serve.add_argument("--host", default="0.0.0.0")
     p_serve.add_argument("--port", type=int, default=None)
+    p_serve.add_argument("--no-scheduler", action="store_true",
+                         help="run the API without the background scheduler")
+    sub.add_parser("scheduler", help="run the background refresh scheduler (blocking)")
     args = parser.parse_args(argv)
     if args.command == "refresh":
         sources = (args.source,) if args.source else ("fpl", "understat")
         refresh(full=args.full, sources=sources)
     elif args.command == "serve":
-        serve(host=args.host, port=args.port)
+        serve(host=args.host, port=args.port, scheduler=not args.no_scheduler)
+    elif args.command == "scheduler":
+        from .scheduler import run_scheduler_blocking
+        run_scheduler_blocking()
 
 
 if __name__ == "__main__":

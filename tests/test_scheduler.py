@@ -40,3 +40,29 @@ def test_ping_healthcheck_calls_url(monkeypatch):
     monkeypatch.setattr(scheduler.requests, "get", lambda url, timeout=None: got.append(url))
     scheduler._ping_healthcheck()
     assert got == ["http://hc.example/ping"]
+
+
+def test_serve_starts_scheduler(monkeypatch):
+    import src.cli as cli
+    events = []
+
+    class FakeSched:
+        def start(self):
+            events.append("start")
+
+        def shutdown(self, wait=False):
+            events.append("shutdown")
+
+    monkeypatch.setattr("src.scheduler.build_scheduler", lambda: FakeSched())
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: events.append("uvicorn"))
+    cli.serve(port=0, scheduler=True)
+    assert events == ["start", "uvicorn", "shutdown"]
+
+
+def test_serve_no_scheduler(monkeypatch):
+    import src.cli as cli
+    built = []
+    monkeypatch.setattr("src.scheduler.build_scheduler", lambda: built.append(1))
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
+    cli.serve(port=0, scheduler=False)
+    assert built == []
