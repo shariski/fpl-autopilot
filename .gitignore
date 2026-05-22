@@ -7,3 +7,5 @@ data/logs/*.log
 .serena/
 .code-review-graph/
 *.egg-info/
+data/.salt
+data/.verify

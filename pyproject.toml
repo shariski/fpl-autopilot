@@ -7,7 +7,7 @@ name = "fpl-autopilot"
 version = "0.1.0"
 description = "Personal Fantasy Premier League assistant"
 requires-python = ">=3.11"
-dependencies = ["requests", "pydantic>=2", "pyyaml", "fastapi", "uvicorn", "APScheduler"]
+dependencies = ["requests", "pydantic>=2", "pyyaml", "fastapi", "uvicorn", "APScheduler", "cryptography>=44"]
 
 [project.optional-dependencies]
 dev = ["pytest", "httpx"]
@@ -16,4 +16,4 @@ dev = ["pytest", "httpx"]
 fpl-autopilot = "src.cli:main"
 
 [tool.setuptools]
-packages = ["src", "src.data", "src.analytics", "src.decisions", "src.interface"]
+packages = ["src", "src.data", "src.analytics", "src.decisions", "src.interface", "src.auth"]

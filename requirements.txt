@@ -6,3 +6,4 @@ fastapi
 uvicorn
 httpx
 APScheduler
+cryptography>=44
