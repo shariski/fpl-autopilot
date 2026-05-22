@@ -1,0 +1,51 @@
+import pytest
+from src.auth import master
+
+
+def _paths(tmp_path):
+    return tmp_path / ".salt", tmp_path / ".verify"
+
+
+def test_is_initialized(tmp_path):
+    s, v = _paths(tmp_path)
+    assert master.is_initialized(s, v) is False
+    master.init_master_password("throwaway-pw-123", s, v)
+    assert master.is_initialized(s, v) is True
+
+
+def test_init_then_load_simulating_restart(tmp_path):
+    s, v = _paths(tmp_path)
+    key1 = master.init_master_password("throwaway-pw-123", s, v)
+    key2 = master.load_key("throwaway-pw-123", s, v)
+    from src.auth import crypto
+    assert crypto.decrypt(key2, crypto.encrypt(key1, "x")) == "x"
+
+
+def test_load_wrong_password_raises(tmp_path):
+    s, v = _paths(tmp_path)
+    master.init_master_password("right-pw-123456", s, v)
+    with pytest.raises(master.MasterPasswordError):
+        master.load_key("wrong-pw-123456", s, v)
+
+
+def test_load_not_initialized_raises(tmp_path):
+    s, v = _paths(tmp_path)
+    with pytest.raises(master.MasterPasswordError):
+        master.load_key("whatever-123456", s, v)
+
+
+def test_get_master_key_env(tmp_path, monkeypatch):
+    s, v = _paths(tmp_path)
+    master.init_master_password("env-pw-12345678", s, v)
+    monkeypatch.setenv("MASTER_PASSWORD", "env-pw-12345678")
+    key = master.get_master_key(s, v)
+    from src.auth import crypto
+    assert crypto.decrypt(key, crypto.encrypt(key, "y")) == "y"
+
+
+def test_secrets_not_logged(tmp_path, caplog):
+    s, v = _paths(tmp_path)
+    with caplog.at_level("DEBUG"):
+        master.init_master_password("nolog-pw-123456", s, v)
+        master.load_key("nolog-pw-123456", s, v)
+    assert "nolog-pw-123456" not in caplog.text
