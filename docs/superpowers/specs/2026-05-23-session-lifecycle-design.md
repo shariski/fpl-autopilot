@@ -94,8 +94,8 @@ except FPLLoginError:
     raise ReloginFailed("FPL re-login failed; session still expired")
 
 # re-login succeeded: store the fresh session and return a session built from it
-repository.store_session(conn, key, result)   # encrypts cookies+csrf, touch_session_refreshed,
-                                              # auth_state="active", relogin_failures=0
+_persist_relogin(conn, key, result)   # session.py helper: encrypts cookies+csrf via crypto,
+                                      # set_encrypted, touch_session_refreshed, mark_session_ok
 return a requests.Session built from result.cookies
 ```
 
@@ -111,9 +111,12 @@ existing whitelist-gated `set_encrypted`).
 - `set_auth_state(conn, state)` — upserts `auth_state` for row id=1.
 - `increment_relogin_failures(conn) -> int` — `relogin_failures += 1`, returns the new value.
 - `mark_session_ok(conn)` — sets `auth_state='active'`, `relogin_failures=0`.
-- `store_session(conn, key, result)` — encrypts `result.cookies` (JSON) and `result.csrf` into
-  the credential blobs, calls `touch_session_refreshed`, then `mark_session_ok`. (This is the
-  re-login analogue of what `init-fpl` does for the first login.)
+
+The repository stays pure data (no crypto). The encrypt-and-store helper for a re-login —
+`_persist_relogin(conn, key, result)` — lives in `src/auth/session.py`: it encrypts
+`result.cookies` (JSON) and `result.csrf` via `crypto.encrypt`, calls `set_encrypted` for both
+blobs, then `touch_session_refreshed` and `mark_session_ok`. This keeps encryption in the auth
+layer, matching how `init-fpl` already does it in `cli.py`.
 
 `init-fpl` (`_init_fpl_cli`) gains a call to `mark_session_ok(conn)` after storing the session,
 so a successful manual login always lands in `active` with the counter cleared (this is the
