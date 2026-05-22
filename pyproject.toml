@@ -7,7 +7,7 @@ name = "fpl-autopilot"
 version = "0.1.0"
 description = "Personal Fantasy Premier League assistant"
 requires-python = ">=3.11"
-dependencies = ["requests", "pydantic>=2", "pyyaml", "fastapi", "uvicorn"]
+dependencies = ["requests", "pydantic>=2", "pyyaml", "fastapi", "uvicorn", "APScheduler"]
 
 [project.optional-dependencies]
 dev = ["pytest", "httpx"]
