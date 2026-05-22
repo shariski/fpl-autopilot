@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from .deps import get_db
 from . import queries
-from src.decisions import chips as chips_engine
+from src.decisions import captain as captain_engine, transfers as transfers_engine, chips as chips_engine
 
 app = FastAPI(title="FPL Autopilot API")
 app.add_middleware(
@@ -35,14 +35,12 @@ def activity(conn=Depends(get_db)):
 
 @app.get("/api/captain")
 def captain(conn=Depends(get_db)):
-    # WIRE: return src.decisions.captain.get_captain_picks(conn) once feat/captain-ranker merges
-    return {"picks": [], "vice_player_id": None}
+    return captain_engine.get_captain_picks(conn)
 
 
 @app.get("/api/transfers")
 def transfers(conn=Depends(get_db)):
-    # WIRE: return src.decisions.transfers.get_transfer_suggestions(conn) once feat/transfer-engine merges
-    return {"suggestions": [], "empty_reason": "No transfers worth making this GW."}
+    return transfers_engine.get_transfer_suggestions(conn)
 
 
 @app.get("/api/chips")

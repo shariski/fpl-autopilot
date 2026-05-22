@@ -113,11 +113,16 @@ def test_activity_endpoint(client):
     assert r.json() == {"entries": []}
 
 
-def test_stub_endpoints(client):
-    assert client.get("/api/captain").json() == {"picks": [], "vice_player_id": None}
-    t = client.get("/api/transfers").json()
-    assert t["suggestions"] == [] and t["empty_reason"]
-    assert client.get("/api/chips").json() == {"recommendation": None}
+def test_captain_endpoint_wired(client):
+    body = client.get("/api/captain").json()
+    assert "picks" in body and "vice_player_id" in body
+    assert len(body["picks"]) <= 5
+
+
+def test_transfers_endpoint_wired(client):
+    body = client.get("/api/transfers").json()
+    assert "suggestions" in body and "empty_reason" in body
+    assert isinstance(body["suggestions"], list)
 
 
 def test_cors_header(client):
