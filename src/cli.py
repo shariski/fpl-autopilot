@@ -143,9 +143,29 @@ def _init_fpl_cli(conn=None, login_fn=None, salt_path=None, verify_path=None):
                              crypto.encrypt(key, json.dumps(result.cookies)))
     repository.set_encrypted(conn, "csrf_token_encrypted", crypto.encrypt(key, result.csrf or ""))
     repository.touch_session_refreshed(conn)
+    repository.mark_session_ok(conn)
     if owns_conn:
         conn.close()
     print(f"Authenticated as entry {result.entry_id}; session stored.")
+
+
+def _auth_status_cli(conn=None):
+    from .data import repository
+    owns_conn = conn is None
+    conn = conn or connect(cfg_db_path())
+    init_db(conn)
+    state = repository.get_auth_state(conn)
+    if state is None:
+        print("No stored FPL session — run `fpl-autopilot init-fpl`.")
+    else:
+        row = conn.execute(
+            "SELECT relogin_failures, session_last_refreshed FROM credentials WHERE id=1"
+        ).fetchone()
+        print(f"auth_state: {state}")
+        print(f"relogin_failures: {row['relogin_failures']}")
+        print(f"session_last_refreshed: {row['session_last_refreshed']}")
+    if owns_conn:
+        conn.close()
 
 
 def serve(host="0.0.0.0", port=None, scheduler=True):
@@ -179,6 +199,7 @@ def main(argv=None):
     sub.add_parser("scheduler", help="run the background refresh scheduler (blocking)")
     sub.add_parser("init-master-password", help="set the master password that encrypts stored credentials")
     sub.add_parser("init-fpl", help="log in to FPL and store the encrypted session")
+    sub.add_parser("auth-status", help="show stored FPL session state (no secrets)")
     args = parser.parse_args(argv)
     if args.command == "refresh":
         sources = (args.source,) if args.source else ("fpl", "understat")
@@ -192,6 +213,8 @@ def main(argv=None):
         _init_master_password_cli()
     elif args.command == "init-fpl":
         _init_fpl_cli()
+    elif args.command == "auth-status":
+        _auth_status_cli()
 
 
 if __name__ == "__main__":
