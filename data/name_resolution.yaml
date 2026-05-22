@@ -1,0 +1,5 @@
+# Manual FPL<->Understat overrides for players the resolver can't match confidently.
+# Format: "<understat_id>": <fpl_player_id>
+# Find the understat_id in the understat_players table (player_name/team_title columns),
+# and the fpl_player_id in the players table. Example:
+# "8260": 12345

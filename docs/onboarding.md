@@ -220,8 +220,8 @@ For each unmatched player, decide:
 - **If irrelevant to your squad and unlikely buy target:** ignore.
 - **If in your squad or a buy target:** add a manual mapping in `data/name_resolution.yaml`:
   ```yaml
-  - fpl_id: 12345
-    understat_name: "M. Salah"
+  # data/name_resolution.yaml maps understat_id -> fpl_id (id-based is robust vs name drift):
+  "8260": 12345
   ```
   Then re-run `refresh --full`.
 

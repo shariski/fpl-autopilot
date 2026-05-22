@@ -4,6 +4,9 @@ fpl:
 storage:
   db_path: data/fpl_autopilot.db
 
+understat:
+  season: "2025"   # Understat uses the start year; "2025" = the 2025/26 season
+
 mode:
   current: manual  # auto | manual | hybrid
 

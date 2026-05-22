@@ -95,3 +95,32 @@ def snapshot_my_team(conn, gw, picks):
          picks.entry_history.value / 10.0, None, chips, _now()),  # free_transfers: auth-only
     )
     conn.commit()
+
+
+def _per90(value, minutes):
+    return round(value / (minutes / 90.0), 4) if minutes else 0.0
+
+
+def upsert_understat_players(conn, understat_players, resolution, season):
+    now = _now()
+    rows = [
+        (up.id, resolution.matched.get(up.id), season, up.player_name, up.team_title,
+         up.games, up.time, up.goals, up.assists, up.xG, up.xA, up.npg, up.npxG,
+         _per90(up.xG, up.time), _per90(up.xA, up.time), now)
+        for up in understat_players
+    ]
+    conn.executemany(
+        """INSERT INTO understat_players (understat_id, fpl_player_id, season, player_name,
+             team_title, games, minutes, goals, assists, xg, xa, npg, npxg,
+             xg_per_90, xa_per_90, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(understat_id) DO UPDATE SET
+             fpl_player_id=excluded.fpl_player_id, season=excluded.season,
+             player_name=excluded.player_name, team_title=excluded.team_title,
+             games=excluded.games, minutes=excluded.minutes, goals=excluded.goals,
+             assists=excluded.assists, xg=excluded.xg, xa=excluded.xa, npg=excluded.npg,
+             npxg=excluded.npxg, xg_per_90=excluded.xg_per_90, xa_per_90=excluded.xa_per_90,
+             updated_at=excluded.updated_at""",
+        rows,
+    )
+    conn.commit()
