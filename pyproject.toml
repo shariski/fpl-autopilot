@@ -16,4 +16,4 @@ dev = ["pytest"]
 fpl-autopilot = "src.cli:main"
 
 [tool.setuptools]
-packages = ["src", "src.data"]
+packages = ["src", "src.data", "src.analytics"]
