@@ -117,3 +117,22 @@ CREATE TABLE IF NOT EXISTS cache_meta (
   resource TEXT PRIMARY KEY,
   last_fetched_utc TIMESTAMP NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS understat_players (
+  understat_id TEXT PRIMARY KEY,
+  fpl_player_id INTEGER,
+  season TEXT,
+  player_name TEXT,
+  team_title TEXT,
+  games INTEGER,
+  minutes INTEGER,
+  goals INTEGER,
+  assists INTEGER,
+  xg REAL,
+  xa REAL,
+  npg INTEGER,
+  npxg REAL,
+  xg_per_90 REAL,
+  xa_per_90 REAL,
+  updated_at TIMESTAMP
+);

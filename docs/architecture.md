@@ -235,6 +235,23 @@ Drives "read DB first, fetch only when stale" in the Data Layer.
 | resource | TEXT PRIMARY KEY | "bootstrap-static" / "fixtures" / "my_team" |
 | last_fetched_utc | TIMESTAMP | NOT NULL |
 
+### `understat_players`
+
+Season-aggregate xG/xA from Understat (supplementary data), with the resolved FPL id.
+
+| Column | Type | Notes |
+|---|---|---|
+| understat_id | TEXT PRIMARY KEY | Understat player id |
+| fpl_player_id | INTEGER | Resolved FPL id; NULL if unmatched |
+| season | TEXT | e.g. "2025" (= 2025/26) |
+| player_name | TEXT | Understat name |
+| team_title | TEXT | Understat team(s); comma-separated on mid-season transfer |
+| games, minutes, goals, assists | INTEGER | Season totals |
+| xg, xa, npxg | REAL | Season totals (npxg = non-penalty xG) |
+| npg | INTEGER | Non-penalty goals |
+| xg_per_90, xa_per_90 | REAL | Derived: stat / (minutes/90) |
+| updated_at | TIMESTAMP | |
+
 ### `credentials` (Phase 2)
 
 Single row.
