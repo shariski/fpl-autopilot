@@ -96,3 +96,22 @@ class ElementSummary(_Base):
     # Modeled lightly; not persisted this slice (consumed by Analytics later).
     history: list[dict]
     fixtures: list[dict]
+
+
+class UnderstatPlayer(_Base):
+    id: str
+    player_name: str
+    team_title: str
+    games: int
+    time: int            # minutes
+    goals: int
+    assists: int
+    xG: float
+    xA: float
+    npg: int
+    npxG: float
+
+
+class UnderstatPlayersResponse(_Base):
+    success: bool
+    players: list[UnderstatPlayer]
