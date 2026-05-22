@@ -219,3 +219,42 @@ def test_property_suggestions_leave_valid_squad():
             assert Counter(p["position"] for p in new_squad) == before_pos
             assert max(Counter(p["team_id"] for p in new_squad).values()) <= MAX_PER_CLUB
             assert bank - (buy["price"] - sell["price"]) >= -1e-9   # within budget
+
+
+# ── Task 6: get_transfer_suggestions (reader) ─────────────────────────────────
+
+def test_get_transfer_suggestions_integration(db):
+    players = [
+        {"id": 1, "web_name": "Out",     "position": "FWD", "team_id": 1, "price": 8.0,  "status": "a", "xp5": 5.0},
+        {"id": 2, "web_name": "KeepMid", "position": "MID", "team_id": 2, "price": 7.0,  "status": "a", "xp5": 30.0},
+        {"id": 3, "web_name": "KeepDef", "position": "DEF", "team_id": 3, "price": 5.0,  "status": "a", "xp5": 25.0},
+        {"id": 4, "web_name": "In",      "position": "FWD", "team_id": 4, "price": 8.0,  "status": "a", "xp5": 25.0},
+        {"id": 5, "web_name": "PremFwd", "position": "FWD", "team_id": 5, "price": 12.0, "status": "a", "xp5": 40.0},
+    ]
+    _seed_db(db, players, squad_ids=[1, 2, 3], bank=1.0)
+    out = transfers.get_transfer_suggestions(db)
+
+    assert out["empty_reason"] is None
+    assert 1 <= len(out["suggestions"]) <= 3
+    s = out["suggestions"][0]
+    assert s["out"]["player_id"] == 1 and s["in"]["player_id"] == 4   # p5 unaffordable (12 > 8+1)
+    assert s["in"]["price"] <= s["out"]["price"] + 1.0 + 1e-9         # within budget
+    assert s["hit_cost"] == 0
+    assert s["confidence"] is None
+    # exact contract shape
+    assert set(s.keys()) == {"out", "in", "ep_delta_5gw", "hit_cost", "confidence"}
+    assert set(s["out"].keys()) == {"player_id", "web_name", "price"}
+    assert set(s["in"].keys()) == {"player_id", "web_name", "price"}
+
+
+def test_get_transfer_suggestions_empty_reason(db):
+    # squad players are the only players in their position, all available -> no sells
+    players = [
+        {"id": 1, "web_name": "A", "position": "MID", "team_id": 1, "price": 6.0, "status": "a", "xp5": 10.0},
+        {"id": 2, "web_name": "B", "position": "MID", "team_id": 2, "price": 6.0, "status": "a", "xp5": 10.0},
+        {"id": 3, "web_name": "C", "position": "MID", "team_id": 3, "price": 6.0, "status": "a", "xp5": 10.0},
+    ]
+    _seed_db(db, players, squad_ids=[1, 2, 3], bank=2.0)
+    out = transfers.get_transfer_suggestions(db)
+    assert out["suggestions"] == []
+    assert out["empty_reason"] == "No transfers worth making this GW."

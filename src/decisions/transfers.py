@@ -109,3 +109,55 @@ def suggest_transfers(squad_players, all_players, bank, top_n=3):
                       "ep_delta_5gw": round(ep_delta, 2), "hit_cost": 0})
     pairs.sort(key=lambda pr: pr["ep_delta_5gw"], reverse=True)
     return pairs[:top_n]
+
+
+def _next_gw(conn):
+    row = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
+    return row["gw"] if row else None
+
+
+def _latest_squad(conn):
+    """Latest my_team snapshot -> (element_ids, bank), or None when there is no snapshot."""
+    row = conn.execute("SELECT picks_json, bank FROM my_team ORDER BY gw DESC LIMIT 1").fetchone()
+    if row is None:
+        return None
+    ids = [pick["element"] for pick in json.loads(row["picks_json"])]
+    bank = row["bank"] if row["bank"] is not None else 0.0
+    return ids, bank
+
+
+def get_transfer_suggestions(conn):
+    """Reader: build the /api/transfers payload from current DB state (Analytics output + squad).
+
+    Returns {"suggestions": [...up to 3...], "empty_reason": str | None}. `confidence` is out of
+    scope this slice and is returned as null. No persistence, no execution (Phase 1).
+    """
+    next_gw = _next_gw(conn)
+    squad = _latest_squad(conn)
+    if next_gw is None or squad is None:
+        return {"suggestions": [], "empty_reason": EMPTY_REASON}
+    squad_ids, bank = squad
+
+    xp_rows = conn.execute(
+        "SELECT player_id, gw, xp FROM xp WHERE model_version='v1' AND gw BETWEEN ? AND ?",
+        (next_gw, next_gw + HORIZON - 1)).fetchall()
+    xp5 = xp_5gw_by_player(xp_rows, next_gw)
+
+    all_players = [
+        {"player_id": r["id"], "web_name": r["web_name"], "position": r["position"],
+         "team_id": r["team_id"], "price": r["price"], "status": r["status"],
+         "xp_5gw": xp5.get(r["id"], 0.0)}
+        for r in conn.execute(
+            "SELECT id, web_name, position, team_id, price, status FROM players")
+    ]
+    squad_set = set(squad_ids)
+    squad_players = [p for p in all_players if p["player_id"] in squad_set]
+
+    pairs = suggest_transfers(squad_players, all_players, bank)
+    suggestions = [
+        {"out": {k: pr["out"][k] for k in ("player_id", "web_name", "price")},
+         "in":  {k: pr["in"][k] for k in ("player_id", "web_name", "price")},
+         "ep_delta_5gw": pr["ep_delta_5gw"], "hit_cost": pr["hit_cost"], "confidence": None}
+        for pr in pairs
+    ]
+    return {"suggestions": suggestions, "empty_reason": None if suggestions else EMPTY_REASON}
