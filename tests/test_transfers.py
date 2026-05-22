@@ -96,3 +96,20 @@ def test_hit_cost_thresholds():
     assert transfers.is_worth_hit(3.0, -4) is False   # 3 < 4
     assert transfers.is_worth_hit(0.1, 0) is True     # free transfer, any positive gain
     assert transfers.is_worth_hit(0.0, 0) is False    # free transfer, no gain
+
+
+# ── Task 3: sell_candidates ───────────────────────────────────────────────────
+
+def test_sell_candidate_below_median_or_flagged():
+    # FWD market xp_5gw = [10, 20, 30, 25] -> median 22.5
+    market = [
+        _p(1, "FWD", 1, 8.0, "a", 10.0),   # below median -> sell
+        _p(2, "FWD", 2, 8.0, "a", 20.0),
+        _p(3, "FWD", 3, 8.0, "a", 30.0),   # above median, available -> keep
+        _p(4, "FWD", 4, 8.0, "i", 25.0),   # flagged -> sell regardless of xp
+    ]
+    squad = [market[0], market[2], market[3]]
+    sell_ids = {p["player_id"] for p in transfers.sell_candidates(squad, market)}
+    assert 1 in sell_ids     # below median
+    assert 4 in sell_ids     # flagged status
+    assert 3 not in sell_ids # above median and available

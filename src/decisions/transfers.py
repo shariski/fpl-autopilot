@@ -38,3 +38,19 @@ def is_worth_hit(ep_delta, hit_cost):
     When `hit_cost` is 0 (free), this reduces to `ep_delta > 0`.
     """
     return ep_delta > abs(hit_cost)
+
+
+def _median_by_position(all_players):
+    """Median xp_5gw per position across the whole market (not just the squad)."""
+    meds = {}
+    for pos in POSITIONS:
+        vals = [p["xp_5gw"] for p in all_players if p["position"] == pos]
+        meds[pos] = median(vals) if vals else 0.0
+    return meds
+
+
+def sell_candidates(squad_players, all_players):
+    """Squad players worth selling: xp_5gw below the position's market median, or non-clear status."""
+    meds = _median_by_position(all_players)
+    return [p for p in squad_players
+            if p["status"] != "a" or p["xp_5gw"] < meds.get(p["position"], 0.0)]
