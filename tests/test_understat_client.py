@@ -70,3 +70,28 @@ def test_no_retry_on_404():
     with pytest.raises(requests.HTTPError):
         client.players_stats("2025")
     assert len(session.calls) == 1
+
+
+def test_retries_on_connection_error():
+    sleeps = []
+    client = _client([requests.ConnectionError("boom"), FakeResponse(200, OK_BODY)], sleeps=sleeps)
+    result = client.players_stats("2025")
+    assert isinstance(result, UnderstatPlayersResponse)
+    assert sleeps == [1]
+
+
+def test_retries_on_429_then_succeeds():
+    sleeps = []
+    client = _client([FakeResponse(429), FakeResponse(200, OK_BODY)], sleeps=sleeps)
+    result = client.players_stats("2025")
+    assert isinstance(result, UnderstatPlayersResponse)
+    assert sleeps == [1]
+
+
+def test_raises_after_exhausting_retries():
+    # 4 attempts (initial + 3 retries), all 500 -> must raise after the last
+    session = FakeSession([FakeResponse(500), FakeResponse(500), FakeResponse(500), FakeResponse(500)])
+    client = UnderstatClient(session=session, sleep=lambda s: None, monotonic=lambda: 0.0)
+    with pytest.raises(requests.HTTPError):
+        client.players_stats("2025")
+    assert len(session.calls) == 4
