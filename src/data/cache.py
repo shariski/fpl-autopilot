@@ -4,6 +4,7 @@ DEFAULT_TTL = {
     "bootstrap-static": timedelta(hours=6),
     "fixtures": timedelta(hours=6),
     "my_team": timedelta(hours=1),
+    "understat": timedelta(hours=6),
 }
 
 
