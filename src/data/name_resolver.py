@@ -65,13 +65,21 @@ def resolve_players(fpl_players, fpl_teams, understat_players, overrides=None):
         team_ids, unmapped = _resolve_team_title(up.team_title, team_lookup)
         unmapped_teams.update(unmapped)
         u = set(_norm(up.player_name).split())
+        # Candidates are SCOPED TO THE PLAYER'S TEAM(S). This team-scoping is what makes
+        # the name heuristics below safe — broadening `cands` past the team would break
+        # the conservative guarantee (especially tier 2).
         cands = [c for tid in team_ids for c in by_team.get(tid, [])]
-        # Tier 1: full-name token subset (either direction).
+        # Tier 1: full-name token subset, either direction. `full <= u` is safe only
+        # because FPL `name` (first + second) is effectively always multi-token, so a
+        # common first name never forms a single-token `full` that would match every
+        # Understat name containing it. Ambiguity (len != 1) -> left unmatched.
         tier1 = {fid for fid, full, web in cands if u <= full or full <= u}
         if len(tier1) == 1:
             matched[up.id] = next(iter(tier1))
             continue
-        # Tier 2 (only if tier 1 found nothing): web_name (surname) tokens inside the Understat name.
+        # Tier 2 (only if tier 1 found nothing): web_name (usually surname) tokens inside
+        # the Understat name. Reliable ONLY because `cands` is team-scoped above — a bare
+        # surname is often ambiguous globally but usually unique within one team.
         if not tier1:
             tier2 = {fid for fid, full, web in cands if web and web <= u}
             if len(tier2) == 1:

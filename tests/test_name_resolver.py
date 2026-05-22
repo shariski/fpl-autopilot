@@ -36,7 +36,7 @@ def test_resolves_known_players_with_high_match_rate(db, load):
     us = _understat(load)
     res = name_resolver.resolve_players(players, teams, us)
     assert res.unmapped_teams == []
-    assert len(res.matched) >= int(0.95 * len(us))  # observed ~98%
+    assert len(res.matched) >= int(0.97 * len(us))  # observed ~98% on the frozen fixture
     haaland_u = next(p for p in us if p.player_name == "Erling Haaland")
     fpl_haaland = next(r for r in players if r["web_name"] == "Haaland")
     assert res.matched[haaland_u.id] == fpl_haaland["id"]
