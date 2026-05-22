@@ -11,10 +11,10 @@ describe('FixturePlanner', () => {
 	});
 	it('colours an attacker cell by fdr_attack and a defender cell by fdr_defense', () => {
 		render(FixturePlanner, { props: { planner: fullMock.planner } });
-		// Haaland (FWD): GW38 fdr_attack 3 -> var(--fdr-3)
-		const haa = screen.getByTestId('cell-10-38');
-		expect(haa.getAttribute('style')).toContain('--fdr-3');
-		// Gabriel (DEF): GW38 fdr_defense 3 -> var(--fdr-3)
+		// Mbeumo (MID): GW39 fdr_attack 4 vs fdr_defense 3 -> must use attack -> var(--fdr-4)
+		const mbe = screen.getByTestId('cell-9-39');
+		expect(mbe.getAttribute('style')).toContain('--fdr-4');
+		// Gabriel (DEF): GW38 fdr_attack 2 vs fdr_defense 3 -> must use defense -> var(--fdr-3)
 		const gab = screen.getByTestId('cell-2-38');
 		expect(gab.getAttribute('style')).toContain('--fdr-3');
 	});
