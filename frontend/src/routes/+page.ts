@@ -1,9 +1,13 @@
 import type { PageLoad } from './$types';
-import { getDashboard } from '$lib/api/client';
-import type { MockScenario } from '$lib/types';
+import { fetchDashboard, getMockDashboard } from '$lib/api/client';
 
-export const load: PageLoad = async ({ url }) => {
-	const scenario: MockScenario = url.searchParams.get('mock') === 'launch' ? 'launch' : 'full';
-	const dashboard = await getDashboard(scenario);
-	return { dashboard, scenario };
+// Default: live data from the backend (/api, dev-proxied to FastAPI).
+// `?mock=full` / `?mock=launch` force the bundled fixtures — useful for a demo,
+// offline, or when the backend isn't running.
+export const load: PageLoad = async ({ url, fetch }) => {
+	const mock = url.searchParams.get('mock');
+	if (mock === 'full' || mock === 'launch') {
+		return { dashboard: await getMockDashboard(mock), source: 'mock' as const };
+	}
+	return { dashboard: await fetchDashboard(fetch), source: 'live' as const };
 };
