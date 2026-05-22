@@ -3,7 +3,7 @@ import random
 from collections import Counter
 
 from src.decisions import transfers
-from src.decisions.transfers import HORIZON, MAX_PER_CLUB  # noqa: E402  (constants for the helpers above)
+from src.decisions.transfers import HORIZON, MAX_PER_CLUB  # used by the test helpers below
 
 
 def _p(pid, pos, team, price, status, xp5):
@@ -173,26 +173,30 @@ def test_buy_respects_3_per_club_property():
 # ── Task 5: suggest_transfers ─────────────────────────────────────────────────
 
 def test_suggest_orders_by_ep_delta_and_caps_at_three():
-    # Three sellable FWDs (below market median ~5.45) + one keeper (xp=6.9, above median).
+    # All four squad FWDs are below the FWD market median (8.45) -> all are sell candidates.
+    # Every sell's best legal buy is the same top FWD (P11, xp 30, affordable, distinct club),
+    # so pairs rank by sell.xp_5gw ascending (lower-xp sell -> bigger delta). Top 3 of 4 kept.
     squad = [
-        _p(1, "FWD", 1, 8.0, "a", 2.0),
-        _p(2, "FWD", 2, 8.0, "a", 3.0),
-        _p(3, "FWD", 3, 8.0, "a", 4.0),
-        _p(4, "FWD", 4, 8.0, "a", 6.9),  # above median -> not a sell candidate
+        _p(1, "FWD", 1, 8.0, "a", 2.0),   # delta 28.0 -> rank 1
+        _p(2, "FWD", 2, 8.0, "a", 3.0),   # delta 27.0 -> rank 2
+        _p(3, "FWD", 3, 8.0, "a", 4.0),   # delta 26.0 -> rank 3
+        _p(4, "FWD", 4, 8.0, "a", 6.9),   # delta 23.1 -> 4th, dropped by the top-3 cap
     ]
     buys = [
-        _p(11, "FWD", 11, 8.0, "a", 30.0),   # delta 28 with sell 1
-        _p(12, "FWD", 12, 8.0, "a", 25.0),   # delta 22 with sell 2
-        _p(13, "FWD", 13, 8.0, "a", 20.0),   # delta 16 with sell 3
-        _p(14, "FWD", 14, 8.0, "a", 10.0),   # delta 9  with sell 4
+        _p(11, "FWD", 11, 8.0, "a", 30.0),   # the single best buy for every sell
+        _p(12, "FWD", 12, 8.0, "a", 25.0),
+        _p(13, "FWD", 13, 8.0, "a", 20.0),
+        _p(14, "FWD", 14, 8.0, "a", 10.0),
     ]
     market = squad + buys
     pairs = transfers.suggest_transfers(squad, market, bank=0.0)
-    assert len(pairs) == 3                                  # capped at top 3
+    assert len(pairs) == 3                                       # capped at top 3
     deltas = [pr["ep_delta_5gw"] for pr in pairs]
-    assert deltas == sorted(deltas, reverse=True)           # descending by delta
+    assert deltas == sorted(deltas, reverse=True)                # descending by delta
     assert pairs[0]["out"]["player_id"] == 1 and pairs[0]["in"]["player_id"] == 11
-    assert all(pr["hit_cost"] == 0 for pr in pairs)         # v1 single free transfer
+    assert {pr["out"]["player_id"] for pr in pairs} == {1, 2, 3} # P4 (smallest delta) dropped
+    assert all(pr["in"]["player_id"] == 11 for pr in pairs)      # shared best buy
+    assert all(pr["hit_cost"] == 0 for pr in pairs)              # v1 single free transfer
 
 
 def test_empty_reason_when_no_positive_delta():
