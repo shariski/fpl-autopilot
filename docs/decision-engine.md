@@ -188,6 +188,13 @@ Trigger if a premium player (price ≥ 9.5) in the squad has:
 - Both fixtures have `fdr_attack ≤ 2`, AND
 - `xP[DGW] ≥ 12`.
 
+### v1 implementation (2026-05-22)
+
+- **Wildcard v1** uses only the fixture-swing criterion (≥3 squad players whose `fdr_attack` worsens by ≥2 over the next 3 GW — implemented as the `fdr_attack` at the next GW `N` vs 3 GWs later `N+3`). The "≥4 sell candidates" criterion is deferred until the transfer engine is integrated; "squad value below team average" is dropped (cross-manager data unavailable).
+- **DGW-aware xP** for Bench Boost / Triple Captain = `fixture_count × single-fixture xP` (reusing `analytics.xp.compute_player_xp` with the team's stored FDR for that GW). The `fdr` table holds one value per `(team, gw)`, so both DGW fixtures share it (approximation).
+- **Single recommendation priority:** Triple Captain → Bench Boost → Free Hit → Wildcard. Already-used chips (from `my_team.chips_used_json`, best-effort) are skipped.
+- Flag-only; chips never auto-execute (B3/B8).
+
 ## Confidence score
 
 Every decision the engine emits carries a confidence score (0–100). It is used in Phase 2 to gate auto-execution.
@@ -285,3 +292,4 @@ Every decision writes one row:
 | v0.3 | 2026-05-22 | xP v1 made concrete: appearance_points (not raw xMinutes), FDR-strength attack multiplier, cs_prob(fdr_defense) for clean sheet; constants pinned. |
 | v0.4 | 2026-05-22 | Captain ranker v1: xminutes used as rotation-risk tiebreaker proxy. |
 | v0.5 | 2026-05-22 | Transfer engine v1: dropped form_adjusted_delta (no per-GW actuals), selling price = current price, FT assumed 1; hit -4/-8 path deferred to multi-transfer. |
+| v0.6 | 2026-05-22 | Chip recommender v1: DGW/BGW detection; Wildcard fixture-swing only (others deferred/dropped); DGW-xP via per-fixture sum; priority TC>BB>FH>WC. |

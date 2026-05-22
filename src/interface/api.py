@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from .deps import get_db
 from . import queries
+from src.decisions import chips as chips_engine
 
 app = FastAPI(title="FPL Autopilot API")
 app.add_middleware(
@@ -46,4 +47,4 @@ def transfers(conn=Depends(get_db)):
 
 @app.get("/api/chips")
 def chips(conn=Depends(get_db)):
-    return {"recommendation": None}  # until the chip recommender slice
+    return chips_engine.recommend_chip(conn)

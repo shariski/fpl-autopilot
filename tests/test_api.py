@@ -123,3 +123,9 @@ def test_stub_endpoints(client):
 def test_cors_header(client):
     r = client.get("/api/status", headers={"origin": "http://localhost:5173"})
     assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+def test_chips_endpoint_wired(client):
+    r = client.get("/api/chips")
+    assert r.status_code == 200
+    assert "recommendation" in r.json()  # real recommender output (null on the seeded single-GW data)
