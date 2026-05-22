@@ -137,3 +137,17 @@ def upsert_understat_players(conn, understat_players, resolution, season):
         rows,
     )
     conn.commit()
+
+
+def upsert_xp(conn, rows):
+    now = _now()
+    conn.executemany(
+        """INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, xassists, xcs, computed_at)
+           VALUES (?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(player_id, gw, model_version) DO UPDATE SET
+             xp=excluded.xp, xminutes=excluded.xminutes, xgoals=excluded.xgoals,
+             xassists=excluded.xassists, xcs=excluded.xcs, computed_at=excluded.computed_at""",
+        [(r["player_id"], r["gw"], r["model_version"], r["xp"], r["xminutes"],
+          r["xgoals"], r["xassists"], r["xcs"], now) for r in rows],
+    )
+    conn.commit()
