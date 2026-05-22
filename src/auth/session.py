@@ -47,4 +47,25 @@ def ensure_session(conn, key, *, expected_team_id, login_fn=None, session=None):
         if player and player.get("entry") == expected_team_id:
             repository.mark_session_ok(conn)
             return session
-    raise SessionNotInitialized("session expired")  # placeholder; replaced in Task 4
+    # session expired -> attempt one re-login
+    repository.set_auth_state(conn, "expired")
+    email = decrypt(key, repository.get_encrypted(conn, "fpl_email_encrypted"))
+    password = decrypt(key, repository.get_encrypted(conn, "fpl_password_encrypted"))
+    try:
+        result = login_fn(email, password, expected_team_id=expected_team_id)
+    except FPLLoginError:
+        failures = repository.increment_relogin_failures(conn)
+        if failures >= 2:
+            repository.set_auth_state(conn, "frozen")
+            log.warning("FPL auto-execution frozen after %d consecutive re-login failures", failures)
+            raise SessionFrozen("auto-execution frozen after repeated re-login failures")
+        raise ReloginFailed("FPL re-login failed; session still expired")
+    _persist_relogin(conn, key, result)
+    return _session_from_cookies(result.cookies)
+
+
+def _persist_relogin(conn, key, result):
+    repository.set_encrypted(conn, "session_cookie_encrypted", encrypt(key, json.dumps(result.cookies)))
+    repository.set_encrypted(conn, "csrf_token_encrypted", encrypt(key, result.csrf or ""))
+    repository.touch_session_refreshed(conn)
+    repository.mark_session_ok(conn)

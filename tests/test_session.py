@@ -66,3 +66,58 @@ def test_ensure_session_frozen_refuses(tmp_path, db):
                                login_fn=lambda *a, **k: called.append(1),
                                session=_FakeSession(me_payload={}))
     assert not called  # frozen refuses without attempting login
+
+
+def _store_creds(db, key, cookies):
+    _store_cookies(db, key, cookies)
+    repository.set_encrypted(db, "fpl_email_encrypted", crypto.encrypt(key, "me@example.com"))
+    repository.set_encrypted(db, "fpl_password_encrypted", crypto.encrypt(key, "throwaway-fpl-pw"))
+
+
+def test_ensure_session_relogin_ok(tmp_path, db):
+    from src.auth import fpl_login
+    key = _key(tmp_path)
+    _store_creds(db, key, {"pl_profile": "stale"})
+    repository.mark_session_ok(db)
+    expired = _FakeSession(me_payload={}, me_status=200)  # no player -> expired
+    fresh = fpl_login.LoginResult(cookies={"pl_profile": "fresh"}, csrf="t2", entry_id=3122849)
+    out = session.ensure_session(db, key, expected_team_id=3122849,
+                                 login_fn=lambda *a, **k: fresh, session=expired)
+    assert isinstance(out, requests.Session)
+    assert repository.get_auth_state(db) == "active"
+    row = db.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()
+    assert row["relogin_failures"] == 0
+    stored = json.loads(crypto.decrypt(key, repository.get_encrypted(db, "session_cookie_encrypted")))
+    assert stored == {"pl_profile": "fresh"}
+
+
+def _failing_login(*a, **k):
+    from src.auth.fpl_login import FPLLoginError
+    raise FPLLoginError("bad creds")
+
+
+def test_ensure_session_relogin_fails_once(tmp_path, db):
+    key = _key(tmp_path)
+    _store_creds(db, key, {"pl_profile": "stale"})
+    repository.mark_session_ok(db)
+    with pytest.raises(session.ReloginFailed):
+        session.ensure_session(db, key, expected_team_id=3122849,
+                               login_fn=_failing_login, session=_FakeSession(me_payload={}))
+    assert repository.get_auth_state(db) == "expired"
+    row = db.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()
+    assert row["relogin_failures"] == 1
+
+
+def test_ensure_session_freezes_after_two(tmp_path, db):
+    key = _key(tmp_path)
+    _store_creds(db, key, {"pl_profile": "stale"})
+    repository.mark_session_ok(db)
+    # first failed re-login
+    with pytest.raises(session.ReloginFailed):
+        session.ensure_session(db, key, expected_team_id=3122849,
+                               login_fn=_failing_login, session=_FakeSession(me_payload={}))
+    # second consecutive failure -> frozen
+    with pytest.raises(session.SessionFrozen):
+        session.ensure_session(db, key, expected_team_id=3122849,
+                               login_fn=_failing_login, session=_FakeSession(me_payload={}))
+    assert repository.get_auth_state(db) == "frozen"
