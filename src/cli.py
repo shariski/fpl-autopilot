@@ -86,6 +86,31 @@ def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None,
         conn.close()
 
 
+def _init_master_password_cli(salt_path=None, verify_path=None):
+    import getpass
+    from .auth import master
+    kw = {}
+    if salt_path is not None:
+        kw["salt_path"] = salt_path
+    if verify_path is not None:
+        kw["verify_path"] = verify_path
+    if master.is_initialized(**kw):
+        if input("Master password already set. Overwrite (orphans existing creds)? [y/N]: ").strip().lower() != "y":
+            print("Aborted.")
+            return
+    pw = getpass.getpass("Enter master password (min 12 chars): ")
+    if len(pw) < 12:
+        print("Password too short (min 12 characters).")
+        return
+    if pw != getpass.getpass("Confirm master password: "):
+        print("Passwords do not match. Aborted.")
+        return
+    master.init_master_password(pw, **kw)
+    print("Master password set; salt + verification token written.")
+    print("IMPORTANT: this password is UNRECOVERABLE. Store it in your password manager NOW.")
+    print("If lost, stored credentials become unreadable and you must re-run init-fpl after a reset.")
+
+
 def serve(host="0.0.0.0", port=None, scheduler=True):
     import os
     import uvicorn
@@ -115,6 +140,7 @@ def main(argv=None):
     p_serve.add_argument("--no-scheduler", action="store_true",
                          help="run the API without the background scheduler")
     sub.add_parser("scheduler", help="run the background refresh scheduler (blocking)")
+    sub.add_parser("init-master-password", help="set the master password that encrypts stored credentials")
     args = parser.parse_args(argv)
     if args.command == "refresh":
         sources = (args.source,) if args.source else ("fpl", "understat")
@@ -124,6 +150,8 @@ def main(argv=None):
     elif args.command == "scheduler":
         from .scheduler import run_scheduler_blocking
         run_scheduler_blocking()
+    elif args.command == "init-master-password":
+        _init_master_password_cli()
 
 
 if __name__ == "__main__":
