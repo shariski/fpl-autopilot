@@ -1,3 +1,5 @@
+import json
+
 from src.decisions import captain
 
 
@@ -54,3 +56,72 @@ def test_rank_captains_caps_at_five():
     picks = captain.rank_captains([_cand(i, f"P{i}", float(20 - i)) for i in range(1, 9)])
     assert len(picks) == 5
     assert [p["player_id"] for p in picks] == [1, 2, 3, 4, 5]
+
+
+def test_rank_captains_single_candidate():
+    picks = captain.rank_captains([_cand(1, "Solo", 5.0, fixture="MCI v BOU (H)")])
+    assert len(picks) == 1
+    assert picks[0]["reason"] == "Highest xP (5.0) MCI v BOU (H)."
+
+
+def _seed_squad(db):
+    # 4 teams (need short_name for the fixture display string)
+    db.executemany("INSERT INTO teams (id, name, short_name) VALUES (?,?,?)", [
+        (1, "Man City", "MCI"), (2, "Bournemouth", "BOU"),
+        (3, "Liverpool", "LIV"), (4, "Arsenal", "ARS"),
+    ])
+    # gw9 finished, gw10 upcoming -> next_gw = 10
+    db.execute("INSERT INTO gameweeks (id, name, finished) VALUES (9,'GW9',1),(10,'GW10',0)")
+    # gw10 fixtures: MCI(1) home v BOU(2); LIV(3) home v ARS(4)
+    db.execute("INSERT INTO fixtures (id, gw, home_team_id, away_team_id, finished) "
+               "VALUES (1,10,1,2,0),(2,10,3,4,0)")
+    db.executemany("INSERT INTO fdr (team_id, gw, fdr_attack, fdr_defense, computed_at) "
+                   "VALUES (?,10,?,?,'t')", [(1, 2, 3), (2, 4, 3), (3, 3, 2), (4, 3, 4)])
+    # 15 players, ids 101..115, descending xp so ordering is unambiguous
+    teams_cycle = [1, 3, 2, 4]
+    xps = [7.2, 6.1, 5.5, 5.0, 4.5, 4.0, 3.8, 3.5, 3.2, 3.0, 2.8, 2.5, 2.2, 2.0, 1.5]
+    pids = list(range(101, 116))
+    for idx, pid in enumerate(pids):
+        web = "Haaland" if pid == 101 else f"P{pid}"
+        team = 1 if pid == 101 else teams_cycle[idx % 4]
+        db.execute("INSERT INTO players (id, name, web_name, team_id, position, status) "
+                   "VALUES (?,?,?,?,?, 'a')", (pid, web, web, team, "FWD"))
+        db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, "
+                   "xassists, xcs, computed_at) VALUES (?,10,'v1',?,85.0,0,0,0,'t')",
+                   (pid, xps[idx]))
+    picks_json = json.dumps([
+        {"element": pid, "position": i + 1, "multiplier": 1,
+         "is_captain": False, "is_vice_captain": False} for i, pid in enumerate(pids)])
+    db.execute("INSERT INTO my_team (gw, picks_json, bank, team_value, snapshot_at) "
+               "VALUES (10, ?, 0, 0, 't')", (picks_json,))
+    db.commit()
+
+
+def test_get_captain_picks_integration(db):
+    _seed_squad(db)
+    result = captain.get_captain_picks(db)
+
+    # shape matches docs/api-contract.md /api/captain
+    assert set(result.keys()) == {"picks", "vice_player_id"}
+    assert len(result["picks"]) == 5
+    for p in result["picks"]:
+        assert set(p.keys()) == {"player_id", "web_name", "xp", "fixture", "reason"}
+
+    # descending xp
+    xs = [p["xp"] for p in result["picks"]]
+    assert xs == sorted(xs, reverse=True)
+
+    # top pick is the premium attacker, home fixture rendered correctly
+    top = result["picks"][0]
+    assert top["player_id"] == 101 and top["web_name"] == "Haaland"
+    assert top["fixture"] == "MCI v BOU (H)"
+    assert "gap 1.1" in top["reason"]
+
+    # vice = #2 pick
+    assert result["vice_player_id"] == result["picks"][1]["player_id"] == 102
+
+
+def test_get_captain_picks_no_upcoming_gw_returns_empty(db):
+    db.execute("INSERT INTO gameweeks (id, name, finished) VALUES (1,'GW1',1)")
+    db.commit()
+    assert captain.get_captain_picks(db) == {"picks": [], "vice_player_id": None}
