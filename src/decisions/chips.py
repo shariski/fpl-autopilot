@@ -80,7 +80,7 @@ def bench_boost_trigger(conn, squad, gws):
             bench = [r for r in squad if r["pick_position"] >= 12]
             bench_xp = round(sum(_player_gw_xp(conn, r, gw) for r in bench), 1)
             if bench_xp > BENCH_BOOST_THRESHOLD:
-                return f"GW{gw}: DGW with all 15 playing; bench xP {bench_xp} (> {BENCH_BOOST_THRESHOLD})."
+                return f"GW{gw}: DGW with all 15 having a fixture; bench xP {bench_xp} (> {BENCH_BOOST_THRESHOLD})."
     return None
 
 

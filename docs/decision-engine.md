@@ -190,7 +190,7 @@ Trigger if a premium player (price ≥ 9.5) in the squad has:
 
 ### v1 implementation (2026-05-22)
 
-- **Wildcard v1** uses only the fixture-swing criterion (≥3 squad players whose `fdr_attack` worsens by ≥2 over the next 3 GW). The "≥4 sell candidates" criterion is deferred until the transfer engine is integrated; "squad value below team average" is dropped (cross-manager data unavailable).
+- **Wildcard v1** uses only the fixture-swing criterion (≥3 squad players whose `fdr_attack` worsens by ≥2 over the next 3 GW — implemented as the `fdr_attack` at the next GW `N` vs 3 GWs later `N+3`). The "≥4 sell candidates" criterion is deferred until the transfer engine is integrated; "squad value below team average" is dropped (cross-manager data unavailable).
 - **DGW-aware xP** for Bench Boost / Triple Captain = `fixture_count × single-fixture xP` (reusing `analytics.xp.compute_player_xp` with the team's stored FDR for that GW). The `fdr` table holds one value per `(team, gw)`, so both DGW fixtures share it (approximation).
 - **Single recommendation priority:** Triple Captain → Bench Boost → Free Hit → Wildcard. Already-used chips (from `my_team.chips_used_json`, best-effort) are skipped.
 - Flag-only; chips never auto-execute (B3/B8).

@@ -139,3 +139,16 @@ def test_recommend_chip_none_when_nothing_triggers():
     _seed_squad(conn, picks)
     conn.commit()
     assert chips.recommend_chip(conn)["recommendation"] is None
+
+
+def test_recommend_chip_triple_captain_beats_bench_boost():
+    conn = _db()
+    # Premium player (id 1) eligible for TC; whole-squad DGW makes BB eligible too. TC must win (priority).
+    picks = [(1, 1)] + [(i, i) for i in range(2, 16)]
+    _player(conn, 1, 1, position="FWD", price=14.0, xg90=1.0, xa90=0.3)
+    for i in range(2, 16):
+        _player(conn, i, i, xg90=0.6, xa90=0.3)
+    _gw6_double_for_all(conn, list(range(1, 16)))
+    _seed_squad(conn, picks)
+    rec = chips.recommend_chip(conn)["recommendation"]
+    assert rec is not None and rec["chip"] == "triple_captain"
