@@ -113,3 +113,58 @@ def test_sell_candidate_below_median_or_flagged():
     assert 1 in sell_ids     # below median
     assert 4 in sell_ids     # flagged status
     assert 3 not in sell_ids # above median and available
+
+
+# ── Task 4: buy_candidates ────────────────────────────────────────────────────
+
+def test_buy_respects_budget():
+    sell = _p(1, "MID", 1, 7.0, "a", 10.0)
+    market = [
+        sell,
+        _p(2, "MID", 2, 7.5, "a", 20.0),   # 7.5 <= 7.0 + 1.0 -> allowed
+        _p(3, "MID", 3, 9.0, "a", 30.0),   # 9.0 > 8.0 -> excluded
+    ]
+    ids = {p["player_id"] for p in transfers.buy_candidates(sell, market, [sell], bank=1.0)}
+    assert 2 in ids
+    assert 3 not in ids
+
+
+def test_buy_respects_3_per_club():
+    squad = [
+        _p(1, "DEF", 5, 5.0, "a", 10.0),
+        _p(2, "DEF", 5, 5.0, "a", 10.0),
+        _p(3, "DEF", 5, 5.0, "a", 10.0),   # club 5 already at 3
+        _p(4, "DEF", 9, 5.0, "a", 5.0),    # the sell (different club)
+    ]
+    market = squad + [
+        _p(10, "DEF", 5, 5.0, "a", 40.0),  # would be a 4th from club 5
+        _p(11, "DEF", 7, 5.0, "a", 35.0),  # club 7 -> fine
+    ]
+    ids = {p["player_id"] for p in transfers.buy_candidates(squad[3], market, squad, bank=2.0)}
+    assert 10 not in ids   # selling a club-9 player does not free a club-5 slot
+    assert 11 in ids
+    # but selling a club-5 player DOES free a slot: 3 - 1 + 1 = 3 is legal
+    ids2 = {p["player_id"] for p in transfers.buy_candidates(squad[0], market, squad, bank=2.0)}
+    assert 10 in ids2
+
+
+def test_buy_respects_budget_property():
+    for seed in range(60):
+        market, squad, bank = _random_market_and_squad(seed)
+        for sell in squad:
+            for buy in transfers.buy_candidates(sell, market, squad, bank):
+                assert buy["price"] <= sell["price"] + bank + 1e-9
+                assert buy["position"] == sell["position"]
+                assert buy["status"] == "a"
+
+
+def test_buy_respects_3_per_club_property():
+    for seed in range(60):
+        market, squad, bank = _random_market_and_squad(seed)
+        squad_ids = {p["player_id"] for p in squad}
+        for sell in squad:
+            for buy in transfers.buy_candidates(sell, market, squad, bank):
+                assert buy["player_id"] not in squad_ids
+                new_squad = [p for p in squad if p["player_id"] != sell["player_id"]] + [buy]
+                counts = Counter(p["team_id"] for p in new_squad)
+                assert max(counts.values()) <= MAX_PER_CLUB

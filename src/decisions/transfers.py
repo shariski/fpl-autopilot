@@ -54,3 +54,35 @@ def sell_candidates(squad_players, all_players):
     meds = _median_by_position(all_players)
     return [p for p in squad_players
             if p["status"] != "a" or p["xp_5gw"] < meds.get(p["position"], 0.0)]
+
+
+def _club_counts(players):
+    counts = {}
+    for p in players:
+        counts[p["team_id"]] = counts.get(p["team_id"], 0) + 1
+    return counts
+
+
+def buy_candidates(sell, all_players, squad, bank):
+    """Legal replacements for `sell`, ranked by xp_5gw desc.
+
+    A buy must be: not already in the squad, the same position as `sell`, status 'a',
+    affordable (price <= sell.price + bank), and keep <= 3 players per club after the swap.
+    """
+    squad_ids = {p["player_id"] for p in squad}
+    counts = _club_counts(squad)
+    budget = sell["price"] + bank
+    out = []
+    for p in all_players:
+        if p["player_id"] in squad_ids:
+            continue
+        if p["position"] != sell["position"] or p["status"] != "a":
+            continue
+        if p["price"] > budget + _EPS:
+            continue
+        after = counts.get(p["team_id"], 0) - (1 if sell["team_id"] == p["team_id"] else 0) + 1
+        if after > MAX_PER_CLUB:
+            continue
+        out.append(p)
+    out.sort(key=lambda x: x["xp_5gw"], reverse=True)
+    return out
