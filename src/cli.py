@@ -86,6 +86,13 @@ def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None,
         conn.close()
 
 
+def serve(host="0.0.0.0", port=None):
+    import os
+    import uvicorn
+    port = port or int(os.getenv("PORT", "8000"))
+    uvicorn.run("src.interface.api:app", host=host, port=port)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="fpl-autopilot")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -93,10 +100,15 @@ def main(argv=None):
     p_refresh.add_argument("--full", action="store_true", help="ignore cache, fetch everything")
     p_refresh.add_argument("--source", choices=["fpl", "understat"], default=None,
                            help="restrict to one source (default: both)")
+    p_serve = sub.add_parser("serve", help="run the FastAPI server")
+    p_serve.add_argument("--host", default="0.0.0.0")
+    p_serve.add_argument("--port", type=int, default=None)
     args = parser.parse_args(argv)
     if args.command == "refresh":
         sources = (args.source,) if args.source else ("fpl", "understat")
         refresh(full=args.full, sources=sources)
+    elif args.command == "serve":
+        serve(host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

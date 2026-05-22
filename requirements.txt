@@ -2,3 +2,6 @@ requests
 pydantic>=2
 pyyaml
 pytest
+fastapi
+uvicorn
+httpx
