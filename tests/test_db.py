@@ -13,3 +13,22 @@ def test_gameweeks_state_defaults_to_pending(db):
     db.execute("INSERT INTO gameweeks (id, name) VALUES (1, 'Gameweek 1')")
     row = db.execute("SELECT state FROM gameweeks WHERE id=1").fetchone()
     assert row["state"] == "PENDING"
+
+
+import sqlite3
+from src.data import db
+
+
+def test_migrate_credentials_adds_columns():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    # a credentials table created BEFORE the new columns existed
+    conn.execute("CREATE TABLE credentials (id INTEGER PRIMARY KEY, session_last_refreshed TIMESTAMP)")
+    db._migrate_credentials(conn)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(credentials)")}
+    assert "auth_state" in cols
+    assert "relogin_failures" in cols
+    # idempotent: a second run is a no-op
+    db._migrate_credentials(conn)
+    cols_again = {r["name"] for r in conn.execute("PRAGMA table_info(credentials)")}
+    assert cols_again == cols

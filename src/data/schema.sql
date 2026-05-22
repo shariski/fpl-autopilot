@@ -110,7 +110,9 @@ CREATE TABLE IF NOT EXISTS credentials (
   fpl_password_encrypted BLOB,
   session_cookie_encrypted BLOB,
   csrf_token_encrypted BLOB,
-  session_last_refreshed TIMESTAMP
+  session_last_refreshed TIMESTAMP,
+  auth_state TEXT DEFAULT 'active',
+  relogin_failures INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS cache_meta (

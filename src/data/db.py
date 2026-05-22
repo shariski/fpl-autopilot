@@ -12,6 +12,16 @@ def connect(db_path, check_same_thread=True):
     return conn
 
 
+def _migrate_credentials(conn):
+    """Add auth_state / relogin_failures to an existing credentials table (idempotent)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(credentials)")}
+    if "auth_state" not in cols:
+        conn.execute("ALTER TABLE credentials ADD COLUMN auth_state TEXT DEFAULT 'active'")
+    if "relogin_failures" not in cols:
+        conn.execute("ALTER TABLE credentials ADD COLUMN relogin_failures INTEGER DEFAULT 0")
+
+
 def init_db(conn):
     conn.executescript(SCHEMA_PATH.read_text())
+    _migrate_credentials(conn)
     conn.commit()
