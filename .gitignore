@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+*.db
+.env
+data/logs/*.log
+.serena/
+.code-review-graph/
+*.egg-info/

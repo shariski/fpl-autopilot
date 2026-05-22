@@ -104,7 +104,7 @@ SQLite schema. Tables only — indexes and constraints inferred.
 | name | TEXT | |
 | web_name | TEXT | Short display name |
 | team_id | INTEGER | FK to teams |
-| position | TEXT | GK / DEF / MID / FWD |
+| position | TEXT | GKP / DEF / MID / FWD |
 | price | REAL | Current price |
 | status | TEXT | a (available), d (doubt), i (injured), s (suspended), u (unavailable) |
 | ownership | REAL | % |
@@ -187,10 +187,10 @@ One row per gameweek snapshot.
 | Column | Type | Notes |
 |---|---|---|
 | gw | INTEGER PRIMARY KEY | |
-| picks_json | TEXT | JSON: 15 players with selling price, multiplier, position |
+| picks_json | TEXT | JSON: 15 players (element, position, multiplier, captain flags). Per-player **selling price is auth-only** (Phase 2); omitted under public API. |
 | bank | REAL | |
 | team_value | REAL | |
-| free_transfers | INTEGER | |
+| free_transfers | INTEGER | Auth-only (Phase 2). NULL under public-API refresh. |
 | chips_used_json | TEXT | JSON array of chip names |
 | snapshot_at | TIMESTAMP | |
 
@@ -225,6 +225,15 @@ Append-only.
 | alternatives_json | TEXT | other options considered |
 | executed | BOOLEAN | |
 | exec_outcome_json | TEXT | nullable until GW settles |
+
+### `cache_meta`
+
+Drives "read DB first, fetch only when stale" in the Data Layer.
+
+| Column | Type | Notes |
+|---|---|---|
+| resource | TEXT PRIMARY KEY | "bootstrap-static" / "fixtures" / "my_team" |
+| last_fetched_utc | TIMESTAMP | NOT NULL |
 
 ### `credentials` (Phase 2)
 
