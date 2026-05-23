@@ -1,6 +1,7 @@
 import logging
 import os
 import requests
+from . import config
 from .config import load_config, db_path
 from .data.db import connect, init_db
 from .analytics import fdr, xp
@@ -51,3 +52,38 @@ def run_scheduler_blocking():
     """Run the cadence headless (blocks)."""
     from apscheduler.schedulers.blocking import BlockingScheduler
     build_scheduler(BlockingScheduler(timezone="UTC")).start()
+
+
+def _default_route(conn, key):
+    from .execution import router
+    return router.route_gameweek(conn, key, live=True)
+
+
+def auto_execute_job(key, *, conn=None, now=None, route_fn=None, cfg=None):
+    from datetime import datetime, timezone, timedelta
+    cfg = cfg or load_config()
+    if not config.unattended_enabled(cfg):
+        return None
+    hours = config.unattended_hours_before(cfg)
+    owns = conn is None
+    conn = conn or connect(db_path(cfg))
+    init_db(conn)
+    try:
+        row = conn.execute(
+            "SELECT id, deadline_utc, last_system_action_at FROM gameweeks WHERE is_next=1"
+        ).fetchone()
+        if not row or not row["deadline_utc"] or row["last_system_action_at"]:
+            return None
+        deadline = datetime.fromisoformat(row["deadline_utc"])
+        now = now or datetime.now(timezone.utc)
+        if not (now <= deadline <= now + timedelta(hours=hours)):
+            return None
+        plan = (route_fn or _default_route)(conn, key)
+        if any(p["route"] == "execute" for p in plan):
+            conn.execute("UPDATE gameweeks SET last_system_action_at=? WHERE id=?",
+                         (now.isoformat(), row["id"]))
+            conn.commit()
+        return plan
+    finally:
+        if owns:
+            conn.close()

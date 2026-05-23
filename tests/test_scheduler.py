@@ -1,3 +1,5 @@
+from datetime import datetime, timezone, timedelta
+
 from apscheduler.triggers.cron import CronTrigger
 from src import scheduler
 from src.data.db import connect, init_db
@@ -66,3 +68,64 @@ def test_serve_no_scheduler(monkeypatch):
     monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
     cli.serve(port=0, scheduler=False)
     assert built == []
+
+
+# ---------------------------------------------------------------------------
+# auto_execute_job tests
+# ---------------------------------------------------------------------------
+
+_CFG = {"unattended": {"enabled": True, "hours_before_deadline": 2}}
+_NOW = datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc)
+
+
+def _seed_gw(db, deadline, last_action=None):
+    db.execute(
+        "INSERT INTO gameweeks (id, deadline_utc, is_next, last_system_action_at) VALUES (1, ?, 1, ?)",
+        (deadline.isoformat(), last_action))
+    db.commit()
+
+
+def test_auto_execute_in_window_executes(db):
+    _seed_gw(db, _NOW + timedelta(hours=1))  # within 2h
+
+    def route_fn(conn, key):
+        route_fn.called_with = key
+        return [{"decision": "captain", "route": "execute", "confidence": 80}]
+
+    scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=route_fn, cfg=_CFG)
+    assert route_fn.called_with == b"key"
+    row = db.execute("SELECT last_system_action_at FROM gameweeks WHERE id=1").fetchone()
+    assert row["last_system_action_at"] is not None
+
+
+def test_auto_execute_out_of_window_skips(db):
+    _seed_gw(db, _NOW + timedelta(hours=10))  # >2h away
+    called = []
+    scheduler.auto_execute_job(b"key", conn=db, now=_NOW,
+                               route_fn=lambda c, k: called.append(1), cfg=_CFG)
+    assert not called
+    assert db.execute("SELECT last_system_action_at FROM gameweeks WHERE id=1").fetchone()["last_system_action_at"] is None
+
+
+def test_auto_execute_already_acted_skips(db):
+    _seed_gw(db, _NOW + timedelta(hours=1), last_action="2026-05-23T10:00:00+00:00")
+    called = []
+    scheduler.auto_execute_job(b"key", conn=db, now=_NOW,
+                               route_fn=lambda c, k: called.append(1), cfg=_CFG)
+    assert not called
+
+
+def test_auto_execute_manual_notify_not_marked(db):
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    scheduler.auto_execute_job(
+        b"key", conn=db, now=_NOW,
+        route_fn=lambda c, k: [{"decision": "captain", "route": "notify", "confidence": 50}], cfg=_CFG)
+    assert db.execute("SELECT last_system_action_at FROM gameweeks WHERE id=1").fetchone()["last_system_action_at"] is None
+
+
+def test_auto_execute_disabled_skips(db):
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    called = []
+    scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=lambda c, k: called.append(1),
+                               cfg={"unattended": {"enabled": False}})
+    assert not called
