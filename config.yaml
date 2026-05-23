@@ -21,6 +21,8 @@ deadguard:
   enabled: true
   warning_window_minutes: 120
   trigger_window_minutes: 30
+  reeval_if_late_news: true
+  reeval_lockout_minutes: 15
   scope:
     captain_vice: true
     bench_order: true

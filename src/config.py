@@ -66,6 +66,16 @@ def deadguard_trigger_minutes(cfg=None):
     return cfg.get("deadguard", {}).get("trigger_window_minutes", 30)
 
 
+def deadguard_reeval_enabled(cfg=None):
+    cfg = cfg if cfg is not None else load_config()
+    return bool(cfg.get("deadguard", {}).get("reeval_if_late_news", True))
+
+
+def deadguard_reeval_lockout_minutes(cfg=None):
+    cfg = cfg if cfg is not None else load_config()
+    return cfg.get("deadguard", {}).get("reeval_lockout_minutes", 15)
+
+
 def _deadguard_scope(cfg):
     cfg = cfg if cfg is not None else load_config()
     return cfg.get("deadguard", {}).get("scope", {})

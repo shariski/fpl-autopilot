@@ -62,3 +62,11 @@ def test_deadguard_scope_accessors():
     assert config.deadguard_transfer_if_flagged({}) is True
     assert config.deadguard_min_ep_delta({}) == 3.0
     assert config.deadguard_confidence_floor({}) == 75
+
+
+def test_deadguard_reeval_accessors():
+    assert config.deadguard_reeval_enabled({"deadguard": {"reeval_if_late_news": False}}) is False
+    assert config.deadguard_reeval_enabled({"deadguard": {}}) is True       # default on
+    assert config.deadguard_reeval_enabled({}) is True                      # explicit {} must not fall back
+    assert config.deadguard_reeval_lockout_minutes({"deadguard": {"reeval_lockout_minutes": 20}}) == 20
+    assert config.deadguard_reeval_lockout_minutes({}) == 15                # default
