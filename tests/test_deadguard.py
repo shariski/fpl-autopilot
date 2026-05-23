@@ -419,3 +419,31 @@ def test_trigger_transfer_failure_keeps_lineup(db, monkeypatch):
     row = db.execute("SELECT state, deadguard_triggered_at FROM gameweeks WHERE id=30").fetchone()
     assert row["state"] == "DEADGUARD_EXECUTED" and row["deadguard_triggered_at"] is not None
     assert "alert" in alerts
+
+
+def test_trigger_summary_log_failure_still_notifies(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    notes = []
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: notes.append(k["kind"]))
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Cap"}], "vice_player_id": 6, "confidence": 80})
+    monkeypatch.setattr(deadguard.lineup, "run_lineup",
+                        lambda conn, key, **k: types.SimpleNamespace(ok=True, dry_run=False, status=200))
+    monkeypatch.setattr(deadguard, "_pick_flagged_transfer", lambda conn, cfg: None)
+
+    def boom_log(conn, **k):
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr(deadguard.repository, "log_activity", boom_log)
+    deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)   # must NOT raise
+    assert "executed" in notes                                          # notify fired despite log failure
+    assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "DEADGUARD_EXECUTED"
+
+
+def test_pick_flagged_transfer_none_on_any_negative_hit(db, monkeypatch):
+    _seed_player_status(db, 7, "i")
+    for hc in (-1, -4, -8):
+        sugg = {"suggestions": [{**_SUGG["suggestions"][0], "hit_cost": hc}], "empty_reason": None}
+        monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn, s=sugg: s)
+        assert deadguard._pick_flagged_transfer(db, _CFG) is None

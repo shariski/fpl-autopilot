@@ -110,9 +110,12 @@ def _run_trigger(conn, key, gw, cfg):
         transfer_note = f"transfer failed ({type(e).__name__})"
         log.exception("deadguard transfer step failed")
         _notify(conn, "alert", f"Deadguard transfer failed: {type(e).__name__}")
-    repository.log_activity(conn, decision_type="deadguard", mode="deadguard",
-                            action_taken=f"captain {name}; bench optimized; {transfer_note}",
-                            inputs={"pick": caps["picks"][0]}, executed=True)
+    try:
+        repository.log_activity(conn, decision_type="deadguard", mode="deadguard",
+                                action_taken=f"captain {name}; bench optimized; {transfer_note}",
+                                inputs={"pick": caps["picks"][0]}, executed=True)
+    except Exception:
+        log.exception("deadguard summary log failed (lineup and transfer already applied)")
     _notify(conn, "executed", f"Deadguard: captain {name}, bench optimized, {transfer_note}.")
 
 
