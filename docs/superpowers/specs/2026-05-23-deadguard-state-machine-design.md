@@ -180,7 +180,7 @@ the 2.4b pattern).
 
 `send_warning(conn, gw, *, mins)`:
 ```python
-text = f"⏳ Deadguard will set your captain in ~{mins} min if you don't act.\nTap to keep your team as-is."
+text = f"⏳ Deadguard will set your captain ~{mins} min before the deadline if you don't act.\nTap to keep your team as-is."
 buttons = [[{"text": "✅ Keep as is", "callback_data": f"k:{gw}"}]]
 telegram.send_message(text, buttons=buttons)
 ```
