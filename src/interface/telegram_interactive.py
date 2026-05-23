@@ -20,7 +20,7 @@ def _dtype(decision):
     return "lineup" if decision == "captain" else "transfer"
 
 
-def send_pending(conn, entry, *, gw, mode):
+def send_pending(conn, entry, *, gw):
     """Create a pending_decisions row, then send the buttoned ping. No-op if unconfigured."""
     if not telegram.is_configured():
         return
@@ -40,7 +40,7 @@ def notify_plan(conn, plan, *, gw, mode):
             telegram.notify(conn, kind="executed", decision_type=entry["decision"],
                             mode=mode, summary=entry["summary"])
         else:
-            send_pending(conn, entry, gw=gw, mode=mode)
+            send_pending(conn, entry, gw=gw)
 
 
 def _recompute_entry(conn, decision_type, *, ranker, suggester):
@@ -68,6 +68,12 @@ def _recompute_entry(conn, decision_type, *, ranker, suggester):
              "identity": {"out_id": top["out"]["player_id"], "in_id": top["in"]["player_id"]}}, True)
 
 
+def _resolve(conn, pid, status, *, dtype, mode, action):
+    """Set the pending row's terminal status AND write the matching activity_log entry (B10)."""
+    repository.set_pending_status(conn, pid, status)
+    repository.log_activity(conn, decision_type=dtype, mode=mode, action_taken=action, executed=False)
+
+
 def handle_callback(conn, key, cq, *, session=None, now=None,
                     ranker=None, suggester=None, lineup_fn=None, transfer_fn=None):
     ranker = ranker or captain.get_captain_picks
@@ -82,9 +88,12 @@ def handle_callback(conn, key, cq, *, session=None, now=None,
         telegram.answer_callback_query(cq["id"], text="Not authorized", session=session)
         return
 
-    # 2. parse + idempotency
+    # 2. parse + validate action + idempotency
     action, _, pid_s = cq.get("data", "").partition(":")
-    row = repository.get_pending_decision(conn, int(pid_s)) if pid_s.isdigit() else None
+    if action not in ("c", "r") or not pid_s.isdigit():
+        telegram.answer_callback_query(cq["id"], text="Unknown action", session=session)
+        return
+    row = repository.get_pending_decision(conn, int(pid_s))
     if row is None or row["status"] != "pending":
         telegram.answer_callback_query(cq["id"], text="Already handled", session=session)
         return
@@ -93,9 +102,7 @@ def handle_callback(conn, key, cq, *, session=None, now=None,
 
     # 3. reject
     if action == "r":
-        repository.set_pending_status(conn, pid, "rejected")
-        repository.log_activity(conn, decision_type=dtype, mode=mode,
-                                action_taken="rejected via telegram", executed=False)
+        _resolve(conn, pid, "rejected", dtype=dtype, mode=mode, action="rejected via telegram")
         telegram.notify(conn, kind="info", decision_type=dtype, mode=mode,
                         summary="Rejected — no change made.")
         telegram.answer_callback_query(cq["id"], text="Rejected", session=session)
@@ -105,19 +112,29 @@ def handle_callback(conn, key, cq, *, session=None, now=None,
     now = now or datetime.now(timezone.utc)
     gw_row = conn.execute("SELECT deadline_utc FROM gameweeks WHERE id=?", (row["gw"],)).fetchone()
     if gw_row and gw_row["deadline_utc"] and now > datetime.fromisoformat(gw_row["deadline_utc"]):
-        repository.set_pending_status(conn, pid, "expired")
+        _resolve(conn, pid, "expired", dtype=dtype, mode=mode, action="expired (deadline passed)")
         telegram.answer_callback_query(cq["id"], text="Deadline passed", session=session)
         return
 
-    # 5. re-run + verify
-    entry, available = _recompute_entry(conn, dtype, ranker=ranker, suggester=suggester)
+    # 5. re-run + verify (guarded: a ranker/suggester failure must not crash the poller)
+    try:
+        entry, available = _recompute_entry(conn, dtype, ranker=ranker, suggester=suggester)
+    except Exception as e:
+        _resolve(conn, pid, "failed", dtype=dtype, mode=mode,
+                 action=f"confirm failed (recompute): {type(e).__name__}")
+        telegram.notify(conn, kind="alert", decision_type=dtype, mode=mode,
+                        summary=f"Recommendation check failed: {type(e).__name__}")
+        telegram.answer_callback_query(cq["id"], text="Execution failed", session=session)
+        return
     if not available:
-        repository.set_pending_status(conn, pid, "superseded")
+        _resolve(conn, pid, "superseded", dtype=dtype, mode=mode,
+                 action="superseded (no current recommendation)")
         telegram.answer_callback_query(cq["id"], text="No current recommendation", session=session)
         return
     if entry["identity"] != json.loads(row["identity_json"]):
-        repository.set_pending_status(conn, pid, "superseded")
-        send_pending(conn, entry, gw=row["gw"], mode=mode)
+        _resolve(conn, pid, "superseded", dtype=dtype, mode=mode,
+                 action="superseded (recommendation changed)")
+        send_pending(conn, entry, gw=row["gw"])
         telegram.answer_callback_query(cq["id"], text="Recommendation changed — see new message", session=session)
         return
 
@@ -128,24 +145,24 @@ def handle_callback(conn, key, cq, *, session=None, now=None,
         else:
             result = transfer_fn(conn, key, rank=1, live=True, confirm_fn=lambda d: True, session=session)
     except SessionExpired:
-        repository.set_pending_status(conn, pid, "failed")
+        _resolve(conn, pid, "failed", dtype=dtype, mode=mode, action="confirm failed: session expired")
         telegram.notify(conn, kind="alert", decision_type=dtype, mode=mode,
                         summary="FPL session expired — re-run init-fpl. No changes were made.")
         telegram.answer_callback_query(cq["id"], text="Execution failed", session=session)
         return
     except Exception as e:  # executor error — never crash the poller
-        repository.set_pending_status(conn, pid, "failed")
+        _resolve(conn, pid, "failed", dtype=dtype, mode=mode, action=f"confirm failed: {type(e).__name__}")
         telegram.notify(conn, kind="alert", decision_type=dtype, mode=mode,
-                        summary=f"Execution failed: {e}")
+                        summary=f"Execution failed: {type(e).__name__}")
         telegram.answer_callback_query(cq["id"], text="Execution failed", session=session)
         return
     if not getattr(result, "ok", False):
-        repository.set_pending_status(conn, pid, "failed")
+        _resolve(conn, pid, "failed", dtype=dtype, mode=mode, action="confirm failed: execution did not complete")
         telegram.notify(conn, kind="alert", decision_type=dtype, mode=mode,
                         summary="Execution did not complete.")
         telegram.answer_callback_query(cq["id"], text="Execution failed", session=session)
         return
-    repository.set_pending_status(conn, pid, "confirmed")
+    repository.set_pending_status(conn, pid, "confirmed")   # the executor already logged the execution
     telegram.notify(conn, kind="executed", decision_type=dtype, mode=mode,
                     summary=entry["confirmed_summary"])
     telegram.answer_callback_query(cq["id"], text="Confirmed", session=session)
