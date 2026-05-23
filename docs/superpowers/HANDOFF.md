@@ -8,14 +8,18 @@ Resume point for continuing on another machine. Everything below is in git (push
 - **Phase 1 (Insight Engine) — COMPLETE.** Data layer (FPL + Understat clients, cache, sqlite),
   Analytics (FDR, xP v1, DGW), Decisions (captain, transfers, chips), Interface (FastAPI + SvelteKit
   PWA), scheduler.
-- **Phase 2 (Decision Automation) — auth + execution + routing DONE, all merged & pushed:**
+- **Phase 2 (Decision Automation) — auth + execution + routing + outbound notifications DONE:**
   - 2.1 Auth — **token-capture with OAuth refresh** (see "Auth reality"). `init-master-password`,
     `init-fpl` (paste refresh token), `auth-status`. `src/auth/{crypto,master,session}.py`.
   - 2.2 Action Executor — `src/execution/{executor,lineup,transfer}.py`; CLIs `execute-lineup`,
     `execute-transfer` (dry-run default, `--live` + typed confirm).
   - 2.3 Mode Router — `src/decisions/confidence.py`, `src/execution/router.py`; CLI `route-gameweek`;
     unattended scheduling in `src/scheduler.py` (`auto_execute_job`, `_maybe_load_key`).
-- **Test suite: 212 passing.** `main` is pushed to origin.
+  - 2.4a Telegram outbound notifier — `src/interface/telegram.py` (`is_configured`, `send_message`,
+    `notify`, `notify_plan`); wired into `auto_execute_job` (post-exec + pending-info + auth alert).
+    Env vars `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (silent no-op when unset). Outbound only.
+- **Test suite: 238 passing.** `main` has 2.1–2.3 pushed; **2.4a is merged to main locally but NOT
+  pushed** (push when ready).
 
 ## Auth reality (don't re-derive this — it cost a lot to find)
 
@@ -42,30 +46,37 @@ Programmatic email+password login is **dead**: `users.premierleague.com` is deco
 - Decision logic lives in `docs/decision-engine.md` (changelog up to v0.8).
 - A `code-review-graph` MCP is available (use it before Grep per the user's global CLAUDE.md).
 
-## NEXT TASK: 2.4 Telegram (brainstorm in progress — resume here)
+## 2.4a Telegram outbound notifier — DONE (merged to main locally, not pushed)
 
-We were in the **brainstorming** skill for 2.4 (B9: "notifications are the product"). Scope decision
-reached: **decompose into 2.4a + 2.4b**, brainstorm **2.4a first**:
-- **2.4a — Outbound notifier:** a Telegram send client (`sendMessage` + inline keyboard via
-  `api.telegram.org`) + the **mandatory post-execution notifications** (when the router/executor
-  acts) + informational "pending decision" messages + **failure-to-send logging** (B9). Outbound
-  only; mockable; no inbound callbacks yet.
-- **2.4b — Interactive confirm:** inline confirm/reject/modify buttons + inbound callback handling
-  (long-poll `getUpdates`) + confirm→execute wiring (the async one-tap loop; B9 primary interface).
+Spec `docs/superpowers/specs/2026-05-23-telegram-notifier-design.md`; plan
+`docs/superpowers/plans/2026-05-23-telegram-notifier.md`. Locked decisions: env-var storage (decoupled
+from the master key so alerts work without it), **caller-driven** from `auto_execute_job` (the router
+stays pure — B2), three triggers (post-exec ✅ / pending-info 📊 / auth-failure ❌ at the existing
+`SessionExpired` point) + failure-to-send logging via `repository.log_activity` (B9/B10). No
+`decision-engine.md` change (no decision logic touched). Reviewed (spec ✅, quality APPROVED, final
+opus READY-TO-MERGE). 238 tests green.
 
-**Open questions for 2.4a** (ask one at a time, then spec→plan→subagent):
-1. **Token/chat storage** — recommend **env vars** (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`), NOT
-   encrypted-at-rest: notifications (esp. failure alerts) must work without the master key loaded, so
-   keep them decoupled from it.
-2. Which notifications in 2.4a (recommend: post-exec + pending-info + failure logging).
-3. Wiring: a `src/interface/telegram.py` `notify(...)` that is a **no-op when `TELEGRAM_BOT_TOKEN`
-   is unset** (so existing router tests + dry-run don't try to send); `route_gameweek` calls it
-   best-effort after execute/notify routes. Failure-to-send → logged (B9), never raised.
+## NEXT TASK: 2.4b — Interactive confirm
 
-To resume: re-enter the brainstorming skill for 2.4a, confirm the split above, ask the token-storage
-question, then proceed spec → plan → subagent-driven, exactly as the prior slices.
+The other half of 2.4 (B9 "the primary interface during a gameweek"). Scope: inline
+confirm/reject/modify buttons that *act*; inbound callback handling (long-poll `getUpdates`);
+confirm→execute wiring (the async one-tap loop). The 2.4a `send_message(text, *, buttons=...)` client
+already accepts an `inline_keyboard` payload for reuse — 2.4b builds the inbound half.
 
-## Remaining Phase 2 after 2.4
+Things to brainstorm for 2.4b:
+- **Inbound mechanism:** long-poll `getUpdates` (simplest, self-hosted, no public URL) vs webhook.
+- **Pending→tap state:** the router currently writes a "pending" `activity_log` row when it routes to
+  `notify`; 2.4b needs to persist enough to map an inbound callback back to that exact decision and
+  then execute it (likely a small pending-decisions table or a callback_data token referencing the
+  decision). This is the core design question.
+- **Allowed callbacks:** confirm/reject/modify for captain & single transfer only; chips & hits stay
+  forbidden (B8) even via a tap.
+- **R3 still holds:** the agent never runs the live inbound loop or live execution; the user does.
+
+To resume: re-enter the brainstorming skill for 2.4b, then spec → plan → subagent-driven, exactly as
+the prior slices.
+
+## Remaining Phase 2 after 2.4b
 - **2.5 Deadguard** — conservative fallback for Manual users who go silent: the full `gameweeks.state`
   machine (PENDING/USER_ACTED/DEADGUARD_ACTIVE), warning windows, narrow scope (`docs/deadguard.md`).
 - **2.7 Emergency Override** — kill switch / freeze auto-execution.
