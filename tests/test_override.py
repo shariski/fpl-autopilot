@@ -1,4 +1,5 @@
 from src.execution import override
+from src.data import repository
 
 
 def test_not_frozen_by_default(db):
@@ -36,3 +37,31 @@ def test_unfreeze_clears_and_logs(db):
 def test_unfreeze_idempotent_when_not_frozen(db):
     override.unfreeze(db, source="user")                  # no-op, no error, no log
     assert db.execute("SELECT COUNT(*) c FROM activity_log").fetchone()["c"] == 0
+
+
+def test_maybe_auto_freeze_below_threshold_does_nothing(db):
+    repository.increment_relogin_failures(db)             # 1 failure
+    assert override.maybe_auto_freeze(db) is False
+    assert override.is_frozen(db) is False
+
+
+def test_maybe_auto_freeze_at_threshold_freezes(db):
+    repository.increment_relogin_failures(db)
+    repository.increment_relogin_failures(db)             # 2 failures
+    assert override.maybe_auto_freeze(db) is True
+    st = override.status(db)
+    assert st["source"] == "auto" and "re-login" in st["reason"]
+
+
+def test_maybe_auto_freeze_returns_false_when_already_frozen(db):
+    repository.increment_relogin_failures(db)
+    repository.increment_relogin_failures(db)
+    override.maybe_auto_freeze(db)                        # first call freezes -> True
+    assert override.maybe_auto_freeze(db) is False        # transition only fires once
+    assert db.execute("SELECT COUNT(*) c FROM activity_log").fetchone()["c"] == 1
+
+
+def test_maybe_auto_freeze_does_not_increment(db):
+    repository.increment_relogin_failures(db)             # 1
+    override.maybe_auto_freeze(db)
+    assert repository.get_relogin_failures(db) == 1       # read-only of the counter

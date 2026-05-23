@@ -42,3 +42,15 @@ def unfreeze(conn, *, source):
     repository.clear_system_state(conn, FREEZE_KEY)
     repository.log_activity(conn, decision_type="override", mode="override",
                             action_taken=f"unfrozen ({source})", executed=True)
+
+
+def maybe_auto_freeze(conn):
+    """B7 policy: freeze (source='auto') when consecutive re-login failures reach the
+    threshold. Reads the counter (incremented by ensure_session) — does NOT increment.
+    Returns True only on the transition into a freeze, so the caller alerts exactly once."""
+    if is_frozen(conn):
+        return False
+    if repository.get_relogin_failures(conn) >= RELOGIN_FAILURE_THRESHOLD:
+        freeze(conn, reason="2 consecutive FPL re-login failures", source="auto")
+        return True
+    return False
