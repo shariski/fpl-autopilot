@@ -256,6 +256,47 @@ def _execute_transfer_cli(conn=None, salt_path=None, verify_path=None, live=Fals
         conn.close()
 
 
+def _route_gameweek_cli(conn=None, salt_path=None, verify_path=None, live=False, mode=None,
+                        session=None, ranker=None, suggester=None, confirm_fn=None):
+    from .auth import master
+    from .auth.session import SessionError
+    from .execution import router as router_mod
+    from .execution import executor as executor_mod
+    mkw = {}
+    if salt_path is not None:
+        mkw["salt_path"] = salt_path
+    if verify_path is not None:
+        mkw["verify_path"] = verify_path
+    if not master.is_initialized(**mkw):
+        print("Master password not set — run `fpl-autopilot init-master-password` first.")
+        return
+    key = master.get_master_key(**mkw)
+    if live:
+        if confirm_fn is None:
+            def confirm_fn():
+                return input("Execute the auto-routed decisions live on your FPL team? Type 'yes': ").strip().lower() == "yes"
+        if not confirm_fn():
+            print("Aborted — nothing executed.")
+            return
+    owns_conn = conn is None
+    conn = conn or connect(cfg_db_path())
+    init_db(conn)
+    try:
+        plan = router_mod.route_gameweek(conn, key, live=live, mode=mode,
+                                         session=session, ranker=ranker, suggester=suggester)
+    except (executor_mod.ExecutorError, SessionError) as exc:
+        print(f"Could not route: {exc}")
+        if owns_conn:
+            conn.close()
+        return
+    label = "LIVE" if live else "DRY-RUN"
+    print(f"Mode-router plan ({label}):")
+    for p in plan:
+        print(f"  {p['decision']}: {p['route'].upper()} (confidence {p['confidence']})")
+    if owns_conn:
+        conn.close()
+
+
 def serve(host="0.0.0.0", port=None, scheduler=True):
     import os
     import uvicorn
@@ -293,6 +334,9 @@ def main(argv=None):
     p_xfer = sub.add_parser("execute-transfer", help="make one free transfer from the suggestions (dry-run unless --live)")
     p_xfer.add_argument("--live", action="store_true", help="actually submit to FPL (requires typed confirmation)")
     p_xfer.add_argument("--rank", type=int, default=1, help="which suggestion to execute (1-based; default 1)")
+    p_route = sub.add_parser("route-gameweek", help="route captain + transfer per mode/confidence (dry-run unless --live)")
+    p_route.add_argument("--live", action="store_true", help="execute the auto-routed decisions (requires typed confirmation)")
+    p_route.add_argument("--mode", choices=["auto", "manual", "hybrid"], default=None, help="override config mode for this run")
     args = parser.parse_args(argv)
     if args.command == "refresh":
         sources = (args.source,) if args.source else ("fpl", "understat")
@@ -312,6 +356,8 @@ def main(argv=None):
         _execute_lineup_cli(live=args.live)
     elif args.command == "execute-transfer":
         _execute_transfer_cli(live=args.live, rank=args.rank)
+    elif args.command == "route-gameweek":
+        _route_gameweek_cli(live=args.live, mode=args.mode)
 
 
 if __name__ == "__main__":
