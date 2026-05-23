@@ -54,6 +54,11 @@ These are intentionally **not** encrypted under the master password, so alerts c
 even when the master key isn't loaded (e.g. an unattended run that can't authenticate). When unset,
 notifications are a silent no-op.
 
+**Interactive confirm (optional, Phase 2.4b):** set `telegram.interactive: true` in `config.yaml`
+to receive Confirm/Reject buttons on pending decisions and act with one tap. This requires running
+the daemon (`serve`/scheduler) with the master password loaded (the daemon executes the confirmed
+decision). Off by default.
+
 ## Status
 
 Pre-build. See [`docs/plan.md`](docs/plan.md) for the task list and [`docs/risks.md`](docs/risks.md) for known unknowns.
