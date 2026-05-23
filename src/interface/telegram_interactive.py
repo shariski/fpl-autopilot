@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from datetime import datetime, timezone
 
@@ -10,6 +11,8 @@ from src.decisions import captain, transfers
 from src.execution import lineup, transfer as transfer_exec
 from src.auth.session import SessionExpired
 from src.interface import telegram
+
+log = logging.getLogger(__name__)
 
 
 def is_enabled(cfg=None):
@@ -141,9 +144,9 @@ def handle_callback(conn, key, cq, *, session=None, now=None,
     # 6. match -> execute via the existing bounded executor
     try:
         if dtype == "lineup":
-            result = lineup_fn(conn, key, live=True, confirm_fn=lambda d: True, session=session)
+            result = lineup_fn(conn, key, live=True, confirm_fn=lambda d: True)
         else:
-            result = transfer_fn(conn, key, rank=1, live=True, confirm_fn=lambda d: True, session=session)
+            result = transfer_fn(conn, key, rank=1, live=True, confirm_fn=lambda d: True)
     except SessionExpired:
         _resolve(conn, pid, "failed", dtype=dtype, mode=mode, action="confirm failed: session expired")
         telegram.notify(conn, kind="alert", decision_type=dtype, mode=mode,
@@ -178,9 +181,12 @@ def poll_once(key, *, conn=None, session=None):
         offset = repository.get_telegram_state(conn, "update_offset")
         offset = int(offset) if offset is not None else None
         for u in telegram.get_updates(offset, session=session):
-            cq = u.get("callback_query")
-            if cq:
-                handle_callback(conn, key, cq, session=session)
+            try:
+                cq = u.get("callback_query")
+                if cq:
+                    handle_callback(conn, key, cq, session=session)
+            except Exception:
+                log.exception("telegram handle_callback failed; advancing offset to avoid a poison loop")
             repository.set_telegram_state(conn, "update_offset", str(u["update_id"] + 1))
     finally:
         if owns:

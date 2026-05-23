@@ -299,3 +299,17 @@ def test_handle_callback_confirm_lineup_match_executes(db, monkeypatch):
     assert executed == [True]
     assert db.execute("SELECT status FROM pending_decisions WHERE id=?", (pid,)).fetchone()["status"] == "confirmed"
     assert "executed" in notes
+
+
+def test_poll_once_advances_offset_when_handle_raises(db, monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(ti, "is_enabled", lambda cfg=None: True)
+    updates = [{"update_id": 20, "callback_query": {"id": "x", "data": "c:1"}}]
+    monkeypatch.setattr(telegram, "get_updates", lambda offset, **k: updates)
+
+    def boom(conn, key, cq, **k):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(ti, "handle_callback", boom)
+    ti.poll_once(b"key", conn=db)   # must NOT raise
+    assert repository.get_telegram_state(db, "update_offset") == "21"
