@@ -219,6 +219,12 @@ Components:
 
 If `confidence < 70`, Phase 2 auto mode falls back to notifying the user instead of executing.
 
+**Implementation detail (v0.7, 2026-05-23):** status-uncertainty maps the FPL `status` code —
+`a`→0, `d`→+15, and `i`/`s`/`u`/`n`/unknown→+30 — taking the worst among the players involved in
+the decision (captain + vice for captaincy; in + out for a transfer). Staleness is measured from
+the `bootstrap-static` cache timestamp. Alternative-proximity uses the gap between the top two
+options (captain: top-2 xP; transfer: a suggestion's EP delta vs the next suggestion's).
+
 ## Phase 2: mode routing
 
 The Mode Router sits between the Decision Layer and the Action Executor. Per current mode:
@@ -293,3 +299,4 @@ Every decision writes one row:
 | v0.4 | 2026-05-22 | Captain ranker v1: xminutes used as rotation-risk tiebreaker proxy. |
 | v0.5 | 2026-05-22 | Transfer engine v1: dropped form_adjusted_delta (no per-GW actuals), selling price = current price, FT assumed 1; hit -4/-8 path deferred to multi-transfer. |
 | v0.6 | 2026-05-22 | Chip recommender v1: DGW/BGW detection; Wildcard fixture-swing only (others deferred/dropped); DGW-xP via per-fixture sum; priority TC>BB>FH>WC. |
+| v0.7 | 2026-05-23 | Confidence score implemented: status map (`a`→0, `d`→15, else→30); staleness from `bootstrap-static` cache timestamp; proximity gap between top-2 options. |
