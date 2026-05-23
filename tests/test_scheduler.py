@@ -291,3 +291,56 @@ def test_build_scheduler_no_deadguard_job_when_disabled(monkeypatch):
     monkeypatch.setattr(scheduler.config, "deadguard_enabled", lambda *a, **k: False)
     sched = scheduler.build_scheduler(BackgroundScheduler(timezone="UTC"), key=b"x")
     assert "deadguard_job" not in {j.id for j in sched.get_jobs()}
+
+
+# ---------------------------------------------------------------------------
+# Task 5 (2.7): freeze checkpoint + B7 auto-freeze wiring
+# ---------------------------------------------------------------------------
+
+def test_auto_execute_skips_when_frozen(db):
+    from src.execution import override
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    override.freeze(db, reason="test", source="user")
+    called = []
+    scheduler.auto_execute_job(b"key", conn=db, now=_NOW,
+                               route_fn=lambda c, k: called.append(1), cfg=_CFG)
+    assert called == []                                    # route never invoked
+    assert db.execute(
+        "SELECT last_system_action_at FROM gameweeks WHERE id=1").fetchone()["last_system_action_at"] is None
+
+
+def test_auto_execute_session_expired_auto_freezes_at_threshold(db, monkeypatch):
+    from src.auth.session import SessionExpired
+    from src.execution import override
+    from src.data import repository
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    repository.increment_relogin_failures(db)
+    repository.increment_relogin_failures(db)              # already at 2 (this run would be the 2nd consecutive)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "T")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "C")
+    sent = []
+    monkeypatch.setattr(tg, "send_message", lambda text, **k: sent.append(text) or True)
+
+    def boom(conn, key):
+        raise SessionExpired("expired")
+
+    with pytest.raises(SessionExpired):
+        scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=boom, cfg=_CFG)
+    assert override.is_frozen(db) is True
+    assert any("FROZEN" in t for t in sent)               # the freeze alert went out
+
+
+def test_auto_execute_session_expired_no_freeze_below_threshold(db, monkeypatch):
+    from src.auth.session import SessionExpired
+    from src.execution import override
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "T")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "C")
+    monkeypatch.setattr(tg, "send_message", lambda text, **k: True)
+
+    def boom(conn, key):
+        raise SessionExpired("expired")
+
+    with pytest.raises(SessionExpired):
+        scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=boom, cfg=_CFG)
+    assert override.is_frozen(db) is False                 # only 1st failure (counter 0 in test) -> no freeze

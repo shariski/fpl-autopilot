@@ -82,6 +82,7 @@ def auto_execute_job(key, *, conn=None, now=None, route_fn=None, cfg=None):
     from datetime import datetime, timezone, timedelta
     from .interface import telegram
     from .auth.session import SessionExpired
+    from .execution import override
     cfg = cfg or load_config()
     if not config.unattended_enabled(cfg):
         return None
@@ -90,6 +91,9 @@ def auto_execute_job(key, *, conn=None, now=None, route_fn=None, cfg=None):
     conn = conn or connect(db_path(cfg))
     init_db(conn)
     try:
+        if override.is_frozen(conn):
+            log.info("auto_execute_job skipped: frozen")
+            return None
         row = conn.execute(
             "SELECT id, deadline_utc, last_system_action_at FROM gameweeks WHERE is_next=1"
         ).fetchone()
@@ -103,11 +107,16 @@ def auto_execute_job(key, *, conn=None, now=None, route_fn=None, cfg=None):
         try:
             plan = (route_fn or _default_route)(conn, key)
         except SessionExpired:
+            froze = override.maybe_auto_freeze(conn)
             try:
                 telegram.notify(conn, kind="alert", decision_type="auth", mode=mode,
                                 summary="FPL session expired — re-run init-fpl. No changes were made.")
+                if froze:
+                    telegram.notify(conn, kind="alert", decision_type="override", mode="override",
+                                    summary="Auto-execution FROZEN — 2 consecutive auth failures. "
+                                            "Re-run init-fpl, then unfreeze.")
             except Exception:
-                log.exception("telegram auth alert failed")
+                log.exception("telegram auth/freeze alert failed")
             raise
         if any(p["route"] == "execute" for p in plan):
             conn.execute("UPDATE gameweeks SET last_system_action_at=? WHERE id=?",
