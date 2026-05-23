@@ -244,3 +244,27 @@ def test_user_acted_false_on_expired_or_failed(db):
                                                  identity={"captain_id": 1, "vice_id": 2}, summary="x")
         repository.set_pending_status(db, pid, st)
     assert deadguard.user_acted(db, 30) is False
+
+
+def test_job_generic_exception_leaves_retryable(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    alerts = []
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: alerts.append(k["kind"]))
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Cap"}], "vice_player_id": 6, "confidence": 80})
+
+    def boom(conn, key, **k):
+        raise RuntimeError("network")
+
+    monkeypatch.setattr(deadguard.lineup, "run_lineup", boom)
+    deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    row = db.execute("SELECT state, deadguard_triggered_at FROM gameweeks WHERE id=30").fetchone()
+    assert row["deadguard_triggered_at"] is None       # not marked -> retryable next tick
+    assert row["state"] == "DEADGUARD_ACTIVE"
+    assert "alert" in alerts
+
+
+def test_evaluate_window_boundaries():
+    assert _ev(30) == "trigger"     # mins == trigger_min (inclusive <=)
+    assert _ev(120) == "warn"       # mins == warn_min (inclusive <=)

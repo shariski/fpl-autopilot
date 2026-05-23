@@ -47,8 +47,8 @@ def user_acted(conn, gw):
 
 
 def send_warning(conn, gw, *, mins):
-    text = (f"⏳ Deadguard will set your captain ~{mins} min before the deadline if you don't act.\n"
-            f"Tap to keep your team as-is.")
+    text = (f"⏳ Deadguard will set your captain when ~{mins} min remain before the deadline, "
+            f"unless you act.\nTap to keep your team as-is.")
     buttons = [[{"text": "✅ Keep as is", "callback_data": f"k:{gw}"}]]
     telegram.send_message(text, buttons=buttons)
 
@@ -82,12 +82,16 @@ def _run_trigger(conn, key, gw):
     except Exception as e:
         _notify(conn, "alert", f"Deadguard failed: {type(e).__name__}")
         return
-    repository.set_gameweek_state(conn, gw, "DEADGUARD_EXECUTED")
-    repository.mark_deadguard_triggered(conn, gw)
+    # execution already submitted — mark triggered FIRST so a later DB error can't cause a re-submit
     name = caps["picks"][0]["web_name"]
-    repository.log_activity(conn, decision_type="deadguard", mode="deadguard",
-                            action_taken=f"captain set: {name}", inputs={"pick": caps["picks"][0]},
-                            executed=True)
+    try:
+        repository.mark_deadguard_triggered(conn, gw)
+        repository.set_gameweek_state(conn, gw, "DEADGUARD_EXECUTED")
+        repository.log_activity(conn, decision_type="deadguard", mode="deadguard",
+                                action_taken=f"captain set: {name}", inputs={"pick": caps["picks"][0]},
+                                executed=True)
+    except Exception:
+        log.exception("deadguard post-execution bookkeeping failed (captain was already set)")
     _notify(conn, "executed", f"Deadguard set your captain: {name}")
 
 
