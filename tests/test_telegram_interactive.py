@@ -382,3 +382,24 @@ def test_poll_once_routes_freeze_and_unfreeze(db, monkeypatch):
     monkeypatch.setattr(ti, "handle_callback", lambda conn, key, cq, **k: confirms.append(cq["id"]))
     ti.poll_once(b"key", conn=db)
     assert froze == ["f"] and thawed == ["u"] and confirms == []
+
+
+def test_handle_callback_confirm_executes_even_when_frozen(db, monkeypatch):
+    from src.execution import override
+    _configure(monkeypatch)
+    _seed_gw(db)
+    override.freeze(db, reason="frozen", source="user")   # autonomous-only: must NOT block an explicit Confirm
+    pid = repository.create_pending_decision(db, gw=30, decision_type="lineup",
+                                             identity={"captain_id": 5, "vice_id": 6}, summary="Captain pending: Cap")
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: None)
+    executed = []
+
+    def fake_lineup(conn, key, **k):
+        executed.append(k.get("live"))
+        return _ok_result()
+
+    ti.handle_callback(db, b"key", _cq(f"c:{pid}"), now=_NOW,
+                       ranker=_ranker_caps(5, 6), lineup_fn=fake_lineup)
+    assert executed == [True]   # freeze does not gate the explicit user Confirm
+    assert db.execute("SELECT status FROM pending_decisions WHERE id=?", (pid,)).fetchone()["status"] == "confirmed"
