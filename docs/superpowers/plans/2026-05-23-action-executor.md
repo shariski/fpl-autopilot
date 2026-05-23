@@ -1,6 +1,6 @@
 # Action Executor (captain/vice write) Implementation Plan — Phase 2.2a
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** A dry-run-first executor that reads the current team, sets captain & vice from the ranker, and writes it back via `POST /api/my-team/{entry}/` — live execution gated behind `--live` + a typed confirmation.
 
@@ -35,7 +35,7 @@ Reused: `src/auth/session.ensure_session` + `SessionError`, `src/decisions/capta
 
 **Files:** Create `src/execution/__init__.py`, `src/execution/executor.py`; Modify `pyproject.toml`; Test `tests/test_executor.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_executor.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_executor.py`:
 
 ```python
 import pytest
@@ -71,12 +71,12 @@ def test_build_lineup_payload_captain_not_in_squad():
         executor.build_lineup_payload(_picks(), captain_id=99, vice_id=3)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_executor.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.execution'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `src/execution/__init__.py` (empty file). Create `src/execution/executor.py`:
 
@@ -121,17 +121,17 @@ In `pyproject.toml`, change the packages line to add `src.execution`:
 packages = ["src", "src.data", "src.analytics", "src.decisions", "src.interface", "src.auth", "src.execution"]
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_executor.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 154 passed (151 + 3).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/execution/__init__.py src/execution/executor.py pyproject.toml tests/test_executor.py
@@ -144,7 +144,7 @@ git commit -m "feat: execution.executor payload builder + types"
 
 **Files:** Modify `src/execution/executor.py`; Test `tests/test_executor.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_executor.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_executor.py`:
 
 ```python
 class _Resp:
@@ -206,12 +206,12 @@ def test_apply_lineup_live_non_200():
     assert not res.ok and res.status == 403
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_executor.py -k "fetch or apply" -v`
 Expected: FAIL — `AttributeError: module 'src.execution.executor' has no attribute 'fetch_current_picks'`.
 
-- [ ] **Step 3: Implement** — append to `src/execution/executor.py`:
+- [x] **Step 3: Implement** — append to `src/execution/executor.py`:
 
 ```python
 def fetch_current_picks(session, entry_id):
@@ -230,17 +230,17 @@ def apply_lineup(session, entry_id, payload, *, dry_run):
     return ExecResult(dry_run=False, request=request, status=resp.status_code, ok=resp.status_code == 200)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_executor.py -v`
 Expected: 8 passed.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 159 passed (154 + 5).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/execution/executor.py tests/test_executor.py
@@ -253,7 +253,7 @@ git commit -m "feat: executor fetch_current_picks + apply_lineup (dry-run/live)"
 
 **Files:** Modify `src/data/repository.py`; Test `tests/test_repository.py`
 
-- [ ] **Step 1: Write the failing test** — append to `tests/test_repository.py`:
+- [x] **Step 1: Write the failing test** — append to `tests/test_repository.py`:
 
 ```python
 def test_log_activity_roundtrip(db):
@@ -272,12 +272,12 @@ def test_log_activity_roundtrip(db):
     assert _json.loads(row["exec_outcome_json"])["status"] == 200
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_repository.py::test_log_activity_roundtrip -v`
 Expected: FAIL — `AttributeError: module 'src.data.repository' has no attribute 'log_activity'`.
 
-- [ ] **Step 3: Implement** — `src/data/repository.py` already has `import json` and `_now()`. Add at the end of the file:
+- [x] **Step 3: Implement** — `src/data/repository.py` already has `import json` and `_now()`. Add at the end of the file:
 
 ```python
 def log_activity(conn, *, decision_type, mode, action_taken, inputs=None,
@@ -295,17 +295,17 @@ def log_activity(conn, *, decision_type, mode, action_taken, inputs=None,
     conn.commit()
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_repository.py::test_log_activity_roundtrip -v`
 Expected: PASS.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 160 passed (159 + 1).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/data/repository.py tests/test_repository.py
@@ -318,7 +318,7 @@ git commit -m "feat: repository.log_activity (activity_log writer)"
 
 **Files:** Create `src/execution/lineup.py`; Test `tests/test_lineup.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_lineup.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_lineup.py`:
 
 ```python
 from src.execution import lineup
@@ -385,12 +385,12 @@ def test_run_lineup_live_aborted(db):
     assert row["action_taken"] == "aborted" and row["executed"] == 0
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_lineup.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.execution.lineup'`.
 
-- [ ] **Step 3: Implement** — create `src/execution/lineup.py`:
+- [x] **Step 3: Implement** — create `src/execution/lineup.py`:
 
 ```python
 from src import config
@@ -437,17 +437,17 @@ def run_lineup(conn, key, *, live=False, confirm_fn=None, session=None, ranker=N
     return result
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_lineup.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 163 passed (160 + 3).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/execution/lineup.py tests/test_lineup.py
@@ -460,7 +460,7 @@ git commit -m "feat: lineup.run_lineup orchestration (read/rank/build/apply/log)
 
 **Files:** Modify `src/cli.py`; Test `tests/test_cli_execute_lineup.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_cli_execute_lineup.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_cli_execute_lineup.py`:
 
 ```python
 from src import cli
@@ -536,12 +536,12 @@ def test_execute_lineup_requires_master_password(tmp_path, monkeypatch, db, caps
     assert db.execute("SELECT COUNT(*) c FROM activity_log").fetchone()["c"] == 0
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_cli_execute_lineup.py -v`
 Expected: FAIL — `AttributeError: module 'src.cli' has no attribute '_execute_lineup_cli'`.
 
-- [ ] **Step 3: Add the CLI function** — in `src/cli.py`, add this function immediately after `_auth_status_cli` (before `serve`). `cfg_db_path`, `connect`, `init_db` are already imported at the top:
+- [x] **Step 3: Add the CLI function** — in `src/cli.py`, add this function immediately after `_auth_status_cli` (before `serve`). `cfg_db_path`, `connect`, `init_db` are already imported at the top:
 
 ```python
 def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
@@ -588,7 +588,7 @@ def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
         conn.close()
 ```
 
-- [ ] **Step 4: Register the subcommand** — in `main()`, after the `auth-status` subparser line:
+- [x] **Step 4: Register the subcommand** — in `main()`, after the `auth-status` subparser line:
 ```python
     sub.add_parser("auth-status", help="show stored FPL session state (no secrets)")
 ```
@@ -608,12 +608,12 @@ add:
         _execute_lineup_cli(live=args.live)
 ```
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_cli_execute_lineup.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 6: Run the full suite + CLI help**
+- [x] **Step 6: Run the full suite + CLI help**
 
 ```bash
 .venv/bin/pytest -q
@@ -621,7 +621,7 @@ Expected: 3 passed.
 ```
 Expected: 166 passed; `--help` lists `execute-lineup`. Do NOT run the real `execute-lineup --live`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/cli.py tests/test_cli_execute_lineup.py

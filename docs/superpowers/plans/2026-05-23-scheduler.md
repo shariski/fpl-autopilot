@@ -1,6 +1,6 @@
 # Scheduler (Phase 1) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** an in-process APScheduler that periodically refreshes FPL/Understat data and recomputes FDR + xP, started by `fpl-autopilot serve` (or standalone `fpl-autopilot scheduler`).
 
@@ -28,21 +28,21 @@
 
 **Files:** Modify `pyproject.toml`, `requirements.txt`, `docs/architecture.md`
 
-- [ ] **Step 1: Add APScheduler to `pyproject.toml`.** Change the dependencies line to:
+- [x] **Step 1: Add APScheduler to `pyproject.toml`.** Change the dependencies line to:
 
 ```toml
 dependencies = ["requests", "pydantic>=2", "pyyaml", "fastapi", "uvicorn", "APScheduler"]
 ```
 
-- [ ] **Step 2: Append `APScheduler` to `requirements.txt`.**
+- [x] **Step 2: Append `APScheduler` to `requirements.txt`.**
 
-- [ ] **Step 3: Add the Phase-1 note to `docs/architecture.md`.** Find the `## Scheduling` heading. Immediately AFTER the closing ``` of the schedule code block under it (i.e., after the `H-30 minutes (Phase 2): ... run deadguard.` block fence), insert:
+- [x] **Step 3: Add the Phase-1 note to `docs/architecture.md`.** Find the `## Scheduling` heading. Immediately AFTER the closing ``` of the schedule code block under it (i.e., after the `H-30 minutes (Phase 2): ... run deadguard.` block fence), insert:
 
 ```markdown
 **Phase 1 implementation (2026-05-23):** the implemented scheduler runs only `scheduler.refresh_and_recompute` (FPL/Understat refresh + FDR/xP recompute) on two cron triggers — weekly (Tue 03:00 UTC, post-settle) and hourly (cache-aware, cheap). It uses APScheduler's **in-memory** job store: jobs are code-defined and re-registered on every start, so the persistent SQLite job store from the design above is deferred to Phase 2 (when dynamic deadline/deadguard jobs are added). Started in-process by `fpl-autopilot serve`, or standalone via `fpl-autopilot scheduler`. The deadline-relative (H-48/H-24/H-2) and deadguard (H-120/H-30) jobs are Phase 2.
 ```
 
-- [ ] **Step 4: Reinstall + verify**
+- [x] **Step 4: Reinstall + verify**
 
 ```bash
 .venv/bin/pip install -e ".[dev]" -q
@@ -51,7 +51,7 @@ dependencies = ["requests", "pydantic>=2", "pyyaml", "fastapi", "uvicorn", "APSc
 ```
 Expected: prints an apscheduler version; suite still 106 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml requirements.txt docs/architecture.md
@@ -64,7 +64,7 @@ git commit -m "chore: add APScheduler dep + Phase-1 scheduler note (B13)"
 
 **Files:** Create `src/scheduler.py`; Test `tests/test_scheduler.py`
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_scheduler.py`
+- [x] **Step 1: Write the failing tests** in `tests/test_scheduler.py`
 
 ```python
 from apscheduler.triggers.cron import CronTrigger
@@ -111,12 +111,12 @@ def test_ping_healthcheck_calls_url(monkeypatch):
     assert got == ["http://hc.example/ping"]
 ```
 
-- [ ] **Step 2: Run to verify FAIL**
+- [x] **Step 2: Run to verify FAIL**
 
 Run: `.venv/bin/pytest tests/test_scheduler.py -v`
 Expected: `ModuleNotFoundError: No module named 'src.scheduler'`.
 
-- [ ] **Step 3: Write `src/scheduler.py`**
+- [x] **Step 3: Write `src/scheduler.py`**
 
 ```python
 import logging
@@ -174,17 +174,17 @@ def run_scheduler_blocking():
     build_scheduler(BlockingScheduler(timezone="UTC")).start()
 ```
 
-- [ ] **Step 4: Run to verify PASS**
+- [x] **Step 4: Run to verify PASS**
 
 Run: `.venv/bin/pytest tests/test_scheduler.py -v`
 Expected: 4 passed.
 
-- [ ] **Step 5: Run whole suite**
+- [x] **Step 5: Run whole suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: all pass (was 106; now 110).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/scheduler.py tests/test_scheduler.py
@@ -197,7 +197,7 @@ git commit -m "feat: Phase-1 scheduler (refresh_and_recompute job + build_schedu
 
 **Files:** Modify `src/cli.py`; Test `tests/test_scheduler.py` (extend)
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_scheduler.py`
+- [x] **Step 1: Write the failing tests** — append to `tests/test_scheduler.py`
 
 ```python
 def test_serve_starts_scheduler(monkeypatch):
@@ -226,12 +226,12 @@ def test_serve_no_scheduler(monkeypatch):
     assert built == []
 ```
 
-- [ ] **Step 2: Run to verify FAIL**
+- [x] **Step 2: Run to verify FAIL**
 
 Run: `.venv/bin/pytest tests/test_scheduler.py -v`
 Expected: FAIL — `cli.serve` has no `scheduler` kwarg (TypeError).
 
-- [ ] **Step 3: Update `serve` in `src/cli.py`.** Replace the existing `serve` function:
+- [x] **Step 3: Update `serve` in `src/cli.py`.** Replace the existing `serve` function:
 
 ```python
 def serve(host="0.0.0.0", port=None):
@@ -258,7 +258,7 @@ def serve(host="0.0.0.0", port=None, scheduler=True):
             sched.shutdown(wait=False)
 ```
 
-- [ ] **Step 4: Register `--no-scheduler` and the `scheduler` subcommand in `main`.** In `main`, the serve subparser block currently is:
+- [x] **Step 4: Register `--no-scheduler` and the `scheduler` subcommand in `main`.** In `main`, the serve subparser block currently is:
 
 ```python
     p_serve = sub.add_parser("serve", help="run the FastAPI server")
@@ -284,12 +284,12 @@ Replace it with:
         run_scheduler_blocking()
 ```
 
-- [ ] **Step 5: Run to verify PASS**
+- [x] **Step 5: Run to verify PASS**
 
 Run: `.venv/bin/pytest tests/test_scheduler.py -v`
 Expected: 6 passed.
 
-- [ ] **Step 6: Verify `--help` + whole suite**
+- [x] **Step 6: Verify `--help` + whole suite**
 
 ```bash
 .venv/bin/fpl-autopilot --help
@@ -298,7 +298,7 @@ Expected: 6 passed.
 ```
 Expected: top-level help lists `refresh`, `serve`, `scheduler`; `serve --help` shows `--no-scheduler`; suite green (112). Do NOT run `serve`/`scheduler` here (they block) — Task 4 does the live launch.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/cli.py tests/test_scheduler.py
@@ -309,7 +309,7 @@ git commit -m "feat: serve starts background scheduler (+--no-scheduler); schedu
 
 ## Task 4: Live check (definition of done)
 
-- [ ] **Step 1: Launch `serve` (with scheduler) in the background and confirm both are up**
+- [x] **Step 1: Launch `serve` (with scheduler) in the background and confirm both are up**
 
 ```bash
 .venv/bin/fpl-autopilot serve --port 8143 &
@@ -321,7 +321,7 @@ kill $SERVER_PID 2>/dev/null
 ```
 Expected: `status 200` (API serving), process ran without error (the BackgroundScheduler started alongside; APScheduler logs "Adding job" / "Scheduler started"). At end-of-season the scheduled jobs are harmless no-ops.
 
-- [ ] **Step 2: Confirm `--no-scheduler` runs the API alone**
+- [x] **Step 2: Confirm `--no-scheduler` runs the API alone**
 
 ```bash
 .venv/bin/fpl-autopilot serve --port 8144 --no-scheduler &
@@ -329,7 +329,7 @@ PID=$!; sleep 3; curl -s -o /dev/null -w "no-sched status %{http_code}\n" localh
 ```
 Expected: `status 200`.
 
-- [ ] **Step 3: Mark complete**
+- [x] **Step 3: Mark complete**
 
 ```bash
 git commit --allow-empty -m "chore: scheduler slice complete and smoke-tested"

@@ -1,6 +1,6 @@
 # Auth Crypto Foundation (Phase 2.1a) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** master-password key derivation (Argon2id) + Fernet encrypt/decrypt + encrypted credential storage + `init-master-password`, with secrets never logged or persisted in plaintext.
 
@@ -31,7 +31,7 @@
 
 **Files:** Modify `pyproject.toml`, `requirements.txt`, `.gitignore`; Create `src/auth/__init__.py`
 
-- [ ] **Step 1: `pyproject.toml`** — add the dep and package:
+- [x] **Step 1: `pyproject.toml`** — add the dep and package:
 
 ```toml
 dependencies = ["requests", "pydantic>=2", "pyyaml", "fastapi", "uvicorn", "APScheduler", "cryptography>=44"]
@@ -41,20 +41,20 @@ and
 packages = ["src", "src.data", "src.analytics", "src.decisions", "src.interface", "src.auth"]
 ```
 
-- [ ] **Step 2: `requirements.txt`** — append:
+- [x] **Step 2: `requirements.txt`** — append:
 ```
 cryptography>=44
 ```
 
-- [ ] **Step 3: `.gitignore`** — append (so the salt + verification token are never committed):
+- [x] **Step 3: `.gitignore`** — append (so the salt + verification token are never committed):
 ```
 data/.salt
 data/.verify
 ```
 
-- [ ] **Step 4: Create `src/auth/__init__.py`** (empty).
+- [x] **Step 4: Create `src/auth/__init__.py`** (empty).
 
-- [ ] **Step 5: Reinstall + verify Argon2id is available**
+- [x] **Step 5: Reinstall + verify Argon2id is available**
 
 ```bash
 .venv/bin/pip install -e ".[dev]" -q
@@ -63,7 +63,7 @@ data/.verify
 ```
 Expected: prints `argon2id+fernet ok`; suite still green (112). If the Argon2id import fails (cryptography too old), STOP and report — do not silently switch KDFs.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pyproject.toml requirements.txt .gitignore src/auth/__init__.py
@@ -76,7 +76,7 @@ git commit -m "chore: cryptography dep + src/auth scaffold + gitignore salt/veri
 
 **Files:** Create `src/auth/crypto.py`; Test `tests/test_crypto.py`
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_crypto.py`
+- [x] **Step 1: Write the failing tests** in `tests/test_crypto.py`
 
 ```python
 import os
@@ -107,12 +107,12 @@ def test_wrong_key_fails_loudly():
         crypto.decrypt(bad, token)
 ```
 
-- [ ] **Step 2: Run to verify FAIL**
+- [x] **Step 2: Run to verify FAIL**
 
 Run: `.venv/bin/pytest tests/test_crypto.py -v`
 Expected: `ModuleNotFoundError: No module named 'src.auth.crypto'`.
 
-- [ ] **Step 3: Write `src/auth/crypto.py`**
+- [x] **Step 3: Write `src/auth/crypto.py`**
 
 ```python
 import base64
@@ -138,17 +138,17 @@ def decrypt(key, token):
     return Fernet(key).decrypt(token).decode()
 ```
 
-- [ ] **Step 4: Run to verify PASS**
+- [x] **Step 4: Run to verify PASS**
 
 Run: `.venv/bin/pytest tests/test_crypto.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 5: Run whole suite**
+- [x] **Step 5: Run whole suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: all pass (was 112; now 115).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/auth/crypto.py tests/test_crypto.py
@@ -161,7 +161,7 @@ git commit -m "feat: auth crypto (Argon2id KDF + Fernet encrypt/decrypt)"
 
 **Files:** Create `src/auth/master.py`; Test `tests/test_master.py`
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_master.py`
+- [x] **Step 1: Write the failing tests** in `tests/test_master.py`
 
 ```python
 import pytest
@@ -218,12 +218,12 @@ def test_secrets_not_logged(tmp_path, caplog):
     assert "nolog-pw-123456" not in caplog.text
 ```
 
-- [ ] **Step 2: Run to verify FAIL**
+- [x] **Step 2: Run to verify FAIL**
 
 Run: `.venv/bin/pytest tests/test_master.py -v`
 Expected: `ModuleNotFoundError: No module named 'src.auth.master'`.
 
-- [ ] **Step 3: Write `src/auth/master.py`**
+- [x] **Step 3: Write `src/auth/master.py`**
 
 ```python
 import os
@@ -271,17 +271,17 @@ def get_master_key(salt_path=DEFAULT_SALT, verify_path=DEFAULT_VERIFY):
     return load_key(password, salt_path, verify_path)
 ```
 
-- [ ] **Step 4: Run to verify PASS**
+- [x] **Step 4: Run to verify PASS**
 
 Run: `.venv/bin/pytest tests/test_master.py -v`
 Expected: 6 passed.
 
-- [ ] **Step 5: Run whole suite**
+- [x] **Step 5: Run whole suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: all pass (was 115; now 121).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/auth/master.py tests/test_master.py
@@ -294,7 +294,7 @@ git commit -m "feat: master-password key lifecycle (init/load/get, verified, in-
 
 **Files:** Modify `src/data/repository.py`; Test `tests/test_repository.py` (extend)
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_repository.py`
+- [x] **Step 1: Write the failing tests** — append to `tests/test_repository.py`
 
 ```python
 from src.auth import crypto
@@ -329,12 +329,12 @@ def test_encrypted_unknown_column_rejected(db):
         repository.get_encrypted(db, "not_a_column")
 ```
 
-- [ ] **Step 2: Run to verify FAIL**
+- [x] **Step 2: Run to verify FAIL**
 
 Run: `.venv/bin/pytest tests/test_repository.py -v`
 Expected: FAIL — `AttributeError: module 'src.data.repository' has no attribute 'set_encrypted'`.
 
-- [ ] **Step 3: Append to `src/data/repository.py`**
+- [x] **Step 3: Append to `src/data/repository.py`**
 
 ```python
 _CRED_COLUMNS = {
@@ -361,17 +361,17 @@ def get_encrypted(conn, column):
     return row[column] if row else None
 ```
 
-- [ ] **Step 4: Run to verify PASS**
+- [x] **Step 4: Run to verify PASS**
 
 Run: `.venv/bin/pytest tests/test_repository.py -v`
 Expected: all pass (the original 5 + 4 new = 9).
 
-- [ ] **Step 5: Run whole suite**
+- [x] **Step 5: Run whole suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: all pass (was 121; now 125).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/data/repository.py tests/test_repository.py
@@ -384,7 +384,7 @@ git commit -m "feat: encrypted credential store (set_encrypted/get_encrypted, co
 
 **Files:** Modify `src/cli.py`; Test `tests/test_master.py` (extend)
 
-- [ ] **Step 1: Write the failing test** — append to `tests/test_master.py`
+- [x] **Step 1: Write the failing test** — append to `tests/test_master.py`
 
 ```python
 def test_init_master_password_cli(tmp_path, monkeypatch, capsys):
@@ -409,12 +409,12 @@ def test_init_master_password_cli_mismatch(tmp_path, monkeypatch, capsys):
     assert "do not match" in capsys.readouterr().out
 ```
 
-- [ ] **Step 2: Run to verify FAIL**
+- [x] **Step 2: Run to verify FAIL**
 
 Run: `.venv/bin/pytest tests/test_master.py -v`
 Expected: FAIL — `AttributeError: module 'src.cli' has no attribute '_init_master_password_cli'`.
 
-- [ ] **Step 3: Add the CLI function + subcommand to `src/cli.py`.** Add this function (near `serve`):
+- [x] **Step 3: Add the CLI function + subcommand to `src/cli.py`.** Add this function (near `serve`):
 
 ```python
 def _init_master_password_cli(salt_path=None, verify_path=None):
@@ -442,7 +442,7 @@ def _init_master_password_cli(salt_path=None, verify_path=None):
     print("If lost, stored credentials become unreadable and you must re-run init-fpl after a reset.")
 ```
 
-- [ ] **Step 4: Register the subcommand in `main`.** After the `scheduler` subparser line `sub.add_parser("scheduler", ...)`, add:
+- [x] **Step 4: Register the subcommand in `main`.** After the `scheduler` subparser line `sub.add_parser("scheduler", ...)`, add:
 
 ```python
     sub.add_parser("init-master-password", help="set the master password that encrypts stored credentials")
@@ -454,12 +454,12 @@ And in the dispatch, after the `scheduler` branch, add:
         _init_master_password_cli()
 ```
 
-- [ ] **Step 5: Run to verify PASS**
+- [x] **Step 5: Run to verify PASS**
 
 Run: `.venv/bin/pytest tests/test_master.py -v`
 Expected: 8 passed (6 + 2 new).
 
-- [ ] **Step 6: Verify the suite + `--help`**
+- [x] **Step 6: Verify the suite + `--help`**
 
 ```bash
 .venv/bin/pytest -q
@@ -467,7 +467,7 @@ Expected: 8 passed (6 + 2 new).
 ```
 Expected: suite green (127); top-level help lists `init-master-password`. Do NOT run the real `init-master-password` here (it would write `data/.salt`); the tests cover it with tmp paths. (You may run it yourself later with a real throwaway/master password.)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/cli.py tests/test_master.py

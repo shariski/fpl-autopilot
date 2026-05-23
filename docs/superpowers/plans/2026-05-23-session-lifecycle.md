@@ -1,6 +1,6 @@
 # Session Lifecycle Implementation Plan (Phase 2.1c)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Hand out a guaranteed-valid authenticated FPL session — verify before use, re-login transparently on expiry, and freeze auto-execution after two consecutive re-login failures.
 
@@ -39,7 +39,7 @@ Reused: `src/auth/fpl_login.py` (`login`, `FPLLoginError`, `LoginResult`, `ME_UR
 - Modify: `src/data/db.py`
 - Test: `tests/test_db.py` (create; if it already exists, append the test function)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_db.py` (or append the function if the file exists):
 
@@ -63,12 +63,12 @@ def test_migrate_credentials_adds_columns():
     assert cols_again == cols
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_db.py::test_migrate_credentials_adds_columns -v`
 Expected: FAIL — `AttributeError: module 'src.data.db' has no attribute '_migrate_credentials'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/data/schema.sql`, change the `credentials` table's last column line. Replace:
 
@@ -108,17 +108,17 @@ def init_db(conn):
     conn.commit()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_db.py::test_migrate_credentials_adds_columns -v`
 Expected: PASS.
 
-- [ ] **Step 5: Run the full suite (schema change touches every DB)**
+- [x] **Step 5: Run the full suite (schema change touches every DB)**
 
 Run: `.venv/bin/pytest -q`
 Expected: 135 passed (134 + 1). The in-memory `db` fixture now creates the columns via `schema.sql`; the migration is a no-op there.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/data/schema.sql src/data/db.py tests/test_db.py
@@ -133,7 +133,7 @@ git commit -m "feat: credentials auth_state/relogin_failures columns + migration
 - Modify: `src/data/repository.py`
 - Test: `tests/test_repository.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_repository.py`:
 
@@ -163,12 +163,12 @@ def test_mark_session_ok_resets(db):
     assert row["relogin_failures"] == 0
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_repository.py -k "auth_state or relogin or mark_session" -v`
 Expected: FAIL — `AttributeError: module 'src.data.repository' has no attribute 'get_auth_state'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add these functions to `src/data/repository.py` immediately after `touch_session_refreshed`:
 
@@ -204,12 +204,12 @@ def mark_session_ok(conn):
     conn.commit()
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_repository.py -k "auth_state or relogin or mark_session" -v`
 Expected: 3 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/data/repository.py tests/test_repository.py
@@ -224,7 +224,7 @@ git commit -m "feat: credential auth-state repository helpers"
 - Create: `src/auth/session.py`
 - Test: `tests/test_session.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_session.py`:
 
@@ -299,12 +299,12 @@ def test_ensure_session_frozen_refuses(tmp_path, db):
     assert not called  # frozen refuses without attempting login
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_session.py -v`
 Expected: FAIL — `ImportError: cannot import name 'session'` / `module 'src.auth.session' has no attribute ...` (module does not exist yet).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `src/auth/session.py` (verify + guards + happy path; the re-login block is added in Task 4):
 
@@ -363,12 +363,12 @@ def ensure_session(conn, key, *, expected_team_id, login_fn=None, session=None):
 
 Note: the final line is a deliberate placeholder so Task 3's three tests pass; Task 4 replaces it with the re-login logic. (The `valid`, `not_initialized`, and `frozen` tests never reach that line.)
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_session.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/auth/session.py tests/test_session.py
@@ -383,7 +383,7 @@ git commit -m "feat: ensure_session verify + frozen/not-initialized guards"
 - Modify: `src/auth/session.py`
 - Test: `tests/test_session.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_session.py`:
 
@@ -443,12 +443,12 @@ def test_ensure_session_freezes_after_two(tmp_path, db):
     assert repository.get_auth_state(db) == "frozen"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_session.py -k "relogin or freezes" -v`
 Expected: FAIL — `relogin_ok` raises `SessionNotInitialized` ("session expired" placeholder) instead of returning a session; the failure tests raise `SessionNotInitialized` instead of `ReloginFailed`/`SessionFrozen`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/auth/session.py`, replace this placeholder line at the end of `ensure_session`:
 ```python
@@ -480,12 +480,12 @@ def _persist_relogin(conn, key, result):
     repository.mark_session_ok(conn)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_session.py -v`
 Expected: 6 passed (3 from Task 3 + 3 new).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/auth/session.py tests/test_session.py
@@ -500,7 +500,7 @@ git commit -m "feat: ensure_session re-login + freeze-after-two"
 - Modify: `src/cli.py`
 - Test: `tests/test_cli_init_fpl.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_cli_init_fpl.py`:
 
@@ -531,12 +531,12 @@ def test_auth_status_cli(db, capsys):
 
 (The existing `from src.data import repository` import at the top of this test file is reused; if it is missing, add it.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_cli_init_fpl.py -k "clears_freeze or auth_status" -v`
 Expected: FAIL — `clears_freeze` leaves state `frozen` (init-fpl does not reset it yet); `auth_status` fails with `AttributeError: module 'src.cli' has no attribute '_auth_status_cli'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/cli.py`, in `_init_fpl_cli`, find:
 ```python
@@ -573,7 +573,7 @@ def _auth_status_cli(conn=None):
         conn.close()
 ```
 
-- [ ] **Step 4: Register the subcommand**
+- [x] **Step 4: Register the subcommand**
 
 In `main()`, find:
 ```python
@@ -594,12 +594,12 @@ Immediately AFTER it add:
         _auth_status_cli()
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_cli_init_fpl.py -v`
 Expected: all pass (the two new tests plus the existing ones).
 
-- [ ] **Step 6: Verify the full suite + CLI help**
+- [x] **Step 6: Verify the full suite + CLI help**
 
 ```bash
 .venv/bin/pytest -q
@@ -607,7 +607,7 @@ Expected: all pass (the two new tests plus the existing ones).
 ```
 Expected: 146 passed; top-level help lists `auth-status`. **Do NOT run the real `auth-status` against your live DB unless you want to** — it is read-only and safe, but the tests already cover it.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/cli.py tests/test_cli_init_fpl.py

@@ -1,6 +1,6 @@
 # Captain Ranker Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build the first Decision-Layer engine — a captain ranker that, given the squad and xP, returns the top-5 captain options (with reasoning) + vice, in the `/api/captain` shape. Suggest-only (no execution/persistence).
 
@@ -45,7 +45,7 @@ Run from the worktree root: `/Users/falah/Work/fpl-autopilot/.claude/worktrees/f
 - Create: `src/decisions/captain.py`
 - Test: `tests/test_captain.py`
 
-- [ ] **Step 1: Write the failing pure tests**
+- [x] **Step 1: Write the failing pure tests**
 
 ```python
 # tests/test_captain.py
@@ -107,12 +107,12 @@ def test_rank_captains_caps_at_five():
     assert [p["player_id"] for p in picks] == [1, 2, 3, 4, 5]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `/Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_captain.py -q`
 Expected: FAIL — `ModuleNotFoundError`/`AttributeError` (`captain.rank_captains` does not exist).
 
-- [ ] **Step 3: Write minimal implementation of `rank_captains`**
+- [x] **Step 3: Write minimal implementation of `rank_captains`**
 
 ```python
 # src/decisions/captain.py
@@ -145,12 +145,12 @@ def rank_captains(candidates):
     return picks
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `/Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_captain.py -q`
 Expected: PASS (5 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_captain.py src/decisions/captain.py
@@ -165,7 +165,7 @@ git commit -m "feat(captain): pure rank_captains (xp desc, xminutes/fdr tiebreak
 - Modify: `src/decisions/captain.py`
 - Test: `tests/test_captain.py`
 
-- [ ] **Step 1: Write the failing integration test**
+- [x] **Step 1: Write the failing integration test**
 
 Append to `tests/test_captain.py`:
 
@@ -236,12 +236,12 @@ def test_get_captain_picks_no_upcoming_gw_returns_empty(db):
     assert captain.get_captain_picks(db) == {"picks": [], "vice_player_id": None}
 ```
 
-- [ ] **Step 2: Run the integration test to verify it fails**
+- [x] **Step 2: Run the integration test to verify it fails**
 
 Run: `/Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_captain.py::test_get_captain_picks_integration -q`
 Expected: FAIL — `AttributeError: module 'src.decisions.captain' has no attribute 'get_captain_picks'`.
 
-- [ ] **Step 3: Implement the reader + helpers**
+- [x] **Step 3: Implement the reader + helpers**
 
 Append to `src/decisions/captain.py`:
 
@@ -307,17 +307,17 @@ def get_captain_picks(conn):
     return {"picks": picks, "vice_player_id": vice}
 ```
 
-- [ ] **Step 4: Run the captain tests to verify they pass**
+- [x] **Step 4: Run the captain tests to verify they pass**
 
 Run: `/Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_captain.py -q`
 Expected: PASS (7 passed).
 
-- [ ] **Step 5: Run the FULL suite (no regressions)**
+- [x] **Step 5: Run the FULL suite (no regressions)**
 
 Run: `/Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest -q`
 Expected: PASS (71 passed = 64 baseline + 7 new).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/test_captain.py src/decisions/captain.py

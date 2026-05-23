@@ -1,6 +1,6 @@
 # Token-Capture Auth (with refresh) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Authenticate to the FPL API with a captured OAuth2 refresh token: mint short-lived (8h) Bearer access tokens via `account.premierleague.com/as/token`, cache + auto-refresh them, and call the API with `X-Api-Authorization: Bearer`.
 
@@ -34,7 +34,7 @@ Unchanged: `src/auth/crypto.py`, `src/auth/master.py`. Dormant columns kept (no 
 
 **Files:** Modify `src/data/schema.sql`, `src/data/db.py`; Test `tests/test_db.py`
 
-- [ ] **Step 1: Write the failing test** — append to `tests/test_db.py`:
+- [x] **Step 1: Write the failing test** — append to `tests/test_db.py`:
 
 ```python
 def test_migrate_credentials_adds_token_columns():
@@ -48,12 +48,12 @@ def test_migrate_credentials_adds_token_columns():
     db._migrate_credentials(conn)  # idempotent
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_db.py::test_migrate_credentials_adds_token_columns -v`
 Expected: FAIL — `assert 'refresh_token_encrypted' in cols` fails (column not added yet).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/data/schema.sql`, change the `credentials` table tail from:
 ```sql
@@ -81,17 +81,17 @@ In `src/data/db.py`, extend `_migrate_credentials` — after the existing `relog
         conn.execute("ALTER TABLE credentials ADD COLUMN access_token_expires_at TEXT")
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_db.py -v`
 Expected: 2 passed.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 147 passed (146 + 1).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/data/schema.sql src/data/db.py tests/test_db.py
@@ -104,7 +104,7 @@ git commit -m "feat: credentials token columns (refresh/access/expiry) + migrati
 
 **Files:** Modify `src/data/repository.py`; Test `tests/test_repository.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_repository.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_repository.py`:
 
 ```python
 def test_token_columns_whitelisted(db):
@@ -122,12 +122,12 @@ def test_access_expiry_get_set(db):
     assert repository.get_access_expiry(db) == "2026-05-23T12:00:00+00:00"
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_repository.py -k "token_columns or access_expiry" -v`
 Expected: FAIL — `set_encrypted` raises `ValueError: unknown credential column: 'refresh_token_encrypted'`; `get_access_expiry` missing.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/data/repository.py`, change `_CRED_COLUMNS` to include the two token columns:
 ```python
@@ -153,17 +153,17 @@ def get_access_expiry(conn):
     return row["access_token_expires_at"] if row else None
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_repository.py -k "token_columns or access_expiry" -v`
 Expected: 2 passed.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 149 passed (147 + 2).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/data/repository.py tests/test_repository.py
@@ -178,7 +178,7 @@ git commit -m "feat: repository token-column whitelist + access-expiry helpers"
 
 The old module (re-login/freeze, `fpl_login` import) is replaced wholesale. Nothing in non-test code imports `session.py` yet, so this is self-contained. Note: `ensure_session` does NOT take `expected_team_id` (team-id is validated once at `init-fpl`; re-checking on every call is an unused parameter — omitted).
 
-- [ ] **Step 1: Write the failing tests** — overwrite `tests/test_session.py` with EXACTLY:
+- [x] **Step 1: Write the failing tests** — overwrite `tests/test_session.py` with EXACTLY:
 
 ```python
 import pytest
@@ -302,12 +302,12 @@ def test_ensure_session_not_initialized(tmp_path, db):
         session.ensure_session(db, key, refresh_session=_FakeTokenSession())
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_session.py -v`
 Expected: FAIL — `AttributeError: module 'src.auth.session' has no attribute 'refresh_access_token'` (old module).
 
-- [ ] **Step 3: Rewrite the module** — overwrite `src/auth/session.py` with EXACTLY:
+- [x] **Step 3: Rewrite the module** — overwrite `src/auth/session.py` with EXACTLY:
 
 ```python
 import logging
@@ -417,17 +417,17 @@ def ensure_session(conn, key, *, refresh_session=None):
     return _authed_session(access_token)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_session.py -v`
 Expected: 10 passed.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 153 passed. `session.py` no longer imports `fpl_login`; `cli.py` still uses `fpl_login` (still present), so nothing else breaks.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/auth/session.py tests/test_session.py
@@ -440,7 +440,7 @@ git commit -m "feat: rebuild session.py for OAuth refresh-token auth"
 
 **Files:** Modify `src/cli.py`; Rewrite `tests/test_cli_init_fpl.py`
 
-- [ ] **Step 1: Write the failing tests** — overwrite `tests/test_cli_init_fpl.py` with EXACTLY:
+- [x] **Step 1: Write the failing tests** — overwrite `tests/test_cli_init_fpl.py` with EXACTLY:
 
 ```python
 from src import cli
@@ -536,12 +536,12 @@ def test_auth_status_cli(db, capsys):
     assert "auth_state" in out
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_cli_init_fpl.py -v`
 Expected: FAIL — old `_init_fpl_cli` has no `refresh_session` parameter (`TypeError`).
 
-- [ ] **Step 3: Replace `_init_fpl_cli`** — in `src/cli.py`, replace the ENTIRE `_init_fpl_cli` function with:
+- [x] **Step 3: Replace `_init_fpl_cli`** — in `src/cli.py`, replace the ENTIRE `_init_fpl_cli` function with:
 
 ```python
 def _init_fpl_cli(conn=None, salt_path=None, verify_path=None, refresh_session=None, me_session=None):
@@ -582,7 +582,7 @@ def _init_fpl_cli(conn=None, salt_path=None, verify_path=None, refresh_session=N
     print(f"Authenticated as entry {entry}; session stored.")
 ```
 
-- [ ] **Step 4: Replace `_auth_status_cli`** — in `src/cli.py`, replace the ENTIRE `_auth_status_cli` function with:
+- [x] **Step 4: Replace `_auth_status_cli`** — in `src/cli.py`, replace the ENTIRE `_auth_status_cli` function with:
 
 ```python
 def _auth_status_cli(conn=None):
@@ -606,17 +606,17 @@ def _auth_status_cli(conn=None):
 
 Leave `main()` and the `init-fpl` / `auth-status` subparser registrations + dispatch unchanged.
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_cli_init_fpl.py -v`
 Expected: 5 passed.
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 154 passed. `cli.py` no longer imports `fpl_login`; `fpl_login.py` + `test_fpl_login.py` still present and passing.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/cli.py tests/test_cli_init_fpl.py
@@ -629,18 +629,18 @@ git commit -m "feat: init-fpl refresh-token paste flow; auth-status shows expiry
 
 **Files:** Delete `src/auth/fpl_login.py`, `tests/test_fpl_login.py`; Modify `src/data/repository.py`, `tests/test_repository.py`
 
-- [ ] **Step 1: Confirm `fpl_login` is fully orphaned**
+- [x] **Step 1: Confirm `fpl_login` is fully orphaned**
 
 Run: `grep -rn "fpl_login" src/ tests/`
 Expected: matches only inside `src/auth/fpl_login.py` and `tests/test_fpl_login.py`. If anything else matches, STOP.
 
-- [ ] **Step 2: Delete the dead module + tests**
+- [x] **Step 2: Delete the dead module + tests**
 
 ```bash
 git rm src/auth/fpl_login.py tests/test_fpl_login.py
 ```
 
-- [ ] **Step 3: Remove `increment_relogin_failures`** — in `src/data/repository.py`, delete the entire function:
+- [x] **Step 3: Remove `increment_relogin_failures`** — in `src/data/repository.py`, delete the entire function:
 
 ```python
 def increment_relogin_failures(conn):
@@ -653,7 +653,7 @@ def increment_relogin_failures(conn):
 ```
 Leave `get_auth_state`, `set_auth_state`, `mark_session_ok` in place.
 
-- [ ] **Step 4: Update `tests/test_repository.py`** — delete the entire `test_increment_relogin_failures` function:
+- [x] **Step 4: Update `tests/test_repository.py`** — delete the entire `test_increment_relogin_failures` function:
 
 ```python
 def test_increment_relogin_failures(db):
@@ -673,12 +673,12 @@ def test_mark_session_ok_resets(db):
     assert repository.get_auth_state(db) == "active"
 ```
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 149 passed, 0 failed. (153 after Task 3, +1 in Task 4 = 154; −4 deleted `test_fpl_login` −1 removed `test_increment_relogin_failures` = 149.)
 
-- [ ] **Step 6: Verify no dangling references + CLI loads**
+- [x] **Step 6: Verify no dangling references + CLI loads**
 
 ```bash
 grep -rn "fpl_login\|increment_relogin_failures\|FPLLoginError\|SessionFrozen\|ReloginFailed\|login_fn" src/ tests/
@@ -686,7 +686,7 @@ grep -rn "fpl_login\|increment_relogin_failures\|FPLLoginError\|SessionFrozen\|R
 ```
 Expected: grep returns nothing; `--help` lists `init-fpl` and `auth-status`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A

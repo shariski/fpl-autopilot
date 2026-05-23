@@ -1,6 +1,6 @@
 # Transfer Engine Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build the Decision-Layer transfer engine — pure functions that turn `xp`/`players`/`my_team` into the top-3 sell→buy suggestions, plus a thin `get_transfer_suggestions(conn)` reader returning the `/api/transfers` shape, with property-tested squad-validity invariants.
 
@@ -153,7 +153,7 @@ from src.decisions.transfers import HORIZON, MAX_PER_CLUB  # noqa: E402  (consta
 - Create: `src/decisions/transfers.py`
 - Test: `tests/test_transfers.py`
 
-- [ ] **Step 1: Write the test scaffolding + the first failing test**
+- [x] **Step 1: Write the test scaffolding + the first failing test**
 
 First add the imports and the `_p` helper (full scaffolding block above can be added incrementally; for this task only `json`, `random`, `Counter`, `transfers`, and `_p` are needed). Then:
 
@@ -168,12 +168,12 @@ def test_xp_5gw_sums_five_gws():
     assert 99.0 not in out.values()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py::test_xp_5gw_sums_five_gws -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.decisions.transfers'` (or `AttributeError`).
 
-- [ ] **Step 3: Create the module with constants + `xp_5gw_by_player`**
+- [x] **Step 3: Create the module with constants + `xp_5gw_by_player`**
 
 ```python
 import json
@@ -201,12 +201,12 @@ def xp_5gw_by_player(xp_rows, start_gw, horizon=HORIZON):
     return {pid: round(v, 2) for pid, v in sums.items()}
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py::test_xp_5gw_sums_five_gws -q`
 Expected: PASS (1 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/decisions/transfers.py tests/test_transfers.py
@@ -221,7 +221,7 @@ git commit -m "feat(transfers): xp_5gw_by_player horizon sum"
 - Modify: `src/decisions/transfers.py`
 - Test: `tests/test_transfers.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_hit_cost_thresholds():
@@ -236,12 +236,12 @@ def test_hit_cost_thresholds():
     assert transfers.is_worth_hit(0.0, 0) is False    # free transfer, no gain
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py::test_hit_cost_thresholds -q`
 Expected: FAIL — `AttributeError: module 'src.decisions.transfers' has no attribute 'hit_cost'`.
 
-- [ ] **Step 3: Add the helpers to `src/decisions/transfers.py`** (after `xp_5gw_by_player`)
+- [x] **Step 3: Add the helpers to `src/decisions/transfers.py`** (after `xp_5gw_by_player`)
 
 ```python
 def hit_cost(num_transfers, free_transfers=1):
@@ -261,12 +261,12 @@ def is_worth_hit(ep_delta, hit_cost):
     return ep_delta > abs(hit_cost)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py::test_hit_cost_thresholds -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/decisions/transfers.py tests/test_transfers.py
@@ -281,7 +281,7 @@ git commit -m "feat(transfers): hit_cost + is_worth_hit calculator"
 - Modify: `src/decisions/transfers.py`
 - Test: `tests/test_transfers.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_sell_candidate_below_median_or_flagged():
@@ -299,12 +299,12 @@ def test_sell_candidate_below_median_or_flagged():
     assert 3 not in sell_ids # above median and available
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py::test_sell_candidate_below_median_or_flagged -q`
 Expected: FAIL — `AttributeError: ... has no attribute 'sell_candidates'`.
 
-- [ ] **Step 3: Add `_median_by_position` + `sell_candidates`**
+- [x] **Step 3: Add `_median_by_position` + `sell_candidates`**
 
 ```python
 def _median_by_position(all_players):
@@ -323,12 +323,12 @@ def sell_candidates(squad_players, all_players):
             if p["status"] != "a" or p["xp_5gw"] < meds.get(p["position"], 0.0)]
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py::test_sell_candidate_below_median_or_flagged -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/decisions/transfers.py tests/test_transfers.py
@@ -343,7 +343,7 @@ git commit -m "feat(transfers): sell_candidates (below-median or flagged)"
 - Modify: `src/decisions/transfers.py`
 - Test: `tests/test_transfers.py`
 
-- [ ] **Step 1: Write the failing tests (targeted unit + two property tests)**
+- [x] **Step 1: Write the failing tests (targeted unit + two property tests)**
 
 Add the `_pick_valid_squad` / `_random_market_and_squad` helpers (clean versions — see Task 5 Step 1 for the corrected `_pick_valid_squad`) above these tests, then:
 
@@ -401,12 +401,12 @@ def test_buy_respects_3_per_club_property():
                 assert max(counts.values()) <= MAX_PER_CLUB
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py -k buy -q`
 Expected: FAIL — `AttributeError: ... has no attribute 'buy_candidates'`.
 
-- [ ] **Step 3: Add `_club_counts` + `buy_candidates`**
+- [x] **Step 3: Add `_club_counts` + `buy_candidates`**
 
 ```python
 def _club_counts(players):
@@ -441,12 +441,12 @@ def buy_candidates(sell, all_players, squad, bank):
     return out
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py -k buy -q`
 Expected: PASS (4 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/decisions/transfers.py tests/test_transfers.py
@@ -461,7 +461,7 @@ git commit -m "feat(transfers): buy_candidates with budget + 3-per-club property
 - Modify: `src/decisions/transfers.py`
 - Test: `tests/test_transfers.py`
 
-- [ ] **Step 1: Ensure the clean `_pick_valid_squad` helper is in the test file**
+- [x] **Step 1: Ensure the clean `_pick_valid_squad` helper is in the test file**
 
 If not already present from Task 4, add (this is the corrected version — note the plain `>= MAX_PER_CLUB` guard, no walrus placeholder):
 
@@ -489,7 +489,7 @@ def _pick_valid_squad(market, rng):
     return chosen
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 ```python
 def test_suggest_orders_by_ep_delta_and_caps_at_three():
@@ -541,12 +541,12 @@ def test_property_suggestions_leave_valid_squad():
             assert bank - (buy["price"] - sell["price"]) >= -1e-9   # within budget
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py -k "suggest or property_suggestions or empty_reason_when" -q`
 Expected: FAIL — `AttributeError: ... has no attribute 'suggest_transfers'`.
 
-- [ ] **Step 4: Add `suggest_transfers`**
+- [x] **Step 4: Add `suggest_transfers`**
 
 ```python
 def suggest_transfers(squad_players, all_players, bank, top_n=3):
@@ -572,12 +572,12 @@ def suggest_transfers(squad_players, all_players, bank, top_n=3):
     return pairs[:top_n]
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py -k "suggest or property_suggestions or empty_reason_when" -q`
 Expected: PASS (3 passed).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/decisions/transfers.py tests/test_transfers.py
@@ -592,7 +592,7 @@ git commit -m "feat(transfers): suggest_transfers top-3 + leave-valid-squad prop
 - Modify: `src/decisions/transfers.py`
 - Test: `tests/test_transfers.py`
 
-- [ ] **Step 1: Write the failing tests (use the `db` fixture from conftest + `_seed_db`)**
+- [x] **Step 1: Write the failing tests (use the `db` fixture from conftest + `_seed_db`)**
 
 Add the `_seed_db` helper (full version in the scaffolding block at the top of this plan), then:
 
@@ -634,12 +634,12 @@ def test_get_transfer_suggestions_empty_reason(db):
     assert out["empty_reason"] == "No transfers worth making this GW."
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py -k get_transfer -q`
 Expected: FAIL — `AttributeError: ... has no attribute 'get_transfer_suggestions'`.
 
-- [ ] **Step 3: Add the reader (+ small private helpers) to `src/decisions/transfers.py`**
+- [x] **Step 3: Add the reader (+ small private helpers) to `src/decisions/transfers.py`**
 
 ```python
 def _next_gw(conn):
@@ -694,12 +694,12 @@ def get_transfer_suggestions(conn):
     return {"suggestions": suggestions, "empty_reason": None if suggestions else EMPTY_REASON}
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py -k get_transfer -q`
 Expected: PASS (2 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/decisions/transfers.py tests/test_transfers.py
@@ -712,26 +712,26 @@ git commit -m "feat(transfers): get_transfer_suggestions /api/transfers reader"
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Run the whole transfer suite**
+- [x] **Step 1: Run the whole transfer suite**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest tests/test_transfers.py -v`
 Expected: all transfer tests PASS (≈11 tests).
 
-- [ ] **Step 2: Run the entire project suite (no regressions)**
+- [x] **Step 2: Run the entire project suite (no regressions)**
 
 Run: `PYTHONPATH=$PWD /Users/falah/Work/fpl-autopilot/.venv/bin/python -m pytest -q`
 Expected: all green (baseline 64 + the new transfer tests).
 
-- [ ] **Step 3: Confirm isolation — only the two intended files changed**
+- [x] **Step 3: Confirm isolation — only the two intended files changed**
 
 Run: `git diff --name-only main...HEAD`
 Expected: `docs/superpowers/plans/2026-05-22-transfer-engine.md`, `src/decisions/transfers.py`, `tests/test_transfers.py` — and **nothing else** (no `pyproject.toml`, `src/decisions/__init__.py`, or `docs/decision-engine.md`).
 
-- [ ] **Step 4: Optional live smoke check (DoD §2)**
+- [x] **Step 4: Optional live smoke check (DoD §2)**
 
 If the live DB is populated (`.venv/bin/fpl-autopilot refresh`, then FDR + xP compute), call `get_transfer_suggestions(conn)` and eyeball that each suggestion is a same-position swap within budget. Skip if the live DB is not available — the integration test already proves the shape.
 
-- [ ] **Step 5: Push and open the PR against `main`**
+- [x] **Step 5: Push and open the PR against `main`**
 
 ```bash
 git push -u origin feat/transfer-engine

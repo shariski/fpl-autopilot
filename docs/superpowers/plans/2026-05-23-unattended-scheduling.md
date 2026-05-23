@@ -1,6 +1,6 @@
 # Unattended Scheduling Implementation Plan — Phase 2.3c
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Run the Mode Router unattended — the scheduler holds the master key in memory and fires `route_gameweek(live=True)` once per gameweek, ~2h before the deadline.
 
@@ -33,7 +33,7 @@ Reused: `src/execution/router.route_gameweek`, `src/auth/master.get_master_key`,
 
 **Files:** Modify `config.yaml`, `src/config.py`; Test `tests/test_config.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_config.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_config.py`:
 
 ```python
 def test_unattended_enabled_from_config():
@@ -46,12 +46,12 @@ def test_unattended_hours_before_from_config():
     assert config.unattended_hours_before({}) == 2  # default
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_config.py -v`
 Expected: FAIL — `AttributeError: module 'src.config' has no attribute 'unattended_enabled'`.
 
-- [ ] **Step 3: Implement** — append to `src/config.py`:
+- [x] **Step 3: Implement** — append to `src/config.py`:
 
 ```python
 def unattended_enabled(cfg=None):
@@ -71,17 +71,17 @@ unattended:
   hours_before_deadline: 2
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_config.py -v`
 Expected: passed (incl. the 2 new).
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 204 passed (202 + 2).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/config.py config.yaml tests/test_config.py
@@ -94,7 +94,7 @@ git commit -m "feat: unattended config opt-in (enabled, hours_before_deadline)"
 
 **Files:** Modify `src/scheduler.py`; Test `tests/test_scheduler.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_scheduler.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_scheduler.py`:
 
 ```python
 from datetime import datetime, timezone, timedelta
@@ -157,12 +157,12 @@ def test_auto_execute_disabled_skips(db):
     assert not called
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_scheduler.py -v`
 Expected: FAIL — `AttributeError: module 'src.scheduler' has no attribute 'auto_execute_job'`.
 
-- [ ] **Step 3: Implement** — in `src/scheduler.py`, add `from . import config` to the imports at the top (alongside the existing `from .config import load_config, db_path`), then add these two functions:
+- [x] **Step 3: Implement** — in `src/scheduler.py`, add `from . import config` to the imports at the top (alongside the existing `from .config import load_config, db_path`), then add these two functions:
 
 ```python
 def _default_route(conn, key):
@@ -201,17 +201,17 @@ def auto_execute_job(key, *, conn=None, now=None, route_fn=None, cfg=None):
 ```
 (`connect`/`init_db` are already imported at the top of `scheduler.py`.)
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_scheduler.py -v`
 Expected: 5 passed.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 209 passed (204 + 5).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/scheduler.py tests/test_scheduler.py
@@ -224,7 +224,7 @@ git commit -m "feat: auto_execute_job (deadline-window, once-per-GW router run)"
 
 **Files:** Modify `src/scheduler.py`, `src/cli.py`; Test `tests/test_scheduler.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_scheduler.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_scheduler.py`:
 
 ```python
 def test_build_scheduler_no_key_no_autoexec():
@@ -246,12 +246,12 @@ def test_maybe_load_key_disabled_returns_none():
     assert scheduler._maybe_load_key() is None
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_scheduler.py -k "build_scheduler or maybe_load_key" -v`
 Expected: FAIL — `build_scheduler()` rejects the `key` keyword (`TypeError`) and `_maybe_load_key` is missing.
 
-- [ ] **Step 3: Implement** — in `src/scheduler.py`:
+- [x] **Step 3: Implement** — in `src/scheduler.py`:
 
 Add `_maybe_load_key` (e.g. after `auto_execute_job`):
 ```python
@@ -287,7 +287,7 @@ def run_scheduler_blocking():
     build_scheduler(BlockingScheduler(timezone="UTC"), key=_maybe_load_key()).start()
 ```
 
-- [ ] **Step 4: Wire `serve()`** — in `src/cli.py`, in `serve()`, find:
+- [x] **Step 4: Wire `serve()`** — in `src/cli.py`, in `serve()`, find:
 ```python
     if scheduler:
         from .scheduler import build_scheduler
@@ -302,12 +302,12 @@ Replace with:
         sched.start()
 ```
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_scheduler.py -v`
 Expected: 8 passed (5 + 3).
 
-- [ ] **Step 6: Run the full suite + CLI help**
+- [x] **Step 6: Run the full suite + CLI help**
 
 ```bash
 .venv/bin/pytest -q
@@ -315,7 +315,7 @@ Expected: 8 passed (5 + 3).
 ```
 Expected: 212 passed (209 + 3); `--help` still lists `serve`/`scheduler`. Do NOT start the real scheduler with `unattended.enabled` + `MASTER_PASSWORD`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/scheduler.py src/cli.py tests/test_scheduler.py

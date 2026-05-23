@@ -1,6 +1,6 @@
 # Transfer Execution Implementation Plan — Phase 2.2b
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Submit a single free transfer (the engine's chosen suggestion) via `POST /api/entry/{entry}/transfers/` — dry-run-first with `--live` + typed confirm, reusing the 2.2a executor.
 
@@ -33,7 +33,7 @@ Reused: `src/decisions/transfers.get_transfer_suggestions` (`{"suggestions":[{"o
 
 **Files:** Modify `src/execution/executor.py`; Test `tests/test_executor.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_executor.py` (the file already has `_picks`, `_Resp`, `_FakeSession`):
+- [x] **Step 1: Write the failing tests** — append to `tests/test_executor.py` (the file already has `_picks`, `_Resp`, `_FakeSession`):
 
 ```python
 def test_build_transfer_payload_shape():
@@ -68,12 +68,12 @@ def test_apply_transfers_live_non_200():
     assert not res.ok and res.status == 400
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_executor.py -k "transfer" -v`
 Expected: FAIL — `AttributeError: module 'src.execution.executor' has no attribute 'build_transfer_payload'`.
 
-- [ ] **Step 3: Implement** — in `src/execution/executor.py`:
+- [x] **Step 3: Implement** — in `src/execution/executor.py`:
 
 (a) Add the transfers URL constant right after the `MY_TEAM_URL` line:
 ```python
@@ -104,17 +104,17 @@ def build_transfer_payload(*, entry, event, element_out, element_in, selling_pri
                            "purchase_price": purchase_price, "selling_price": selling_price}]}
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_executor.py -v`
 Expected: 12 passed (8 existing — incl. the 3 `apply_lineup` tests still green after the refactor — + 4 new).
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 170 passed (166 + 4).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/execution/executor.py tests/test_executor.py
@@ -127,7 +127,7 @@ git commit -m "feat: executor transfer payload + apply_transfers (_post_json sha
 
 **Files:** Create `src/execution/transfer.py`; Test `tests/test_transfer.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_transfer.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_transfer.py`:
 
 ```python
 import pytest
@@ -232,12 +232,12 @@ def test_run_transfer_out_not_in_squad(db):
         transfer.run_transfer(db, key=b"unused", session=sess, suggester=_suggester)
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_transfer.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.execution.transfer'`.
 
-- [ ] **Step 3: Implement** — create `src/execution/transfer.py`:
+- [x] **Step 3: Implement** — create `src/execution/transfer.py`:
 
 ```python
 from src import config
@@ -290,17 +290,17 @@ def run_transfer(conn, key, *, rank=1, live=False, confirm_fn=None, session=None
     return result
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_transfer.py -v`
 Expected: 7 passed.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 177 passed (170 + 7).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/execution/transfer.py tests/test_transfer.py
@@ -313,7 +313,7 @@ git commit -m "feat: transfer.run_transfer orchestration (single free transfer)"
 
 **Files:** Modify `src/cli.py`; Test `tests/test_cli_execute_transfer.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_cli_execute_transfer.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_cli_execute_transfer.py`:
 
 ```python
 from src import cli
@@ -391,12 +391,12 @@ def test_execute_transfer_requires_master_password(tmp_path, monkeypatch, db, ca
     assert db.execute("SELECT COUNT(*) c FROM activity_log").fetchone()["c"] == 0
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_cli_execute_transfer.py -v`
 Expected: FAIL — `AttributeError: module 'src.cli' has no attribute '_execute_transfer_cli'`.
 
-- [ ] **Step 3: Add the CLI function** — in `src/cli.py`, add immediately after `_execute_lineup_cli`:
+- [x] **Step 3: Add the CLI function** — in `src/cli.py`, add immediately after `_execute_lineup_cli`:
 
 ```python
 def _execute_transfer_cli(conn=None, salt_path=None, verify_path=None, live=False, rank=1,
@@ -443,7 +443,7 @@ def _execute_transfer_cli(conn=None, salt_path=None, verify_path=None, live=Fals
         conn.close()
 ```
 
-- [ ] **Step 4: Register the subcommand** — in `main()`, after the `execute-lineup` subparser block:
+- [x] **Step 4: Register the subcommand** — in `main()`, after the `execute-lineup` subparser block:
 ```python
     p_exec = sub.add_parser("execute-lineup", help="set captain & vice from the ranker (dry-run unless --live)")
     p_exec.add_argument("--live", action="store_true", help="actually submit to FPL (requires typed confirmation)")
@@ -465,12 +465,12 @@ add:
         _execute_transfer_cli(live=args.live, rank=args.rank)
 ```
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_cli_execute_transfer.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 6: Run the full suite + CLI help**
+- [x] **Step 6: Run the full suite + CLI help**
 
 ```bash
 .venv/bin/pytest -q
@@ -478,7 +478,7 @@ Expected: 3 passed.
 ```
 Expected: 180 passed; `--help` lists `execute-transfer`. Do NOT run the real `execute-transfer --live`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/cli.py tests/test_cli_execute_transfer.py

@@ -1,6 +1,6 @@
 # Chip Recommender + DGW/BGW Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** `recommend_chip(conn)` returns a single `/api/chips` recommendation (or null) by evaluating the four chip triggers over DGW/BGW-aware fixture data.
 
@@ -31,7 +31,7 @@ The `fdr` table PK is `(team_id, gw)` — it stores ONE FDR per team per GW, so 
 
 **Files:** Modify `docs/decision-engine.md`
 
-- [ ] **Step 1: Add the v1 note.** Find the line `## Confidence score`. Immediately BEFORE it, insert:
+- [x] **Step 1: Add the v1 note.** Find the line `## Confidence score`. Immediately BEFORE it, insert:
 
 ```markdown
 ### v1 implementation (2026-05-22)
@@ -43,13 +43,13 @@ The `fdr` table PK is `(team_id, gw)` — it stores ONE FDR per team per GW, so 
 
 ```
 
-- [ ] **Step 2: Add a changelog row.** After the `v0.5` row, add:
+- [x] **Step 2: Add a changelog row.** After the `v0.5` row, add:
 
 ```
 | v0.6 | 2026-05-22 | Chip recommender v1: DGW/BGW detection; Wildcard fixture-swing only (others deferred/dropped); DGW-xP via per-fixture sum; priority TC>BB>FH>WC. |
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 ```bash
 grep -cF "Wildcard v1" docs/decision-engine.md
@@ -57,7 +57,7 @@ grep -cF "v0.6" docs/decision-engine.md
 ```
 Expected: each prints `1`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/decision-engine.md
@@ -70,7 +70,7 @@ git commit -m "docs(decision-engine): chip recommender v1 (wildcard fixture-swin
 
 **Files:** Create `src/analytics/dgw.py`; Test `tests/test_chips.py`
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_chips.py`
+- [x] **Step 1: Write the failing tests** in `tests/test_chips.py`
 
 ```python
 from src.data.db import connect, init_db
@@ -103,12 +103,12 @@ def test_team_gw_fdr():
     assert dgw.team_gw_fdr(conn, 1, 9) is None
 ```
 
-- [ ] **Step 2: Run to verify FAIL**
+- [x] **Step 2: Run to verify FAIL**
 
 Run: `.venv/bin/pytest tests/test_chips.py -v`
 Expected: `ModuleNotFoundError: No module named 'src.analytics.dgw'`.
 
-- [ ] **Step 3: Write `src/analytics/dgw.py`**
+- [x] **Step 3: Write `src/analytics/dgw.py`**
 
 ```python
 def team_fixture_count(conn, team_id, gw):
@@ -125,12 +125,12 @@ def team_gw_fdr(conn, team_id, gw):
         "SELECT fdr_attack, fdr_defense FROM fdr WHERE team_id=? AND gw=?", (team_id, gw)).fetchone()
 ```
 
-- [ ] **Step 4: Run to verify PASS**
+- [x] **Step 4: Run to verify PASS**
 
 Run: `.venv/bin/pytest tests/test_chips.py -v`
 Expected: 2 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/analytics/dgw.py tests/test_chips.py
@@ -143,7 +143,7 @@ git commit -m "feat: DGW/BGW fixture-count + FDR detection helpers"
 
 **Files:** Create `src/decisions/chips.py`; Test `tests/test_chips.py` (extend)
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_chips.py`
+- [x] **Step 1: Write the failing tests** — append to `tests/test_chips.py`
 
 ```python
 from src.decisions import chips
@@ -268,12 +268,12 @@ def test_recommend_chip_none_when_nothing_triggers():
     assert chips.recommend_chip(conn)["recommendation"] is None
 ```
 
-- [ ] **Step 2: Run to verify FAIL**
+- [x] **Step 2: Run to verify FAIL**
 
 Run: `.venv/bin/pytest tests/test_chips.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.decisions.chips'`.
 
-- [ ] **Step 3: Write `src/decisions/chips.py`**
+- [x] **Step 3: Write `src/decisions/chips.py`**
 
 ```python
 import json
@@ -397,17 +397,17 @@ def recommend_chip(conn, horizon=6):
     return {"recommendation": None}
 ```
 
-- [ ] **Step 4: Run to verify PASS**
+- [x] **Step 4: Run to verify PASS**
 
 Run: `.venv/bin/pytest tests/test_chips.py -v`
 Expected: 9 passed (2 dgw + 7 chips).
 
-- [ ] **Step 5: Run whole suite**
+- [x] **Step 5: Run whole suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: all pass (74 + 9 = 83).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/decisions/chips.py tests/test_chips.py
@@ -420,7 +420,7 @@ git commit -m "feat: chip recommender (DGW-aware triggers + priority + chips_use
 
 **Files:** Modify `src/interface/api.py`; Test `tests/test_api.py` (extend)
 
-- [ ] **Step 1: Write the failing test** — append to `tests/test_api.py`
+- [x] **Step 1: Write the failing test** — append to `tests/test_api.py`
 
 ```python
 def test_chips_endpoint_wired(client):
@@ -430,7 +430,7 @@ def test_chips_endpoint_wired(client):
     assert "recommendation" in body  # real recommender output (likely null on the seeded data)
 ```
 
-- [ ] **Step 2: Run to verify it still passes against the stub, then change the endpoint.** First confirm the suite is green, then replace the chips stub in `src/interface/api.py`. Change:
+- [x] **Step 2: Run to verify it still passes against the stub, then change the endpoint.** First confirm the suite is green, then replace the chips stub in `src/interface/api.py`. Change:
 
 ```python
 @app.get("/api/chips")
@@ -448,17 +448,17 @@ def chips(conn=Depends(get_db)):
 ```
 (Put the `from src.decisions import chips as chips_engine` import at the top of `api.py` with the other imports, not inside the function.)
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 Run: `.venv/bin/pytest tests/test_api.py -v`
 Expected: all pass, incl. `test_chips_endpoint_wired` and the existing `test_stub_endpoints` (the chips assertion there checks `{"recommendation": None}`, which still holds on the seeded data since nothing triggers — verify it still passes; if the seeded data happens to trigger a chip, update that one assertion in `test_stub_endpoints` to `assert "recommendation" in client.get("/api/chips").json()`).
 
-- [ ] **Step 4: Run whole suite**
+- [x] **Step 4: Run whole suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: all pass (84).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/interface/api.py tests/test_api.py
@@ -469,7 +469,7 @@ git commit -m "feat: wire /api/chips to the chip recommender"
 
 ## Task 5: Live check (definition of done)
 
-- [ ] **Step 1: Run the recommender against the live DB**
+- [x] **Step 1: Run the recommender against the live DB**
 
 ```bash
 .venv/bin/python -c "
@@ -484,7 +484,7 @@ print('chip recommendation:', chips.recommend_chip(c))
 ```
 Expected: `{'recommendation': None}` at season end (no DGW/BGW upcoming) — correct per spec. Correctness is proven by the deterministic tests.
 
-- [ ] **Step 2: Mark complete**
+- [x] **Step 2: Mark complete**
 
 ```bash
 git commit --allow-empty -m "chore: chip recommender slice complete"

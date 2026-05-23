@@ -1,6 +1,6 @@
 # Mode Router Implementation Plan — Phase 2.3b
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Route each gameweek decision to *execute* (via the 2.2 executors) or *notify-and-wait* (a pending `activity_log` row) per the current mode + confidence — dry-run-first, `--live` to act.
 
@@ -34,7 +34,7 @@ Reused: `src/decisions/captain.get_captain_picks`, `src/decisions/transfers.get_
 
 **Files:** Modify `src/config.py`; Test `tests/test_config.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_config.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_config.py`:
 
 ```python
 from src import config
@@ -50,12 +50,12 @@ def test_confidence_floor_from_config():
     assert config.confidence_floor({}) == 70  # default
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_config.py -v`
 Expected: FAIL — `AttributeError: module 'src.config' has no attribute 'mode'`.
 
-- [ ] **Step 3: Implement** — append to `src/config.py`:
+- [x] **Step 3: Implement** — append to `src/config.py`:
 
 ```python
 def mode(cfg=None):
@@ -68,17 +68,17 @@ def confidence_floor(cfg=None):
     return cfg.get("thresholds", {}).get("confidence_floor", 70)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_config.py -v`
 Expected: 2 passed.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 189 passed (187 + 2).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/config.py tests/test_config.py
@@ -91,7 +91,7 @@ git commit -m "feat: config mode + confidence_floor accessors"
 
 **Files:** Create `src/execution/router.py`; Test `tests/test_router.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_router.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_router.py`:
 
 ```python
 from src.execution import router
@@ -128,12 +128,12 @@ def test_route_chip_or_unknown_notify():
     assert router.route("weird-mode", "captain", confidence=99) == "notify"
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_router.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.execution.router'`.
 
-- [ ] **Step 3: Implement** — create `src/execution/router.py`:
+- [x] **Step 3: Implement** — create `src/execution/router.py`:
 
 ```python
 from src import config
@@ -169,17 +169,17 @@ def route(mode, decision_type, *, confidence, ep_delta=None, is_hit=False, floor
     return "execute"
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_router.py -v`
 Expected: 7 passed.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 196 passed (189 + 7).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/execution/router.py tests/test_router.py
@@ -192,7 +192,7 @@ git commit -m "feat: router.route pure policy (mode + confidence -> execute/noti
 
 **Files:** Modify `src/execution/router.py`, `tests/test_router.py`, `docs/decision-engine.md`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_router.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_router.py`:
 
 ```python
 class _Resp:
@@ -279,12 +279,12 @@ def test_route_gameweek_low_conf_captain_gated(db):
     assert routes["captain"] == "notify"  # 60 < 70 universal gate
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_router.py -k route_gameweek -v`
 Expected: FAIL — `AttributeError: module 'src.execution.router' has no attribute 'route_gameweek'`.
 
-- [ ] **Step 3: Implement** — append to `src/execution/router.py`:
+- [x] **Step 3: Implement** — append to `src/execution/router.py`:
 
 ```python
 def route_gameweek(conn, key, *, live=False, mode=None, session=None, ranker=None, suggester=None):
@@ -320,12 +320,12 @@ def route_gameweek(conn, key, *, live=False, mode=None, session=None, ranker=Non
     return plan
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_router.py -v`
 Expected: 11 passed (7 + 4).
 
-- [ ] **Step 5: Document the universal gate in `decision-engine.md`** (B4) — under the mode-routing section add:
+- [x] **Step 5: Document the universal gate in `decision-engine.md`** (B4) — under the mode-routing section add:
 
 ```markdown
 **Universal confidence gate (v0.8, 2026-05-23):** the confidence floor applies to *every*
@@ -335,12 +335,12 @@ notifies regardless of confidence.
 ```
 Add a one-line changelog entry.
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 200 passed (196 + 4).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/execution/router.py tests/test_router.py docs/decision-engine.md
@@ -353,7 +353,7 @@ git commit -m "feat: route_gameweek orchestration; document universal confidence
 
 **Files:** Modify `src/cli.py`; Test `tests/test_cli_route.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_cli_route.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_cli_route.py`:
 
 ```python
 from src import cli
@@ -436,12 +436,12 @@ def test_route_gameweek_cli_requires_master_password(tmp_path, monkeypatch, db, 
     assert db.execute("SELECT COUNT(*) c FROM activity_log").fetchone()["c"] == 0
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_cli_route.py -v`
 Expected: FAIL — `AttributeError: module 'src.cli' has no attribute '_route_gameweek_cli'`.
 
-- [ ] **Step 3: Add the CLI function** — in `src/cli.py`, add immediately after `_execute_transfer_cli`:
+- [x] **Step 3: Add the CLI function** — in `src/cli.py`, add immediately after `_execute_transfer_cli`:
 
 ```python
 def _route_gameweek_cli(conn=None, salt_path=None, verify_path=None, live=False, mode=None,
@@ -485,7 +485,7 @@ def _route_gameweek_cli(conn=None, salt_path=None, verify_path=None, live=False,
         conn.close()
 ```
 
-- [ ] **Step 4: Register the subcommand** — in `main()`, after the `execute-transfer` subparser block:
+- [x] **Step 4: Register the subcommand** — in `main()`, after the `execute-transfer` subparser block:
 ```python
     p_xfer = sub.add_parser("execute-transfer", help="make one free transfer from the suggestions (dry-run unless --live)")
     p_xfer.add_argument("--live", action="store_true", help="actually submit to FPL (requires typed confirmation)")
@@ -509,12 +509,12 @@ add:
         _route_gameweek_cli(live=args.live, mode=args.mode)
 ```
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_cli_route.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 6: Run the full suite + CLI help**
+- [x] **Step 6: Run the full suite + CLI help**
 
 ```bash
 .venv/bin/pytest -q
@@ -522,7 +522,7 @@ Expected: 3 passed.
 ```
 Expected: 203 passed; `--help` lists `route-gameweek`. Do NOT run the real `route-gameweek --live`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/cli.py tests/test_cli_route.py

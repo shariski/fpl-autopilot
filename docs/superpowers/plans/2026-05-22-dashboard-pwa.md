@@ -1,6 +1,6 @@
 # Phase 1 PWA Dashboard Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build an installable, mobile-first SvelteKit PWA (the Interface layer) that renders all seven Phase 1 dashboard sections from typed mock data, including graceful null/empty states, behind a single swappable data client.
 
@@ -63,7 +63,7 @@ Tests live next to source as `*.test.ts` (logic) / `*.svelte.test.ts` (component
 **Files:**
 - Create: `frontend/` (entire SvelteKit minimal skeleton)
 
-- [ ] **Step 1: Scaffold with the `sv` CLI (minimal, TypeScript)**
+- [x] **Step 1: Scaffold with the `sv` CLI (minimal, TypeScript)**
 
 Run from the worktree root (`/Users/falah/Work/fpl-autopilot/.claude/worktrees/feat+dashboard`):
 
@@ -73,7 +73,7 @@ npx sv create frontend --template minimal --types ts --no-add-ons --install npm
 
 If the CLI is interactive instead of accepting flags, answer: template = **SvelteKit minimal**, type checking = **TypeScript**, additional options = **none** (we add testing/PWA manually for full control), package manager = **npm**.
 
-- [ ] **Step 2: Verify the dev server boots**
+- [x] **Step 2: Verify the dev server boots**
 
 ```bash
 cd frontend && npm run dev -- --port 5173 &
@@ -81,7 +81,7 @@ sleep 4 && curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5173/ ; kil
 ```
 Expected: `200`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend && git commit -m "feat(dashboard): scaffold SvelteKit minimal TS app
@@ -99,21 +99,21 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Create: `frontend/vitest-setup.ts`
 - Create: `frontend/src/lib/smoke.test.ts` (temporary, proves the runner)
 
-- [ ] **Step 1: Install test dependencies**
+- [x] **Step 1: Install test dependencies**
 
 ```bash
 cd frontend
 npm i -D vitest jsdom @testing-library/svelte @testing-library/jest-dom @testing-library/user-event
 ```
 
-- [ ] **Step 2: Create the test setup file**
+- [x] **Step 2: Create the test setup file**
 
 `frontend/vitest-setup.ts`:
 ```ts
 import '@testing-library/jest-dom/vitest';
 ```
 
-- [ ] **Step 3: Configure Vitest inside `vite.config.ts`**
+- [x] **Step 3: Configure Vitest inside `vite.config.ts`**
 
 Replace `frontend/vite.config.ts` with:
 ```ts
@@ -133,7 +133,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 4: Add the `test` script to `package.json`**
+- [x] **Step 4: Add the `test` script to `package.json`**
 
 In `frontend/package.json` `"scripts"`, add:
 ```json
@@ -141,7 +141,7 @@ In `frontend/package.json` `"scripts"`, add:
 "test:watch": "vitest"
 ```
 
-- [ ] **Step 5: Write a smoke test**
+- [x] **Step 5: Write a smoke test**
 
 `frontend/src/lib/smoke.test.ts`:
 ```ts
@@ -154,12 +154,12 @@ describe('test runner', () => {
 });
 ```
 
-- [ ] **Step 6: Run it and verify it passes**
+- [x] **Step 6: Run it and verify it passes**
 
 Run: `cd frontend && npm test`
 Expected: 1 passed.
 
-- [ ] **Step 7: Delete the smoke test and commit**
+- [x] **Step 7: Delete the smoke test and commit**
 
 ```bash
 cd frontend && rm src/lib/smoke.test.ts
@@ -180,14 +180,14 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Create: `frontend/static/logo.svg`
 - Create: `frontend/static/icons/*` (generated)
 
-- [ ] **Step 1: Install adapter-static + PWA plugin + asset generator**
+- [x] **Step 1: Install adapter-static + PWA plugin + asset generator**
 
 ```bash
 cd frontend
 npm i -D @sveltejs/adapter-static @vite-pwa/sveltekit @vite-pwa/assets-generator
 ```
 
-- [ ] **Step 2: Configure SPA in `svelte.config.js`**
+- [x] **Step 2: Configure SPA in `svelte.config.js`**
 
 Replace `frontend/svelte.config.js` with:
 ```js
@@ -205,7 +205,7 @@ const config = {
 export default config;
 ```
 
-- [ ] **Step 3: Make the app a client-side SPA**
+- [x] **Step 3: Make the app a client-side SPA**
 
 `frontend/src/routes/+layout.ts`:
 ```ts
@@ -214,7 +214,7 @@ export const ssr = false;
 export const prerender = false;
 ```
 
-- [ ] **Step 4: Create a distinctive logo source**
+- [x] **Step 4: Create a distinctive logo source**
 
 `frontend/static/logo.svg`:
 ```svg
@@ -226,7 +226,7 @@ export const prerender = false;
 </svg>
 ```
 
-- [ ] **Step 5: Generate PWA icons**
+- [x] **Step 5: Generate PWA icons**
 
 ```bash
 cd frontend
@@ -238,7 +238,7 @@ cd frontend && mkdir -p static/icons && mv static/pwa-*.png static/maskable-*.pn
 ```
 Expected: `pwa-192x192.png pwa-512x512.png maskable-icon-512x512.png apple-touch-icon-180x180.png favicon.ico` (names may vary slightly by generator version; use the actual generated filenames in Step 6).
 
-- [ ] **Step 6: Register the PWA plugin in `vite.config.ts`**
+- [x] **Step 6: Register the PWA plugin in `vite.config.ts`**
 
 Update `frontend/vite.config.ts` to add `SvelteKitPWA`:
 ```ts
@@ -288,7 +288,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 7: Add manifest + theme links to `app.html`**
+- [x] **Step 7: Add manifest + theme links to `app.html`**
 
 In `frontend/src/app.html`, inside `<head>`, add (the PWA plugin injects the manifest, but set theme + apple icon):
 ```html
@@ -297,7 +297,7 @@ In `frontend/src/app.html`, inside `<head>`, add (the PWA plugin injects the man
 ```
 Also set `<html lang="en">` and ensure the viewport meta is `width=device-width, initial-scale=1`.
 
-- [ ] **Step 8: Verify build produces a manifest + service worker**
+- [x] **Step 8: Verify build produces a manifest + service worker**
 
 ```bash
 cd frontend && npm run build
@@ -305,7 +305,7 @@ ls build/manifest.webmanifest build/sw.js 2>/dev/null || ls build/ | grep -E "ma
 ```
 Expected: a `*.webmanifest` and a service worker file exist in `build/`.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add frontend && git commit -m "feat(dashboard): SPA adapter + installable PWA (manifest, SW, icons)
@@ -321,7 +321,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Create: `frontend/src/lib/types.ts`
 - Test: `frontend/src/lib/types.test.ts`
 
-- [ ] **Step 1: Write the type file (mirrors `api-contract.md`)**
+- [x] **Step 1: Write the type file (mirrors `api-contract.md`)**
 
 `frontend/src/lib/types.ts`:
 ```ts
@@ -453,7 +453,7 @@ export interface Dashboard {
 export type MockScenario = 'full' | 'launch';
 ```
 
-- [ ] **Step 2: Write a compile-guard test**
+- [x] **Step 2: Write a compile-guard test**
 
 `frontend/src/lib/types.test.ts`:
 ```ts
@@ -475,12 +475,12 @@ describe('contract types', () => {
 });
 ```
 
-- [ ] **Step 3: Run and verify it passes**
+- [x] **Step 3: Run and verify it passes**
 
 Run: `cd frontend && npm test -- types`
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src/lib/types.ts frontend/src/lib/types.test.ts
@@ -499,7 +499,7 @@ This is the only display-side mapping the Interface owns (B2-permitted: presenta
 - Create: `frontend/src/lib/fdr.ts`
 - Test: `frontend/src/lib/fdr.test.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `frontend/src/lib/fdr.test.ts`:
 ```ts
@@ -539,12 +539,12 @@ describe('cellFdr', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd frontend && npm test -- fdr`
 Expected: FAIL ("fdrToken is not a function" / module not found).
 
-- [ ] **Step 3: Implement `lib/fdr.ts`**
+- [x] **Step 3: Implement `lib/fdr.ts`**
 
 ```ts
 import type { PlannerCell, Position } from './types';
@@ -561,12 +561,12 @@ export function cellFdr(position: Position, cell: PlannerCell): number {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `cd frontend && npm test -- fdr`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/lib/fdr.ts frontend/src/lib/fdr.test.ts
@@ -583,7 +583,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Create: `frontend/src/lib/format.ts`
 - Test: `frontend/src/lib/format.test.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `frontend/src/lib/format.test.ts`:
 ```ts
@@ -624,12 +624,12 @@ describe('countdown', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd frontend && npm test -- format`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `lib/format.ts`**
+- [x] **Step 3: Implement `lib/format.ts`**
 
 ```ts
 /** Render a numeric value, or an em-dash when it is null/undefined (forthcoming fields). */
@@ -655,12 +655,12 @@ export function countdown(deadlineUtc: string, now: number = Date.now()): string
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `cd frontend && npm test -- format`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/lib/format.ts frontend/src/lib/format.test.ts
@@ -679,7 +679,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Create: `frontend/src/lib/api/client.ts`
 - Test: `frontend/src/lib/api/client.test.ts`
 
-- [ ] **Step 1: Write the failing test (pins fixture invariants + scenario switch)**
+- [x] **Step 1: Write the failing test (pins fixture invariants + scenario switch)**
 
 `frontend/src/lib/api/client.test.ts`:
 ```ts
@@ -728,12 +728,12 @@ describe('getDashboard', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd frontend && npm test -- client`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement the full mock fixture**
+- [x] **Step 3: Implement the full mock fixture**
 
 `frontend/src/lib/mocks/full.ts` — a complete, typed `Dashboard`. Squad is a valid 4-4-2 (11 starters mult≥1, 4 bench mult 0); Haaland captain, Salah vice. Planner has 15 rows over a 5-GW horizon `[38,39,40,41,42]` with one blank-GW `null` cell and a 1–5 spread.
 ```ts
@@ -834,7 +834,7 @@ export const fullMock: Dashboard = {
 };
 ```
 
-- [ ] **Step 4: Implement the launch mock (DRY — derive from full, null the forthcoming fields)**
+- [x] **Step 4: Implement the launch mock (DRY — derive from full, null the forthcoming fields)**
 
 `frontend/src/lib/mocks/launch.ts`:
 ```ts
@@ -857,7 +857,7 @@ export const launchMock: Dashboard = {
 };
 ```
 
-- [ ] **Step 5: Implement the client (the single swap point)**
+- [x] **Step 5: Implement the client (the single swap point)**
 
 `frontend/src/lib/api/client.ts`:
 ```ts
@@ -879,12 +879,12 @@ export async function getDashboard(scenario: MockScenario = 'full'): Promise<Das
 }
 ```
 
-- [ ] **Step 6: Run and verify it passes**
+- [x] **Step 6: Run and verify it passes**
 
 Run: `cd frontend && npm test -- client`
 Expected: PASS (all invariants).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src/lib/mocks frontend/src/lib/api
@@ -905,7 +905,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Create: `frontend/src/lib/components/EmptyState.svelte`
 - Test: `frontend/src/lib/components/EmptyState.svelte.test.ts`
 
-- [ ] **Step 1: Create the dark design tokens + FDR scale + base styles**
+- [x] **Step 1: Create the dark design tokens + FDR scale + base styles**
 
 `frontend/src/app.css`:
 ```css
@@ -946,7 +946,7 @@ body {
 h2 { font-size: 0.82rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); margin: 0; }
 ```
 
-- [ ] **Step 2: Create the layout shell**
+- [x] **Step 2: Create the layout shell**
 
 `frontend/src/routes/+layout.svelte`:
 ```svelte
@@ -960,7 +960,7 @@ h2 { font-size: 0.82rem; letter-spacing: 0.08em; text-transform: uppercase; colo
 </div>
 ```
 
-- [ ] **Step 3: Create the page load (reads `?mock=`, calls the client)**
+- [x] **Step 3: Create the page load (reads `?mock=`, calls the client)**
 
 `frontend/src/routes/+page.ts`:
 ```ts
@@ -975,7 +975,7 @@ export const load: PageLoad = async ({ url }) => {
 };
 ```
 
-- [ ] **Step 4: Write the failing EmptyState test**
+- [x] **Step 4: Write the failing EmptyState test**
 
 `frontend/src/lib/components/EmptyState.svelte.test.ts`:
 ```ts
@@ -991,12 +991,12 @@ describe('EmptyState', () => {
 });
 ```
 
-- [ ] **Step 5: Run to verify it fails**
+- [x] **Step 5: Run to verify it fails**
 
 Run: `cd frontend && npm test -- EmptyState`
 Expected: FAIL (component not found).
 
-- [ ] **Step 6: Implement Section + EmptyState**
+- [x] **Step 6: Implement Section + EmptyState**
 
 `frontend/src/lib/components/Section.svelte`:
 ```svelte
@@ -1036,12 +1036,12 @@ Expected: FAIL (component not found).
 </style>
 ```
 
-- [ ] **Step 7: Run to verify it passes**
+- [x] **Step 7: Run to verify it passes**
 
 Run: `cd frontend && npm test -- EmptyState`
 Expected: PASS.
 
-- [ ] **Step 8: Verify the dev server renders the (still mostly empty) page**
+- [x] **Step 8: Verify the dev server renders the (still mostly empty) page**
 
 ```bash
 cd frontend && npm run dev -- --port 5173 &
@@ -1049,7 +1049,7 @@ sleep 4 && curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5173/ ; kil
 ```
 Expected: `200`.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add frontend/src/app.css frontend/src/routes frontend/src/lib/components/Section.svelte frontend/src/lib/components/EmptyState.svelte frontend/src/lib/components/EmptyState.svelte.test.ts
@@ -1069,7 +1069,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Test: `frontend/src/lib/components/Header.svelte.test.ts`
 - Test: `frontend/src/lib/components/SectionNav.svelte.test.ts`
 
-- [ ] **Step 1: Write the failing Header test**
+- [x] **Step 1: Write the failing Header test**
 
 `frontend/src/lib/components/Header.svelte.test.ts`:
 ```ts
@@ -1100,7 +1100,7 @@ describe('Header', () => {
 });
 ```
 
-- [ ] **Step 2: Write the failing SectionNav test**
+- [x] **Step 2: Write the failing SectionNav test**
 
 `frontend/src/lib/components/SectionNav.svelte.test.ts`:
 ```ts
@@ -1124,12 +1124,12 @@ describe('SectionNav', () => {
 });
 ```
 
-- [ ] **Step 3: Run both to verify they fail**
+- [x] **Step 3: Run both to verify they fail**
 
 Run: `cd frontend && npm test -- Header SectionNav`
 Expected: FAIL (components not found).
 
-- [ ] **Step 4: Implement Countdown**
+- [x] **Step 4: Implement Countdown**
 
 `frontend/src/lib/components/Countdown.svelte` (live-ticking, every 30s):
 ```svelte
@@ -1147,7 +1147,7 @@ Expected: FAIL (components not found).
 <span class="tnum">{label}</span>
 ```
 
-- [ ] **Step 5: Implement Header**
+- [x] **Step 5: Implement Header**
 
 `frontend/src/lib/components/Header.svelte`:
 ```svelte
@@ -1189,7 +1189,7 @@ Expected: FAIL (components not found).
 </style>
 ```
 
-- [ ] **Step 6: Implement SectionNav**
+- [x] **Step 6: Implement SectionNav**
 
 `frontend/src/lib/components/SectionNav.svelte` (sticky chip row of anchor links):
 ```svelte
@@ -1225,12 +1225,12 @@ Expected: FAIL (components not found).
 </style>
 ```
 
-- [ ] **Step 7: Run both to verify they pass**
+- [x] **Step 7: Run both to verify they pass**
 
 Run: `cd frontend && npm test -- Header SectionNav`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add frontend/src/lib/components/Header.svelte frontend/src/lib/components/Countdown.svelte frontend/src/lib/components/SectionNav.svelte frontend/src/lib/components/Header.svelte.test.ts frontend/src/lib/components/SectionNav.svelte.test.ts
@@ -1248,7 +1248,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Create: `frontend/src/lib/components/Pitch.svelte`
 - Test: `frontend/src/lib/components/Pitch.svelte.test.ts`
 
-- [ ] **Step 1: Write the failing Pitch test**
+- [x] **Step 1: Write the failing Pitch test**
 
 `frontend/src/lib/components/Pitch.svelte.test.ts`:
 ```ts
@@ -1278,12 +1278,12 @@ describe('Pitch', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd frontend && npm test -- Pitch`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement PlayerCard**
+- [x] **Step 3: Implement PlayerCard**
 
 `frontend/src/lib/components/PlayerCard.svelte`:
 ```svelte
@@ -1324,7 +1324,7 @@ Expected: FAIL.
 </style>
 ```
 
-- [ ] **Step 4: Implement Pitch (starters by position rows + bench strip)**
+- [x] **Step 4: Implement Pitch (starters by position rows + bench strip)**
 
 `frontend/src/lib/components/Pitch.svelte`:
 ```svelte
@@ -1370,12 +1370,12 @@ Expected: FAIL.
 </style>
 ```
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `cd frontend && npm test -- Pitch`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src/lib/components/PlayerCard.svelte frontend/src/lib/components/Pitch.svelte frontend/src/lib/components/Pitch.svelte.test.ts
@@ -1394,7 +1394,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Test: `frontend/src/lib/components/CaptainPicks.svelte.test.ts`
 - Test: `frontend/src/lib/components/TransferIdeas.svelte.test.ts`
 
-- [ ] **Step 1: Write the failing CaptainPicks test**
+- [x] **Step 1: Write the failing CaptainPicks test**
 
 `frontend/src/lib/components/CaptainPicks.svelte.test.ts`:
 ```ts
@@ -1417,7 +1417,7 @@ describe('CaptainPicks', () => {
 });
 ```
 
-- [ ] **Step 2: Write the failing TransferIdeas test**
+- [x] **Step 2: Write the failing TransferIdeas test**
 
 `frontend/src/lib/components/TransferIdeas.svelte.test.ts`:
 ```ts
@@ -1446,12 +1446,12 @@ describe('TransferIdeas', () => {
 });
 ```
 
-- [ ] **Step 3: Run both to verify they fail**
+- [x] **Step 3: Run both to verify they fail**
 
 Run: `cd frontend && npm test -- CaptainPicks TransferIdeas`
 Expected: FAIL.
 
-- [ ] **Step 4: Implement CaptainPicks**
+- [x] **Step 4: Implement CaptainPicks**
 
 `frontend/src/lib/components/CaptainPicks.svelte`:
 ```svelte
@@ -1493,7 +1493,7 @@ Expected: FAIL.
 </style>
 ```
 
-- [ ] **Step 5: Implement TransferIdeas**
+- [x] **Step 5: Implement TransferIdeas**
 
 `frontend/src/lib/components/TransferIdeas.svelte`:
 ```svelte
@@ -1546,12 +1546,12 @@ Expected: FAIL.
 </style>
 ```
 
-- [ ] **Step 6: Run both to verify they pass**
+- [x] **Step 6: Run both to verify they pass**
 
 Run: `cd frontend && npm test -- CaptainPicks TransferIdeas`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src/lib/components/CaptainPicks.svelte frontend/src/lib/components/TransferIdeas.svelte frontend/src/lib/components/CaptainPicks.svelte.test.ts frontend/src/lib/components/TransferIdeas.svelte.test.ts
@@ -1570,7 +1570,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Test: `frontend/src/lib/components/ChipRecommendation.svelte.test.ts`
 - Test: `frontend/src/lib/components/ActivityLog.svelte.test.ts`
 
-- [ ] **Step 1: Write the failing ChipRecommendation test**
+- [x] **Step 1: Write the failing ChipRecommendation test**
 
 `frontend/src/lib/components/ChipRecommendation.svelte.test.ts`:
 ```ts
@@ -1593,7 +1593,7 @@ describe('ChipRecommendation', () => {
 });
 ```
 
-- [ ] **Step 2: Write the failing ActivityLog test**
+- [x] **Step 2: Write the failing ActivityLog test**
 
 `frontend/src/lib/components/ActivityLog.svelte.test.ts`:
 ```ts
@@ -1614,12 +1614,12 @@ describe('ActivityLog', () => {
 });
 ```
 
-- [ ] **Step 3: Run both to verify they fail**
+- [x] **Step 3: Run both to verify they fail**
 
 Run: `cd frontend && npm test -- ChipRecommendation ActivityLog`
 Expected: FAIL.
 
-- [ ] **Step 4: Implement ChipRecommendation**
+- [x] **Step 4: Implement ChipRecommendation**
 
 `frontend/src/lib/components/ChipRecommendation.svelte` (renders nothing when null — caller also hides the Section + nav chip):
 ```svelte
@@ -1651,7 +1651,7 @@ Expected: FAIL.
 </style>
 ```
 
-- [ ] **Step 5: Implement ActivityLog**
+- [x] **Step 5: Implement ActivityLog**
 
 `frontend/src/lib/components/ActivityLog.svelte`:
 ```svelte
@@ -1688,12 +1688,12 @@ Expected: FAIL.
 </style>
 ```
 
-- [ ] **Step 6: Run both to verify they pass**
+- [x] **Step 6: Run both to verify they pass**
 
 Run: `cd frontend && npm test -- ChipRecommendation ActivityLog`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src/lib/components/ChipRecommendation.svelte frontend/src/lib/components/ActivityLog.svelte frontend/src/lib/components/ChipRecommendation.svelte.test.ts frontend/src/lib/components/ActivityLog.svelte.test.ts
@@ -1710,7 +1710,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Create: `frontend/src/lib/components/FixturePlanner.svelte`
 - Test: `frontend/src/lib/components/FixturePlanner.svelte.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `frontend/src/lib/components/FixturePlanner.svelte.test.ts`:
 ```ts
@@ -1748,12 +1748,12 @@ describe('FixturePlanner', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd frontend && npm test -- FixturePlanner`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement FixturePlanner (fit-to-width compact grid)**
+- [x] **Step 3: Implement FixturePlanner (fit-to-width compact grid)**
 
 `frontend/src/lib/components/FixturePlanner.svelte`:
 ```svelte
@@ -1808,12 +1808,12 @@ Expected: FAIL.
 </style>
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `cd frontend && npm test -- FixturePlanner`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/lib/components/FixturePlanner.svelte frontend/src/lib/components/FixturePlanner.svelte.test.ts
@@ -1830,7 +1830,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Modify: `frontend/src/routes/+page.svelte`
 - Test: `frontend/src/routes/page.svelte.test.ts`
 
-- [ ] **Step 1: Write the failing page composition test**
+- [x] **Step 1: Write the failing page composition test**
 
 `frontend/src/routes/page.svelte.test.ts`:
 ```ts
@@ -1856,12 +1856,12 @@ describe('+page (composition)', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd frontend && npm test -- page.svelte`
 Expected: FAIL (page still the scaffold default).
 
-- [ ] **Step 3: Implement the composed page**
+- [x] **Step 3: Implement the composed page**
 
 `frontend/src/routes/+page.svelte`:
 ```svelte
@@ -1895,17 +1895,17 @@ Expected: FAIL (page still the scaffold default).
 <Section id="log" title="Activity Log"><ActivityLog activity={d.activity} /></Section>
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `cd frontend && npm test -- page.svelte`
 Expected: PASS.
 
-- [ ] **Step 5: Run the FULL test suite**
+- [x] **Step 5: Run the FULL test suite**
 
 Run: `cd frontend && npm test`
 Expected: all suites pass.
 
-- [ ] **Step 6: Smoke-check both scenarios in the dev server**
+- [x] **Step 6: Smoke-check both scenarios in the dev server**
 
 ```bash
 cd frontend && npm run dev -- --port 5173 &
@@ -1916,7 +1916,7 @@ kill %1
 ```
 Expected: `full 200` and `launch 200`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src/routes/+page.svelte frontend/src/routes/page.svelte.test.ts
@@ -1933,7 +1933,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - Create: `frontend/README.md`
 - (No source changes unless verification surfaces a bug.)
 
-- [ ] **Step 1: Production build + preview**
+- [x] **Step 1: Production build + preview**
 
 ```bash
 cd frontend && npm run build && npm run preview -- --port 4173 &
@@ -1944,7 +1944,7 @@ kill %1
 ```
 Expected: `200`; manifest JSON prints (name "FPL Autopilot").
 
-- [ ] **Step 2: Lighthouse PWA + mobile check (headless)**
+- [x] **Step 2: Lighthouse PWA + mobile check (headless)**
 
 ```bash
 cd frontend && npm run preview -- --port 4173 &
@@ -1958,7 +1958,7 @@ kill %1
 ```
 Expected: `installable-manifest` score `1` and a registered service worker. If Lighthouse cannot run in this environment, manually confirm: `manifest.webmanifest` is served, `sw.js` exists in `build/`, icons resolve (200) — and record that Lighthouse must be run on a machine with Chrome before merge. Delete the report file afterward: `rm -f frontend/lighthouse-report.json`.
 
-- [ ] **Step 3: Write the frontend README (run + the single integration point)**
+- [x] **Step 3: Write the frontend README (run + the single integration point)**
 
 `frontend/README.md`:
 ```markdown
@@ -1990,7 +1990,7 @@ data comes from. Replace its body (marked `INTEGRATION POINT`) with parallel
 `fetch('/api/...')` calls per `docs/api-contract.md`. Nothing else changes.
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
@@ -2000,7 +2000,7 @@ git commit -m "docs(dashboard): frontend README — run + integration point
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 5: Push and open the PR**
+- [x] **Step 5: Push and open the PR**
 
 ```bash
 git push -u origin feat/dashboard
@@ -2023,7 +2023,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 6: Confirm the PR exists**
+- [x] **Step 6: Confirm the PR exists**
 
 Run: `gh pr view --json url,state,baseRefName,headRefName`
 Expected: state OPEN, base `main`, head `feat/dashboard`.

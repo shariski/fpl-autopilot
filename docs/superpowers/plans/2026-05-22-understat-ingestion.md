@@ -1,6 +1,6 @@
 # Understat Ingestion Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** `fpl-autopilot refresh` ingests Understat season-aggregate xG/xA via its JSON endpoint, conservatively resolves Understat players to FPL ids, and persists into a new `understat_players` table — degrading gracefully if Understat fails.
 
@@ -36,7 +36,7 @@
 
 **Files:** Create `tests/fixtures/understat-players.json`
 
-- [ ] **Step 1: Capture the endpoint response (gzip auto-decompressed)**
+- [x] **Step 1: Capture the endpoint response (gzip auto-decompressed)**
 
 ```bash
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -49,14 +49,14 @@ curl -s --compressed -X POST \
   -o tests/fixtures/understat-players.json
 ```
 
-- [ ] **Step 2: Verify shape**
+- [x] **Step 2: Verify shape**
 
 ```bash
 .venv/bin/python -c "import json; d=json.load(open('tests/fixtures/understat-players.json')); ps=d['players']; print('success', d['success'], 'players', len(ps)); h=[p for p in ps if p['player_name']=='Erling Haaland'][0]; print('haaland xG', h['xG'], 'team', h['team_title'])"
 ```
 Expected: `success True players 500+`, Haaland present with a non-zero `xG`. If `success` is False or players is tiny, STOP and report (endpoint shape changed).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/fixtures/understat-players.json
@@ -69,7 +69,7 @@ git commit -m "test: capture frozen Understat getPlayersStats fixture"
 
 **Files:** Test `tests/test_understat_models.py`; Modify `src/data/models.py`
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_understat_models.py`
+- [x] **Step 1: Write the failing tests** in `tests/test_understat_models.py`
 
 ```python
 import pytest
@@ -100,12 +100,12 @@ def test_understat_schema_drift_fails_loudly(load):
         UnderstatPlayersResponse.model_validate(data)
 ```
 
-- [ ] **Step 2: Run to verify they FAIL**
+- [x] **Step 2: Run to verify they FAIL**
 
 Run: `.venv/bin/pytest tests/test_understat_models.py -v`
 Expected: FAIL — `ImportError: cannot import name 'UnderstatPlayer'`.
 
-- [ ] **Step 3: Append to `src/data/models.py`**
+- [x] **Step 3: Append to `src/data/models.py`**
 
 ```python
 class UnderstatPlayer(_Base):
@@ -127,12 +127,12 @@ class UnderstatPlayersResponse(_Base):
     players: list[UnderstatPlayer]
 ```
 
-- [ ] **Step 4: Run to verify they PASS**
+- [x] **Step 4: Run to verify they PASS**
 
 Run: `.venv/bin/pytest tests/test_understat_models.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_understat_models.py src/data/models.py
@@ -145,7 +145,7 @@ git commit -m "feat: Understat Pydantic models with loud drift detection"
 
 **Files:** Test `tests/test_understat_schema.py`; Modify `src/data/schema.sql`, `docs/architecture.md`
 
-- [ ] **Step 1: Write the failing test** in `tests/test_understat_schema.py`
+- [x] **Step 1: Write the failing test** in `tests/test_understat_schema.py`
 
 ```python
 def test_understat_players_table_exists(db):
@@ -158,12 +158,12 @@ def test_understat_players_table_exists(db):
     assert expected <= cols
 ```
 
-- [ ] **Step 2: Run to verify it FAILS**
+- [x] **Step 2: Run to verify it FAILS**
 
 Run: `.venv/bin/pytest tests/test_understat_schema.py -v`
 Expected: FAIL — assertion error (table/columns absent; `PRAGMA` returns empty set).
 
-- [ ] **Step 3: Append the table to `src/data/schema.sql`**
+- [x] **Step 3: Append the table to `src/data/schema.sql`**
 
 ```sql
 CREATE TABLE IF NOT EXISTS understat_players (
@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS understat_players (
 );
 ```
 
-- [ ] **Step 4: Document the table in `docs/architecture.md`** (B13). After the `### cache_meta` section, insert:
+- [x] **Step 4: Document the table in `docs/architecture.md`** (B13). After the `### cache_meta` section, insert:
 
 ```markdown
 ### `understat_players`
@@ -208,12 +208,12 @@ Season-aggregate xG/xA from Understat (supplementary data), with the resolved FP
 
 ```
 
-- [ ] **Step 5: Run to verify it PASSES**
+- [x] **Step 5: Run to verify it PASSES**
 
 Run: `.venv/bin/pytest tests/test_understat_schema.py -v`
 Expected: 1 passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/test_understat_schema.py src/data/schema.sql docs/architecture.md
@@ -228,7 +228,7 @@ The risky core. Logic validated empirically at 98% match against real data. Cons
 
 **Files:** Test `tests/test_name_resolver.py`; Create `src/data/name_resolver.py`
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_name_resolver.py`
+- [x] **Step 1: Write the failing tests** in `tests/test_name_resolver.py`
 
 ```python
 from src.data.models import BootstrapStatic, UnderstatPlayersResponse
@@ -292,12 +292,12 @@ def test_manual_override_is_authoritative(db, load):
     assert res.matched[target.id] == 99999
 ```
 
-- [ ] **Step 2: Run to verify they FAIL**
+- [x] **Step 2: Run to verify they FAIL**
 
 Run: `.venv/bin/pytest tests/test_name_resolver.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.data.name_resolver'`.
 
-- [ ] **Step 3: Write `src/data/name_resolver.py`**
+- [x] **Step 3: Write `src/data/name_resolver.py`**
 
 ```python
 import re
@@ -383,12 +383,12 @@ def resolve_players(fpl_players, fpl_teams, understat_players, overrides=None):
     return ResolutionResult(matched, unmatched, sorted(unmapped_teams))
 ```
 
-- [ ] **Step 4: Run to verify they PASS**
+- [x] **Step 4: Run to verify they PASS**
 
 Run: `.venv/bin/pytest tests/test_name_resolver.py -v`
 Expected: 6 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_name_resolver.py src/data/name_resolver.py
@@ -403,7 +403,7 @@ Mirrors `FPLClient` hardening. Deliberately NOT extracting a shared HTTP base �
 
 **Files:** Test `tests/test_understat_client.py`; Create `src/data/understat_client.py`
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_understat_client.py`
+- [x] **Step 1: Write the failing tests** in `tests/test_understat_client.py`
 
 ```python
 import pytest
@@ -480,12 +480,12 @@ def test_no_retry_on_404():
     assert len(session.calls) == 1
 ```
 
-- [ ] **Step 2: Run to verify they FAIL**
+- [x] **Step 2: Run to verify they FAIL**
 
 Run: `.venv/bin/pytest tests/test_understat_client.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.data.understat_client'`.
 
-- [ ] **Step 3: Write `src/data/understat_client.py`**
+- [x] **Step 3: Write `src/data/understat_client.py`**
 
 ```python
 import time
@@ -545,12 +545,12 @@ class UnderstatClient:
         return UnderstatPlayersResponse.model_validate(data)
 ```
 
-- [ ] **Step 4: Run to verify they PASS**
+- [x] **Step 4: Run to verify they PASS**
 
 Run: `.venv/bin/pytest tests/test_understat_client.py -v`
 Expected: 4 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_understat_client.py src/data/understat_client.py
@@ -563,7 +563,7 @@ git commit -m "feat: hardened Understat client (getPlayersStats, retry/backoff/r
 
 **Files:** Test `tests/test_understat_repository.py`; Modify `src/data/repository.py`
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_understat_repository.py`
+- [x] **Step 1: Write the failing tests** in `tests/test_understat_repository.py`
 
 ```python
 from src.data.models import BootstrapStatic, UnderstatPlayersResponse
@@ -611,12 +611,12 @@ def test_upsert_understat_idempotent(db, load):
     assert count == len(us)
 ```
 
-- [ ] **Step 2: Run to verify they FAIL**
+- [x] **Step 2: Run to verify they FAIL**
 
 Run: `.venv/bin/pytest tests/test_understat_repository.py -v`
 Expected: FAIL — `AttributeError: module 'src.data.repository' has no attribute 'upsert_understat_players'`.
 
-- [ ] **Step 3: Append to `src/data/repository.py`**
+- [x] **Step 3: Append to `src/data/repository.py`**
 
 ```python
 def _per90(value, minutes):
@@ -648,12 +648,12 @@ def upsert_understat_players(conn, understat_players, resolution, season):
     conn.commit()
 ```
 
-- [ ] **Step 4: Run to verify they PASS**
+- [x] **Step 4: Run to verify they PASS**
 
 Run: `.venv/bin/pytest tests/test_understat_repository.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_understat_repository.py src/data/repository.py
@@ -666,7 +666,7 @@ git commit -m "feat: upsert_understat_players (resolved fpl id + derived per-90)
 
 **Files:** Modify `src/data/cache.py`, `src/cli.py`, `config.yaml`; Create `data/name_resolution.yaml`; Test `tests/test_cli_refresh.py` (extend); Modify `docs/onboarding.md`
 
-- [ ] **Step 1: Add the Understat TTL** in `src/data/cache.py`. Change the `DEFAULT_TTL` dict to include understat:
+- [x] **Step 1: Add the Understat TTL** in `src/data/cache.py`. Change the `DEFAULT_TTL` dict to include understat:
 
 ```python
 DEFAULT_TTL = {
@@ -677,14 +677,14 @@ DEFAULT_TTL = {
 }
 ```
 
-- [ ] **Step 2: Add the season to `config.yaml`.** After the `storage:` block, add:
+- [x] **Step 2: Add the season to `config.yaml`.** After the `storage:` block, add:
 
 ```yaml
 understat:
   season: "2025"   # Understat uses the start year; "2025" = the 2025/26 season
 ```
 
-- [ ] **Step 3: Create the override template `data/name_resolution.yaml`**
+- [x] **Step 3: Create the override template `data/name_resolution.yaml`**
 
 ```yaml
 # Manual FPL<->Understat overrides for players the resolver can't match confidently.
@@ -694,7 +694,7 @@ understat:
 # "8260": 12345
 ```
 
-- [ ] **Step 4: Write the failing tests** — append to `tests/test_cli_refresh.py`
+- [x] **Step 4: Write the failing tests** — append to `tests/test_cli_refresh.py`
 
 ```python
 class FakeUnderstatClient:
@@ -775,12 +775,12 @@ def test_refresh_source_filter_fpl_only_skips_understat(load):
     conn.close()
 ```
 
-- [ ] **Step 5: Run to verify they FAIL**
+- [x] **Step 5: Run to verify they FAIL**
 
 Run: `.venv/bin/pytest tests/test_cli_refresh.py -v`
 Expected: FAIL — `TypeError` (refresh has no `understat_client`/`sources` params) or `NameError`.
 
-- [ ] **Step 6: Update `src/cli.py`.** Add imports, an overrides loader, gate the FPL block on `sources`, and add the Understat block. Replace the whole file with:
+- [x] **Step 6: Update `src/cli.py`.** Add imports, an overrides loader, gate the FPL block on `sources`, and add the Understat block. Replace the whole file with:
 
 ```python
 import argparse
@@ -885,7 +885,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 7: Update the name-resolution format note in `docs/onboarding.md`** (B13). Find the `name_resolution.yaml` example block:
+- [x] **Step 7: Update the name-resolution format note in `docs/onboarding.md`** (B13). Find the `name_resolution.yaml` example block:
 
 ```yaml
   - fpl_id: 12345
@@ -897,17 +897,17 @@ Replace it with:
   "8260": 12345
 ```
 
-- [ ] **Step 8: Run the whole suite**
+- [x] **Step 8: Run the whole suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: all pass (foundation tests + all new Understat tests + the 3 new CLI tests).
 
-- [ ] **Step 9: Verify `--help` shows `--source`**
+- [x] **Step 9: Verify `--help` shows `--source`**
 
 Run: `.venv/bin/fpl-autopilot refresh --help`
 Expected: usage lists `--full` and `--source {fpl,understat}`. (Do NOT run a live refresh here — that is Task 8.)
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/data/cache.py src/cli.py config.yaml data/name_resolution.yaml tests/test_cli_refresh.py docs/onboarding.md
@@ -920,12 +920,12 @@ git commit -m "feat: refresh ingests Understat with graceful degradation + --sou
 
 No new code — the acceptance check from spec §7.
 
-- [ ] **Step 1: Live full refresh**
+- [x] **Step 1: Live full refresh**
 
 Run: `.venv/bin/fpl-autopilot refresh --full`
 Expected: the FPL lines as before, plus e.g. `understat OK (matched ~520/533, ~10 unmatched, 0 unmapped teams)`.
 
-- [ ] **Step 2: Verify Understat data landed and resolved**
+- [x] **Step 2: Verify Understat data landed and resolved**
 
 Run:
 ```bash
@@ -936,7 +936,7 @@ sqlite3 data/fpl_autopilot.db "SELECT
 ```
 Expected: total 500+, matched ≥ 95% of total, no errors.
 
-- [ ] **Step 3: Spot-check a joined per-90 value for your squad**
+- [x] **Step 3: Spot-check a joined per-90 value for your squad**
 
 Run:
 ```bash
@@ -948,12 +948,12 @@ sqlite3 -box data/fpl_autopilot.db "SELECT p.web_name, u.xg_per_90, u.xa_per_90
 ```
 Expected: your squad's attackers (e.g. Haaland) show sensible xG/90 values; defenders lower.
 
-- [ ] **Step 4: Verify graceful degradation manually (offline simulation already covered by tests)** — confirm a second `refresh` short-circuits Understat via cache:
+- [x] **Step 4: Verify graceful degradation manually (offline simulation already covered by tests)** — confirm a second `refresh` short-circuits Understat via cache:
 
 Run: `.venv/bin/fpl-autopilot refresh`
 Expected: no `understat OK` line (fresh within 6h TTL).
 
-- [ ] **Step 5: Mark complete**
+- [x] **Step 5: Mark complete**
 
 ```bash
 git commit --allow-empty -m "chore: Understat ingestion slice complete and smoke-tested"

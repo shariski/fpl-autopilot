@@ -1,6 +1,6 @@
 # Confidence Scoring Implementation Plan — Phase 2.3a
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Implement the documented confidence formula (`src/decisions/confidence.py`) and surface a real integer `confidence` on captain and transfer decisions (currently `None`).
 
@@ -33,7 +33,7 @@
 
 **Files:** Create `src/decisions/confidence.py`, `tests/test_confidence.py`; Modify `docs/decision-engine.md`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_confidence.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_confidence.py`:
 
 ```python
 from datetime import datetime, timedelta, timezone
@@ -82,12 +82,12 @@ def test_hours_since_refresh_missing_row(db):
     assert confidence.hours_since_refresh(db) is None
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_confidence.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.decisions.confidence'`.
 
-- [ ] **Step 3: Implement** — create `src/decisions/confidence.py`:
+- [x] **Step 3: Implement** — create `src/decisions/confidence.py`:
 
 ```python
 from datetime import datetime, timezone
@@ -126,12 +126,12 @@ def hours_since_refresh(conn, resource="bootstrap-static"):
     return delta.total_seconds() / 3600.0
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_confidence.py -v`
 Expected: 7 passed.
 
-- [ ] **Step 5: Document the mapping in `decision-engine.md`** (B4) — under the "Confidence score" section, add a sub-note pinning the implementation detail:
+- [x] **Step 5: Document the mapping in `decision-engine.md`** (B4) — under the "Confidence score" section, add a sub-note pinning the implementation detail:
 
 ```markdown
 **Implementation detail (v0.7, 2026-05-23):** status-uncertainty maps the FPL `status` code —
@@ -142,7 +142,7 @@ two options (captain: top-2 xP; transfer: a suggestion's EP delta vs the next su
 ```
 Add a matching one-line entry to the decision-engine changelog.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/decisions/confidence.py tests/test_confidence.py docs/decision-engine.md
@@ -155,7 +155,7 @@ git commit -m "feat: confidence scoring (score + cache staleness); document stat
 
 **Files:** Modify `src/decisions/captain.py`, `tests/test_captain.py`, `docs/api-contract.md`
 
-- [ ] **Step 1: Update the integration test to expect `confidence`** — in `tests/test_captain.py`:
+- [x] **Step 1: Update the integration test to expect `confidence`** — in `tests/test_captain.py`:
 
 Change the keys assertion (currently `assert set(result.keys()) == {"picks", "vice_player_id"}`) to:
 ```python
@@ -168,12 +168,12 @@ Change the empty-GW assertion (currently `assert captain.get_captain_picks(db) =
     assert captain.get_captain_picks(db) == {"picks": [], "vice_player_id": None, "confidence": None}
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_captain.py -v`
 Expected: FAIL — the keys assertion fails (`confidence` missing from the result).
 
-- [ ] **Step 3: Implement** — in `src/decisions/captain.py`:
+- [x] **Step 3: Implement** — in `src/decisions/captain.py`:
 
 Add the import after the existing `import json`:
 ```python
@@ -200,19 +200,19 @@ Replace the body of `get_captain_picks` (from the `gw is None` early return thro
     return {"picks": picks, "vice_player_id": vice, "confidence": conf}
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_captain.py -v`
 Expected: all captain tests pass (the integration test now sees `confidence`).
 
-- [ ] **Step 5: Update `api-contract.md`** — in the `/captain` payload description, add that the response now includes a top-level `"confidence"` (integer 0–100, or `null` when there is no pick).
+- [x] **Step 5: Update `api-contract.md`** — in the `/captain` payload description, add that the response now includes a top-level `"confidence"` (integer 0–100, or `null` when there is no pick).
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 186 passed (180 + 6 from Task 1; Task 2 modifies existing tests, no net new).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/decisions/captain.py tests/test_captain.py docs/api-contract.md
@@ -225,18 +225,18 @@ git commit -m "feat: get_captain_picks returns confidence"
 
 **Files:** Modify `src/decisions/transfers.py`, `tests/test_transfers.py`
 
-- [ ] **Step 1: Update the suggestion test to expect an int `confidence`** — in `tests/test_transfers.py`, change `assert s["confidence"] is None` to:
+- [x] **Step 1: Update the suggestion test to expect an int `confidence`** — in `tests/test_transfers.py`, change `assert s["confidence"] is None` to:
 ```python
     assert isinstance(s["confidence"], int) and 0 <= s["confidence"] <= 100
 ```
 (Leave the `set(s.keys()) == {"out", "in", "ep_delta_5gw", "hit_cost", "confidence"}` assertion as-is — the key is unchanged.)
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_transfers.py -v`
 Expected: FAIL — `s["confidence"]` is `None`, not an int.
 
-- [ ] **Step 3: Implement** — in `src/decisions/transfers.py`:
+- [x] **Step 3: Implement** — in `src/decisions/transfers.py`:
 
 Add the import near the top (after the existing imports):
 ```python
@@ -259,17 +259,17 @@ Replace the suggestions-building block (the `suggestions = [ ... for pr in pairs
 ```
 (`pr["in"]`/`pr["out"]` are the full player dicts from `suggest_transfers`; they carry `status` because `get_transfer_suggestions` selects it: `SELECT id, web_name, position, team_id, price, status FROM players`.)
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_transfers.py -v`
 Expected: all transfer tests pass.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `.venv/bin/pytest -q`
 Expected: 186 passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/decisions/transfers.py tests/test_transfers.py

@@ -1,6 +1,6 @@
 # Data Layer Foundation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** `fpl-autopilot refresh` pulls real FPL data through a hardened client and lands it in SQLite, with tests that fail loudly if the API schema drifts.
 
@@ -38,7 +38,7 @@
 - Create: `pyproject.toml`, `requirements.txt`, `.gitignore`, `.env.example`, `config.yaml`
 - Create: `src/__init__.py`, `src/data/__init__.py`, `data/.gitkeep`, `data/logs/.gitkeep`
 
-- [ ] **Step 1: Create `pyproject.toml`**
+- [x] **Step 1: Create `pyproject.toml`**
 
 ```toml
 [build-system]
@@ -62,7 +62,7 @@ fpl-autopilot = "src.cli:main"
 packages = ["src", "src.data"]
 ```
 
-- [ ] **Step 2: Create `requirements.txt`**
+- [x] **Step 2: Create `requirements.txt`**
 
 ```
 requests
@@ -71,7 +71,7 @@ pyyaml
 pytest
 ```
 
-- [ ] **Step 3: Create `.gitignore`**
+- [x] **Step 3: Create `.gitignore`**
 
 ```
 .venv/
@@ -85,7 +85,7 @@ data/logs/*.log
 *.egg-info/
 ```
 
-- [ ] **Step 4: Create `.env.example`**
+- [x] **Step 4: Create `.env.example`**
 
 ```
 PORT=8000
@@ -93,7 +93,7 @@ HEALTHCHECK_URL=
 TELEGRAM_BOT_TOKEN=
 ```
 
-- [ ] **Step 5: Create `config.yaml`** (product-spec schema + `fpl`/`storage` for this slice)
+- [x] **Step 5: Create `config.yaml`** (product-spec schema + `fpl`/`storage` for this slice)
 
 ```yaml
 fpl:
@@ -136,7 +136,7 @@ xp_model:
   version: v1
 ```
 
-- [ ] **Step 6: Create package skeleton files**
+- [x] **Step 6: Create package skeleton files**
 
 Create empty `src/__init__.py` and `src/data/__init__.py`. Create empty `data/.gitkeep` and `data/logs/.gitkeep`.
 
@@ -145,7 +145,7 @@ mkdir -p src/data data/logs
 touch src/__init__.py src/data/__init__.py data/.gitkeep data/logs/.gitkeep
 ```
 
-- [ ] **Step 7: Create venv and install editable**
+- [x] **Step 7: Create venv and install editable**
 
 Run:
 ```bash
@@ -154,7 +154,7 @@ python3 -m venv .venv
 ```
 Expected: installs requests, pydantic, pyyaml, pytest, and the `fpl-autopilot` script without error.
 
-- [ ] **Step 8: Verify package imports and script exists**
+- [x] **Step 8: Verify package imports and script exists**
 
 Run:
 ```bash
@@ -163,7 +163,7 @@ Run:
 ```
 Expected: prints `ok`. The `fpl-autopilot --help` will error (no CLI yet) — that's fine at this step; we only confirm the entry point is wired.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add pyproject.toml requirements.txt .gitignore .env.example config.yaml src data/.gitkeep data/logs/.gitkeep
@@ -180,13 +180,13 @@ The codebase references `docs/` everywhere but the 8 spec docs sit at root. Move
 - Move: 8 root `.md` files → `docs/`
 - Modify: `docs/architecture.md` (add `cache_meta`, annotate `my_team`)
 
-- [ ] **Step 1: Move spec docs into `docs/`** (keep `CLAUDE.md` and `README.md` at root)
+- [x] **Step 1: Move spec docs into `docs/`** (keep `CLAUDE.md` and `README.md` at root)
 
 ```bash
 git mv architecture.md deadguard.md decision-engine.md onboarding.md plan.md product-spec.md risks.md runbook.md docs/
 ```
 
-- [ ] **Step 2: Add `cache_meta` to the data model in `docs/architecture.md`**
+- [x] **Step 2: Add `cache_meta` to the data model in `docs/architecture.md`**
 
 After the `### activity_log` table section (before `### credentials (Phase 2)`), insert:
 
@@ -202,7 +202,7 @@ Drives "read DB first, fetch only when stale" in the Data Layer.
 
 ```
 
-- [ ] **Step 3: Annotate the `my_team` public-API limitation in `docs/architecture.md`**
+- [x] **Step 3: Annotate the `my_team` public-API limitation in `docs/architecture.md`**
 
 In the `### my_team` table, change the `free_transfers` row's Notes and the `picks_json` row's Notes to record the public-API gap. Replace:
 
@@ -222,7 +222,7 @@ with:
 | free_transfers | INTEGER | Auth-only (Phase 2). NULL under public-API refresh. |
 ```
 
-- [ ] **Step 4: Verify docs moved and references resolve**
+- [x] **Step 4: Verify docs moved and references resolve**
 
 Run:
 ```bash
@@ -231,7 +231,7 @@ git status --short
 ```
 Expected: 8 docs now under `docs/`; `README.md` link `docs/plan.md` and `CLAUDE.md` ref `docs/decision-engine.md` now point to real paths.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -247,13 +247,13 @@ Tests assert against real API shapes. Capture them once with `curl`.
 **Files:**
 - Create: `tests/fixtures/bootstrap-static.json`, `fixtures.json`, `entry.json`, `picks.json`
 
-- [ ] **Step 1: Create fixtures dir**
+- [x] **Step 1: Create fixtures dir**
 
 ```bash
 mkdir -p tests/fixtures
 ```
 
-- [ ] **Step 2: Capture real responses** (realistic UA, per B6)
+- [x] **Step 2: Capture real responses** (realistic UA, per B6)
 
 ```bash
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -270,7 +270,7 @@ curl -s -A "$UA" "$B/entry/3122849/event/$GW/picks/" -o tests/fixtures/picks.jso
 echo "captured picks for GW $GW"
 ```
 
-- [ ] **Step 3: Verify fixtures are valid JSON with expected shape**
+- [x] **Step 3: Verify fixtures are valid JSON with expected shape**
 
 Run:
 ```bash
@@ -282,7 +282,7 @@ Expected: players 500+, teams 20, events 38, fixtures 300+, picks 15.
 
 If `picks` is not 15 (e.g. team didn't play that GW), pick the previous finished GW and re-capture picks.json.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/fixtures
@@ -298,7 +298,7 @@ git commit -m "test: capture frozen FPL API fixtures"
 - Test: `tests/test_models_schema.py`
 - Create: `src/data/models.py`
 
-- [ ] **Step 1: Create `tests/conftest.py`** (shared fixtures used by this and later tasks)
+- [x] **Step 1: Create `tests/conftest.py`** (shared fixtures used by this and later tasks)
 
 ```python
 import json
@@ -324,7 +324,7 @@ def db():
     conn.close()
 ```
 
-- [ ] **Step 2: Write the failing tests** in `tests/test_models_schema.py`
+- [x] **Step 2: Write the failing tests** in `tests/test_models_schema.py`
 
 ```python
 import pytest
@@ -362,12 +362,12 @@ def test_schema_drift_fails_loudly(load):
         BootstrapStatic.model_validate(data)
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_models_schema.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'src.data.models'`.
 
-- [ ] **Step 4: Write `src/data/models.py`**
+- [x] **Step 4: Write `src/data/models.py`**
 
 ```python
 from datetime import datetime
@@ -470,12 +470,12 @@ class ElementSummary(_Base):
     fixtures: list[dict]
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_models_schema.py -v`
 Expected: 5 passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/conftest.py tests/test_models_schema.py src/data/models.py
@@ -490,7 +490,7 @@ git commit -m "feat: Pydantic FPL response models with loud schema assertions"
 - Test: `tests/test_db.py`
 - Create: `src/data/schema.sql`, `src/data/db.py`
 
-- [ ] **Step 1: Write the failing test** in `tests/test_db.py`
+- [x] **Step 1: Write the failing test** in `tests/test_db.py`
 
 ```python
 def test_init_db_creates_all_tables(db):
@@ -510,12 +510,12 @@ def test_gameweeks_state_defaults_to_pending(db):
     assert row["state"] == "PENDING"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_db.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'src.data.db'`.
 
-- [ ] **Step 3: Write `src/data/schema.sql`** (mirrors `docs/architecture.md`)
+- [x] **Step 3: Write `src/data/schema.sql`** (mirrors `docs/architecture.md`)
 
 ```sql
 CREATE TABLE IF NOT EXISTS players (
@@ -639,7 +639,7 @@ CREATE TABLE IF NOT EXISTS cache_meta (
 );
 ```
 
-- [ ] **Step 4: Write `src/data/db.py`**
+- [x] **Step 4: Write `src/data/db.py`**
 
 ```python
 import sqlite3
@@ -659,12 +659,12 @@ def init_db(conn):
     conn.commit()
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_db.py -v`
 Expected: 2 passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/test_db.py src/data/schema.sql src/data/db.py
@@ -679,7 +679,7 @@ git commit -m "feat: SQLite schema mirroring architecture.md + cache_meta"
 - Test: `tests/test_repository.py`
 - Create: `src/data/repository.py`
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_repository.py`
+- [x] **Step 1: Write the failing tests** in `tests/test_repository.py`
 
 ```python
 from src.data.models import BootstrapStatic, EntryPicks, Fixture
@@ -740,12 +740,12 @@ def test_snapshot_my_team(db, load):
     assert row["bank"] == picks.entry_history.bank / 10.0
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_repository.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'src.data.repository'`.
 
-- [ ] **Step 3: Write `src/data/repository.py`**
+- [x] **Step 3: Write `src/data/repository.py`**
 
 ```python
 import json
@@ -847,12 +847,12 @@ def snapshot_my_team(conn, gw, picks):
     conn.commit()
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_repository.py -v`
 Expected: 5 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_repository.py src/data/repository.py
@@ -867,7 +867,7 @@ git commit -m "feat: repository upserts for teams/players/gameweeks/fixtures/my_
 - Test: `tests/test_cache.py`
 - Create: `src/data/cache.py`
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_cache.py`
+- [x] **Step 1: Write the failing tests** in `tests/test_cache.py`
 
 ```python
 from datetime import datetime, timezone, timedelta
@@ -889,12 +889,12 @@ def test_stale_after_ttl_elapsed(db):
     assert cache.is_stale(db, "bootstrap-static", now=future) is True
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_cache.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'src.data.cache'`.
 
-- [ ] **Step 3: Write `src/data/cache.py`**
+- [x] **Step 3: Write `src/data/cache.py`**
 
 ```python
 from datetime import datetime, timezone, timedelta
@@ -932,12 +932,12 @@ def mark_fetched(conn, resource, now=None):
     conn.commit()
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_cache.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_cache.py src/data/cache.py
@@ -952,7 +952,7 @@ git commit -m "feat: cache staleness layer (read-DB-first)"
 - Test: `tests/test_config.py`
 - Create: `src/config.py`
 
-- [ ] **Step 1: Write the failing test** in `tests/test_config.py`
+- [x] **Step 1: Write the failing test** in `tests/test_config.py`
 
 ```python
 from src import config
@@ -969,12 +969,12 @@ def test_loads_repo_config_yaml():
     assert cfg["fpl"]["team_id"] == 3122849
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_config.py -v`
 Expected: FAIL with `ImportError`/`AttributeError` (no `src.config`).
 
-- [ ] **Step 3: Write `src/config.py`**
+- [x] **Step 3: Write `src/config.py`**
 
 ```python
 import pathlib
@@ -1001,12 +1001,12 @@ def db_path(cfg=None):
     return cfg.get("storage", {}).get("db_path", DEFAULT_DB_PATH)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_config.py -v`
 Expected: 2 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_config.py src/config.py
@@ -1021,7 +1021,7 @@ git commit -m "feat: config loader (team_id, db_path)"
 - Test: `tests/test_fpl_client.py`
 - Create: `src/data/fpl_client.py`
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_fpl_client.py`
+- [x] **Step 1: Write the failing tests** in `tests/test_fpl_client.py`
 
 ```python
 import pytest
@@ -1124,12 +1124,12 @@ def test_rate_limit_sleeps_between_calls():
     assert any(s > 0 for s in sleeps)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_fpl_client.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'src.data.fpl_client'`.
 
-- [ ] **Step 3: Write `src/data/fpl_client.py`**
+- [x] **Step 3: Write `src/data/fpl_client.py`**
 
 ```python
 import time
@@ -1199,12 +1199,12 @@ class FPLClient:
         return ElementSummary.model_validate(self._get(f"element-summary/{player_id}/"))
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_fpl_client.py -v`
 Expected: 6 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_fpl_client.py src/data/fpl_client.py
@@ -1219,7 +1219,7 @@ git commit -m "feat: hardened FPL API client (retry/backoff/rate-limit/UA)"
 - Test: `tests/test_cli_refresh.py`
 - Create: `src/cli.py`
 
-- [ ] **Step 1: Write the failing test** in `tests/test_cli_refresh.py`
+- [x] **Step 1: Write the failing test** in `tests/test_cli_refresh.py`
 
 ```python
 from src import cli
@@ -1259,12 +1259,12 @@ def test_refresh_populates_db(load):
     conn.close()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_cli_refresh.py -v`
 Expected: FAIL with `ImportError`/`AttributeError` (no `cli.refresh`).
 
-- [ ] **Step 3: Write `src/cli.py`**
+- [x] **Step 3: Write `src/cli.py`**
 
 ```python
 import argparse
@@ -1332,17 +1332,17 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_cli_refresh.py -v`
 Expected: 1 passed.
 
-- [ ] **Step 5: Run the full test suite**
+- [x] **Step 5: Run the full test suite**
 
 Run: `.venv/bin/pytest -v`
 Expected: all tests pass (models, db, repository, cache, config, client, cli).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/test_cli_refresh.py src/cli.py
@@ -1355,7 +1355,7 @@ git commit -m "feat: fpl-autopilot refresh CLI wiring data layer end-to-end"
 
 Verify the slice against the real API and the real team `3122849`. No new code — this is the acceptance check from spec §8.
 
-- [ ] **Step 1: Run a full refresh against the live API**
+- [x] **Step 1: Run a full refresh against the live API**
 
 Run:
 ```bash
@@ -1368,7 +1368,7 @@ fixtures OK (300+ fixtures)
 my_team OK (GW38, 15 picks)
 ```
 
-- [ ] **Step 2: Verify the data landed in SQLite**
+- [x] **Step 2: Verify the data landed in SQLite**
 
 Run:
 ```bash
@@ -1381,7 +1381,7 @@ sqlite3 data/fpl_autopilot.db "SELECT
 ```
 Expected: players 500+, teams 20, fixtures 300+, gameweeks 38, my_team_rows 1.
 
-- [ ] **Step 3: Eyeball the squad snapshot**
+- [x] **Step 3: Eyeball the squad snapshot**
 
 Run:
 ```bash
@@ -1392,7 +1392,7 @@ sqlite3 data/fpl_autopilot.db "SELECT p.web_name, p.position, p.price
 ```
 Expected: 15 recognizable players with positions and prices — your actual squad.
 
-- [ ] **Step 4: Verify the cache short-circuits a second refresh**
+- [x] **Step 4: Verify the cache short-circuits a second refresh**
 
 Run:
 ```bash
@@ -1400,7 +1400,7 @@ Run:
 ```
 Expected: prints nothing (or fewer lines) because all resources are fresh within TTL — proves read-DB-first caching works.
 
-- [ ] **Step 5: Final commit (mark slice complete)**
+- [x] **Step 5: Final commit (mark slice complete)**
 
 ```bash
 git add -A
