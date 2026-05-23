@@ -360,6 +360,16 @@ def test_handle_unfreeze_clears(db, monkeypatch):
     assert override.is_frozen(db) is False
 
 
+def test_handle_unfreeze_wrong_chat_ignored(db, monkeypatch):
+    from src.execution import override
+    _configure(monkeypatch)
+    override.freeze(db, reason="x", source="user")
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    monkeypatch.setattr(telegram, "send_message", lambda text, **k: True)
+    ti.handle_unfreeze(db, _cq("u:1", chat_id="999"))
+    assert override.is_frozen(db) is True
+
+
 def test_poll_once_routes_freeze_and_unfreeze(db, monkeypatch):
     _configure(monkeypatch)
     monkeypatch.setattr(ti, "is_enabled", lambda cfg=None: True)
