@@ -206,6 +206,11 @@ def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
         print(f"  body: {result.request['body']}")
     elif result.ok:
         print(f"Submitted. HTTP {result.status}.")
+        from .data import repository
+        from .decisions.transfers import _next_gw
+        gw = _next_gw(conn)
+        if gw is not None:
+            repository.touch_user_action(conn, gw)
     else:
         print(f"Submission failed (HTTP {result.status}); nothing changed.")
     if owns_conn:
@@ -250,6 +255,11 @@ def _execute_transfer_cli(conn=None, salt_path=None, verify_path=None, live=Fals
         print(f"  body: {result.request['body']}")
     elif result.ok:
         print(f"Submitted. HTTP {result.status}.")
+        from .data import repository
+        from .decisions.transfers import _next_gw
+        gw = _next_gw(conn)
+        if gw is not None:
+            repository.touch_user_action(conn, gw)
     else:
         print(f"Submission failed (HTTP {result.status}); nothing changed.")
     if owns_conn:
