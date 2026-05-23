@@ -40,6 +40,20 @@ These are scope decisions, not "coming later."
 
 The full reasoning behind these choices lives in `docs/architecture.md`.
 
+## Configuration
+
+### Telegram notifications (optional)
+
+Set these environment variables to receive outbound notifications from the unattended
+scheduler — post-execution confirmations, "decision pending" pings, and auth-failure alerts:
+
+- `TELEGRAM_BOT_TOKEN` — bot token from [@BotFather](https://t.me/BotFather)
+- `TELEGRAM_CHAT_ID` — your chat id
+
+These are intentionally **not** encrypted under the master password, so alerts can be delivered
+even when the master key isn't loaded (e.g. an unattended run that can't authenticate). When unset,
+notifications are a silent no-op.
+
 ## Status
 
 Pre-build. See [`docs/plan.md`](docs/plan.md) for the task list and [`docs/risks.md`](docs/risks.md) for known unknowns.
