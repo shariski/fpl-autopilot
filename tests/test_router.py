@@ -134,3 +134,12 @@ def test_route_gameweek_notify_entries_executed_false(db):
                                  session=sess, ranker=_ranker(90), suggester=_suggester(90, 9.0))
     assert all(p["executed"] is False for p in plan)
     assert all("pending" in p["summary"].lower() for p in plan)
+
+
+def test_route_gameweek_entries_carry_identity(db):
+    sess = _FakeSession(_current())
+    plan = router.route_gameweek(db, key=b"u", live=False, mode="manual",
+                                 session=sess, ranker=_ranker(90), suggester=_suggester(90, 9.0))
+    by = {p["decision"]: p for p in plan}
+    assert by["captain"]["identity"] == {"captain_id": 5, "vice_id": 6}
+    assert by["transfer"]["identity"] == {"out_id": 7, "in_id": 99}

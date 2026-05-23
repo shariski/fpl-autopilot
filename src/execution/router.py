@@ -42,7 +42,9 @@ def route_gameweek(conn, key, *, live=False, mode=None, session=None, ranker=Non
         verb = "Captain" if r == "execute" else "Captain pending"
         plan.append({"decision": "captain", "route": r, "confidence": caps["confidence"],
                      "summary": f"{verb}: {cap_name} (confidence {caps['confidence']})",
-                     "executed": r == "execute"})
+                     "executed": r == "execute",
+                     "identity": {"captain_id": caps["picks"][0]["player_id"],
+                                  "vice_id": caps["vice_player_id"]}})
         if r == "execute":
             lineup.run_lineup(conn, key, live=live, confirm_fn=_auto_approve,
                               session=session, ranker=ranker)
@@ -60,7 +62,9 @@ def route_gameweek(conn, key, *, live=False, mode=None, session=None, ranker=Non
         plan.append({"decision": "transfer", "route": r, "confidence": top["confidence"],
                      "summary": (f"{verb}: OUT {top['out']['web_name']} IN {top['in']['web_name']} "
                                  f"(+{top['ep_delta_5gw']} xP/5GW, conf {top['confidence']})"),
-                     "executed": r == "execute"})
+                     "executed": r == "execute",
+                     "identity": {"out_id": top["out"]["player_id"],
+                                  "in_id": top["in"]["player_id"]}})
         if r == "execute":
             transfer_exec.run_transfer(conn, key, rank=1, live=live, confirm_fn=_auto_approve,
                                        session=session, suggester=suggester)
