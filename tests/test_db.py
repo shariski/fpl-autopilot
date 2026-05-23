@@ -32,3 +32,14 @@ def test_migrate_credentials_adds_columns():
     db._migrate_credentials(conn)
     cols_again = {r["name"] for r in conn.execute("PRAGMA table_info(credentials)")}
     assert cols_again == cols
+
+
+def test_migrate_credentials_adds_token_columns():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE credentials (id INTEGER PRIMARY KEY, session_last_refreshed TIMESTAMP)")
+    db._migrate_credentials(conn)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(credentials)")}
+    for c in ("refresh_token_encrypted", "access_token_encrypted", "access_token_expires_at"):
+        assert c in cols
+    db._migrate_credentials(conn)  # idempotent

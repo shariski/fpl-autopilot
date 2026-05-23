@@ -19,6 +19,12 @@ def _migrate_credentials(conn):
         conn.execute("ALTER TABLE credentials ADD COLUMN auth_state TEXT DEFAULT 'active'")
     if "relogin_failures" not in cols:
         conn.execute("ALTER TABLE credentials ADD COLUMN relogin_failures INTEGER DEFAULT 0")
+    if "refresh_token_encrypted" not in cols:
+        conn.execute("ALTER TABLE credentials ADD COLUMN refresh_token_encrypted BLOB")
+    if "access_token_encrypted" not in cols:
+        conn.execute("ALTER TABLE credentials ADD COLUMN access_token_encrypted BLOB")
+    if "access_token_expires_at" not in cols:
+        conn.execute("ALTER TABLE credentials ADD COLUMN access_token_expires_at TEXT")
 
 
 def init_db(conn):

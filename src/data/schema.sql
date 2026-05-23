@@ -112,7 +112,10 @@ CREATE TABLE IF NOT EXISTS credentials (
   csrf_token_encrypted BLOB,
   session_last_refreshed TIMESTAMP,
   auth_state TEXT DEFAULT 'active',
-  relogin_failures INTEGER DEFAULT 0
+  relogin_failures INTEGER DEFAULT 0,
+  refresh_token_encrypted BLOB,
+  access_token_encrypted BLOB,
+  access_token_expires_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS cache_meta (
