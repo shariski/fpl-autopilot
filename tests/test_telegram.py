@@ -97,7 +97,7 @@ def test_format_info_has_review_suffix():
 
 
 def test_format_alert():
-    assert telegram._format("alert", "session expired").startswith("❌ Autopilot blocked")
+    assert telegram._format("alert", "session expired") == "❌ Autopilot blocked\nsession expired"
 
 
 def test_notify_noop_unconfigured_no_log(db, monkeypatch):
@@ -151,3 +151,29 @@ def test_notify_plan_maps_kinds(monkeypatch):
     assert [c["kind"] for c in calls] == ["executed", "info"]
     assert [c["decision_type"] for c in calls] == ["captain", "transfer"]
     assert [c["summary"] for c in calls] == ["Cap: X", "OUT A IN B"]
+
+
+def test_send_message_false_on_non_dict_json(monkeypatch):
+    _configure(monkeypatch)
+    assert telegram.send_message("x", session=_FakeSession(_Resp(200, True))) is False
+
+
+def test_is_configured_false_when_only_chat(monkeypatch):
+    monkeypatch.delenv(telegram.BOT_TOKEN_ENV, raising=False)
+    monkeypatch.setenv(telegram.CHAT_ID_ENV, "123")
+    assert telegram.is_configured() is False
+
+
+def test_notify_alert_sends_formatted_text(db, monkeypatch):
+    _configure(monkeypatch)
+    captured = {}
+
+    def _rec(text, **kwargs):
+        captured["text"] = text
+        return True
+
+    monkeypatch.setattr(telegram, "send_message", _rec)
+    assert telegram.notify(db, kind="alert", decision_type="auth", mode="auto",
+                           summary="FPL session expired") is True
+    assert captured["text"] == "❌ Autopilot blocked\nFPL session expired"
+    assert db.execute("SELECT COUNT(*) c FROM activity_log").fetchone()["c"] == 0

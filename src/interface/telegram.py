@@ -32,9 +32,12 @@ def send_message(text, *, buttons=None, session=None):
     if resp.status_code != 200:
         return False
     try:
-        return bool((resp.json() or {}).get("ok"))
+        body = resp.json()
     except ValueError:
         return False
+    if not isinstance(body, dict):
+        return False
+    return bool(body.get("ok"))
 
 
 _ICONS = {
@@ -47,9 +50,8 @@ _ICONS = {
 def _format(kind, summary):
     """B9 copy: functional icon + header + caller-built summary (action/reason/impact)."""
     header = _ICONS.get(kind, _ICONS["info"])
-    if kind == "info":
-        return f"{header}\n{summary}\nReview before the deadline."
-    return f"{header}\n{summary}"
+    suffix = "\nReview before the deadline." if kind == "info" else ""
+    return f"{header}\n{summary}{suffix}"
 
 
 def notify(conn, *, kind, decision_type, mode, summary, session=None):
