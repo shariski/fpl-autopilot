@@ -149,3 +149,22 @@ def handle_callback(conn, key, cq, *, session=None, now=None,
     telegram.notify(conn, kind="executed", decision_type=dtype, mode=mode,
                     summary=entry["confirmed_summary"])
     telegram.answer_callback_query(cq["id"], text="Confirmed", session=session)
+
+
+def poll_once(key, *, conn=None, session=None):
+    if not is_enabled():
+        return
+    owns = conn is None
+    conn = conn or connect(db_path())
+    init_db(conn)
+    try:
+        offset = repository.get_telegram_state(conn, "update_offset")
+        offset = int(offset) if offset is not None else None
+        for u in telegram.get_updates(offset, session=session):
+            cq = u.get("callback_query")
+            if cq:
+                handle_callback(conn, key, cq, session=session)
+            repository.set_telegram_state(conn, "update_offset", str(u["update_id"] + 1))
+    finally:
+        if owns:
+            conn.close()

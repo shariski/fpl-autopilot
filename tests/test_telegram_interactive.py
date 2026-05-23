@@ -199,3 +199,35 @@ def test_handle_callback_confirm_execution_failure_marks_failed(db, monkeypatch)
                        ranker=_ranker_caps(), lineup_fn=boom)
     assert db.execute("SELECT status FROM pending_decisions WHERE id=?", (pid,)).fetchone()["status"] == "failed"
     assert "alert" in alerts
+
+
+def test_poll_once_noop_when_disabled(db, monkeypatch):
+    monkeypatch.delenv(telegram.BOT_TOKEN_ENV, raising=False)
+    monkeypatch.delenv(telegram.CHAT_ID_ENV, raising=False)
+    called = []
+    monkeypatch.setattr(telegram, "get_updates", lambda offset, **k: called.append(1) or [])
+    ti.poll_once(b"key", conn=db)
+    assert called == []
+
+
+def test_poll_once_dispatches_and_advances_offset(db, monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(ti, "is_enabled", lambda cfg=None: True)
+    updates = [{"update_id": 10, "callback_query": {"id": "a", "data": "r:1"}},
+               {"update_id": 11, "callback_query": {"id": "b", "data": "r:2"}}]
+    monkeypatch.setattr(telegram, "get_updates", lambda offset, **k: updates)
+    seen = []
+    monkeypatch.setattr(ti, "handle_callback", lambda conn, key, cq, **k: seen.append(cq["id"]))
+    ti.poll_once(b"key", conn=db)
+    assert seen == ["a", "b"]
+    assert repository.get_telegram_state(db, "update_offset") == "12"  # last update_id + 1
+
+
+def test_poll_once_passes_stored_offset(db, monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(ti, "is_enabled", lambda cfg=None: True)
+    repository.set_telegram_state(db, "update_offset", "5")
+    seen_offset = []
+    monkeypatch.setattr(telegram, "get_updates", lambda offset, **k: seen_offset.append(offset) or [])
+    ti.poll_once(b"key", conn=db)
+    assert seen_offset == [5]
