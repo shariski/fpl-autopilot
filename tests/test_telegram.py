@@ -177,3 +177,39 @@ def test_notify_alert_sends_formatted_text(db, monkeypatch):
                            summary="FPL session expired") is True
     assert captured["text"] == "❌ Autopilot blocked\nFPL session expired"
     assert db.execute("SELECT COUNT(*) c FROM activity_log").fetchone()["c"] == 0
+
+
+def test_get_updates_noop_when_unconfigured(monkeypatch):
+    monkeypatch.delenv(telegram.BOT_TOKEN_ENV, raising=False)
+    monkeypatch.delenv(telegram.CHAT_ID_ENV, raising=False)
+    assert telegram.get_updates(None, session=_FakeSession()) == []
+
+
+def test_get_updates_returns_result_and_passes_offset(monkeypatch):
+    _configure(monkeypatch)
+    sess = _FakeSession(_Resp(200, {"ok": True, "result": [{"update_id": 5}]}))
+    out = telegram.get_updates(7, session=sess)
+    assert out == [{"update_id": 5}]
+    assert sess.posted["url"].endswith("/getUpdates")
+    assert sess.posted["json"] == {"offset": 7, "timeout": 0}
+
+
+def test_get_updates_empty_on_error(monkeypatch):
+    _configure(monkeypatch)
+    assert telegram.get_updates(None, session=_FakeSession(boom=True)) == []
+    assert telegram.get_updates(None, session=_FakeSession(_Resp(500, {}))) == []
+
+
+def test_answer_callback_query_posts_when_configured(monkeypatch):
+    _configure(monkeypatch)
+    sess = _FakeSession(_Resp(200, {"ok": True}))
+    assert telegram.answer_callback_query("cbid", text="ok", session=sess) is True
+    assert sess.posted["url"].endswith("/answerCallbackQuery")
+    assert sess.posted["json"]["callback_query_id"] == "cbid"
+    assert sess.posted["json"]["text"] == "ok"
+
+
+def test_answer_callback_query_noop_when_unconfigured(monkeypatch):
+    monkeypatch.delenv(telegram.BOT_TOKEN_ENV, raising=False)
+    monkeypatch.delenv(telegram.CHAT_ID_ENV, raising=False)
+    assert telegram.answer_callback_query("cbid", session=_FakeSession()) is False

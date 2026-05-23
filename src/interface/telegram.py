@@ -80,3 +80,43 @@ def notify_plan(conn, plan, *, mode, session=None):
         kind = "executed" if entry["executed"] else "info"
         notify(conn, kind=kind, decision_type=entry["decision"], mode=mode,
                summary=entry["summary"], session=session)
+
+
+def get_updates(offset, *, session=None):
+    """Telegram getUpdates. Returns the 'result' list, or [] when unconfigured or on any
+    error (never raises, never logs the token). offset (int|None) acks prior updates."""
+    if not is_configured():
+        return []
+    token = os.getenv(BOT_TOKEN_ENV)
+    session = session or requests.Session()
+    try:
+        resp = session.post(f"{API_BASE}/bot{token}/getUpdates",
+                            json={"offset": offset, "timeout": 0}, timeout=TIMEOUT)
+    except requests.RequestException:
+        return []
+    if resp.status_code != 200:
+        return []
+    try:
+        body = resp.json()
+    except ValueError:
+        return []
+    if not isinstance(body, dict) or not body.get("ok"):
+        return []
+    result = body.get("result")
+    return result if isinstance(result, list) else []
+
+
+def answer_callback_query(callback_query_id, *, text=None, session=None):
+    """Ack a callback so the client stops spinning. Returns False when unconfigured/on error."""
+    if not is_configured():
+        return False
+    token = os.getenv(BOT_TOKEN_ENV)
+    payload = {"callback_query_id": callback_query_id}
+    if text is not None:
+        payload["text"] = text
+    session = session or requests.Session()
+    try:
+        resp = session.post(f"{API_BASE}/bot{token}/answerCallbackQuery", json=payload, timeout=TIMEOUT)
+    except requests.RequestException:
+        return False
+    return resp.status_code == 200
