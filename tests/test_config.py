@@ -15,3 +15,13 @@ def test_loads_repo_config_yaml():
 def test_db_path_memory_and_absolute_passthrough():
     assert config.db_path({"storage": {"db_path": ":memory:"}}) == ":memory:"
     assert config.db_path({"storage": {"db_path": "/tmp/abs.db"}}) == "/tmp/abs.db"
+
+
+def test_mode_from_config():
+    assert config.mode({"mode": {"current": "auto"}}) == "auto"
+    assert config.mode({}) == "manual"  # default
+
+
+def test_confidence_floor_from_config():
+    assert config.confidence_floor({"thresholds": {"confidence_floor": 65}}) == 65
+    assert config.confidence_floor({}) == 70  # default

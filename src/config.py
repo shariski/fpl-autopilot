@@ -24,3 +24,13 @@ def db_path(cfg=None):
         return raw
     p = pathlib.Path(raw).expanduser()
     return str(p if p.is_absolute() else ROOT / p)
+
+
+def mode(cfg=None):
+    cfg = cfg or load_config()
+    return cfg.get("mode", {}).get("current", "manual")
+
+
+def confidence_floor(cfg=None):
+    cfg = cfg or load_config()
+    return cfg.get("thresholds", {}).get("confidence_floor", 70)
