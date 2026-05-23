@@ -33,8 +33,12 @@ Resume point for continuing on another machine. Everything below is in git (push
     xP), `run_lineup(optimize_bench=True)` (captain/vice + bench in one write), `deadguard._pick_flagged_transfer`
     (targeted, free, ep≥3.0, conf≥75, ≤1) wired into `_run_trigger` (lineup → lock → best-effort transfer).
     `deadguard.scope` config accessors. Bench reorder → FPL native auto-sub. B8 (no chips/hits/multi/formation).
-- **Test suite: 329 passing.** `main` has 2.1–2.5a pushed; **2.5b is merged to main locally but NOT
-  pushed** (10 commits ahead of origin/main — push when ready).
+  - 2.7 Emergency Override — **persisted freeze / kill-switch + B7 auto-freeze DONE.** New `system_state`
+    table; `src/execution/override.py` gate; `auto_execute_job` + `run_deadguard_job` short-circuit when
+    frozen (explicit Confirm NOT gated); `ensure_session` counts refresh failures → freeze at 2; Telegram
+    🛑/▶️ + CLI `freeze`/`unfreeze`/`freeze-status`. (See "2.7" section below.)
+- **Test suite: 361 passing.** Phase-2 slices 2.1–2.5b + **2.7 Emergency Override** are merged to `main`
+  and pushed to origin.
 
 ## Auth reality (don't re-derive this — it cost a lot to find)
 
@@ -93,19 +97,41 @@ final; B8 holds — no chips/hits/multi/formation; bench reorder only touches 13
 - **Deferred (deadguard):** `transfer_if_underperform` (sell a healthy underperformer; default off);
   explicit pre-deadline formation-valid starter→bench swaps (rely on FPL native auto-sub instead).
 
-## NEXT TASK: 2.7 Emergency Override (kill switch / freeze)
+## 2.7 Emergency Override — DONE (merged to main, pushed)
 
-The last Phase-2 safety capability — a lot now acts autonomously (auto-exec + deadguard captain/bench/
-transfer). Scope to brainstorm: a freeze that halts ALL auto-execution + deadguard, checked at the top of
-`auto_execute_job` and `run_deadguard_job` before any live action (a config flag and/or a persisted state
-+ a one-tap Telegram "freeze" / CLI command); plus B7's "freeze auto-execution after 2 consecutive
-re-login failures" (the `credentials.relogin_failures` counter column exists; 2.1 only marks `expired`,
-2.4a only alerts at `SessionExpired` — wire the freeze here). Re-enter brainstorming for 2.7, then spec
-→ plan → subagent. (Alternatively do 2.5c first — late-news/undo/dashboard polish.)
+Specs/plans under `docs/superpowers/{specs,plans}/2026-05-23-emergency-override*`. A persisted freeze
+(new `system_state` key/value table; row present = frozen, holds `{since, reason, source}`) halts
+autonomous FPL writes: `auto_execute_job` (auto mode) and the ENTIRE `run_deadguard_job` short-circuit
+when frozen (deadguard **fully dormant** — no H-120 warning, no H-30 trigger, no state change). The user's
+explicit Telegram **Confirm** (`handle_callback`) is intentionally NOT gated (autonomous-only). The gate is
+`src/execution/override.py` (`is_frozen`/`status`/`freeze`/`unfreeze`/`maybe_auto_freeze`, Data-Layer-only
+per B2 — no Telegram import; callers send the copy). **B7 wired:** `ensure_session` increments
+`credentials.relogin_failures` on a `TokenRefreshError` (network blips don't count); the orchestrators call
+`override.maybe_auto_freeze` → freeze (`source="auto"`) at 2 consecutive failures + alert once; success
+resets the counter via `mark_session_ok`. Telegram `f:`/`u:` callbacks: 🛑 Freeze on the deadguard warning
++ auto-mode notice, ▶️ Unfreeze on the freeze confirmation (chat-whitelisted). CLI `freeze`/`unfreeze`/
+`freeze-status` (no master password — freeze is plaintext operational state) + `frozen:`/`relogin_failures:`
+lines in `auth-status`. No `decision-engine.md` change (execution gate, not decision logic, so B4 untouched);
+`deadguard.md` + `runbook.md` updated. Built via 10 TDD subagent tasks + two-stage reviews + a final opus
+review (clean: B2 intact, no secrets logged, every autonomous write path gated, confirm-while-frozen
+regression-tested). 361 tests green.
+- **Deferred (noted in review, non-blocking):** the `_run_trigger` transfer step's `SessionExpired` is
+  caught by the generic handler (unreachable for auth failures — the lineup write fails first); a stale
+  `DEADGUARD_ACTIVE` can linger after a SessionExpired-aborted trigger (pre-existing from 2.5a, benign —
+  not a RESOLVED state, so it re-runs cleanly).
 
-## Remaining Phase 2 after 2.7
-- **2.5c** — late-news re-evaluation, undo, dashboard banner, multi-device (from `docs/deadguard.md`).
-- (2.6 Dry-Run is effectively satisfied — every executor + the router is dry-run-first.)
+## NEXT TASK: 2.5c — late-news / undo / dashboard banner (last Phase-2 slice)
+
+From `docs/deadguard.md`: late-news re-evaluation (re-run the decision if a player's status changes after a
+deadguard action but before the deadline), an undo path, a dashboard freeze/deadguard banner, and the
+multi-device notes. The dashboard freeze indicator naturally belongs here. Re-enter brainstorming for 2.5c,
+then spec → plan → subagent. After 2.5c, **Phase 2 (Decision Automation) is complete** and **Phase 3 (AI
+Layer)** is next (LLM reasoning, mini-league context, personalization, conversational interface).
+
+## Phase 2 status
+- **DONE:** 2.1 auth · 2.2 executor · 2.3 router · 2.4a/b Telegram · 2.5a/b deadguard · 2.7 emergency override.
+- 2.6 Dry-Run — effectively satisfied (every executor + the router is dry-run-first).
+- **2.5c** — the only remaining Phase-2 slice (see NEXT TASK).
 
 ## Tech debt / cleanup (small, non-blocking — flagged in 2.5 reviews)
 - `src/decisions/bench.py` imports the private `transfers._next_gw` (captain.py does the same) — extract
