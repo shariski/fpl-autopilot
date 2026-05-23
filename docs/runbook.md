@@ -137,6 +137,27 @@ If a deadline is approaching: act manually via the FPL website. Re-establish ses
 
 ---
 
+## Emergency override (freeze / kill-switch)
+
+A freeze halts ALL autonomous FPL writes — auto-mode `auto_execute_job` and the entire
+`run_deadguard_job`. A user's explicit Telegram **Confirm** is still honoured (freeze stops
+autonomy, not deliberate action).
+
+- **Freeze:** `fpl-autopilot freeze [--reason "..."]`, or tap 🛑 Freeze on the deadguard warning /
+  an auto-mode execution notice (Telegram, requires `telegram.interactive`).
+- **Unfreeze:** `fpl-autopilot unfreeze`, or tap ▶️ Unfreeze on the freeze confirmation message.
+- **Status:** `fpl-autopilot freeze-status`, or the `frozen:` / `relogin_failures:` lines in
+  `fpl-autopilot auth-status`.
+- **No master password is required** to freeze/unfreeze — the freeze is plaintext operational state.
+
+### Automatic freeze (B7)
+After **two consecutive** failed token refreshes, the system freezes itself (`source="auto"`) and
+alerts once. Unfreezing alone will not help — the refresh token is still bad. Recover by:
+1. `fpl-autopilot init-fpl` (paste a fresh refresh token) — this resets `relogin_failures` to 0.
+2. `fpl-autopilot unfreeze`.
+
+---
+
 ## §4 — Account flagged or banned by FPL 🔴
 
 **Symptom:** Login fails with a message about suspicious activity, or the FPL site shows the account is restricted.

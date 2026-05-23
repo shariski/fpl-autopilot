@@ -189,3 +189,11 @@ Deadguard interacts with the three modes as follows:
 | Hybrid | Secondary. Hybrid auto-handles captain/bench, so deadguard mainly fires for transfers the user ignored. |
 
 The deadguard is disabled if `mode = auto` and `confidence_floor` is set very low — in that case Auto effectively absorbs deadguard's role. But the default config keeps deadguard active in all modes.
+
+## Emergency override (freeze) interaction (Phase 2.7)
+
+When an emergency freeze is active, `run_deadguard_job` short-circuits at the very top and is
+**fully dormant**: no H-120 warning, no H-30 trigger, no state transition. The user has taken
+manual control (or auth broke and the system froze itself per B7); deadguard does nothing until
+the freeze is cleared (`fpl-autopilot unfreeze` or the ▶️ Unfreeze Telegram button). Freezing does
+**not** change deadguard's scope (B8) — it only stops it from running.
