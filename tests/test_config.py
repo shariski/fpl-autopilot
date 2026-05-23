@@ -35,3 +35,9 @@ def test_unattended_enabled_from_config():
 def test_unattended_hours_before_from_config():
     assert config.unattended_hours_before({"unattended": {"hours_before_deadline": 5}}) == 5
     assert config.unattended_hours_before({}) == 2  # default
+
+
+def test_telegram_interactive_enabled_from_config():
+    assert config.telegram_interactive_enabled({"telegram": {"interactive": True}}) is True
+    assert config.telegram_interactive_enabled({"telegram": {}}) is False
+    assert config.telegram_interactive_enabled({}) is False  # default off

@@ -44,3 +44,8 @@ def unattended_enabled(cfg=None):
 def unattended_hours_before(cfg=None):
     cfg = cfg or load_config()
     return cfg.get("unattended", {}).get("hours_before_deadline", 2)
+
+
+def telegram_interactive_enabled(cfg=None):
+    cfg = cfg or load_config()
+    return bool(cfg.get("telegram", {}).get("interactive", False))
