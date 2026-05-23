@@ -134,3 +134,23 @@ def test_ensure_session_network_error_is_not_expiry(tmp_path, db):
     with pytest.raises(requests.RequestException):
         session.ensure_session(db, key, refresh_session=_BoomTokenSession())
     assert repository.get_auth_state(db) == "active"  # a network blip must NOT flip to expired
+
+
+def test_ensure_session_refresh_failure_increments_relogin(tmp_path, db):
+    key = _key(tmp_path)
+    past = datetime.now(timezone.utc) - timedelta(minutes=1)
+    session.store_tokens(db, key, refresh_token="RT", access_token="AT", expires_at=past)
+    fake = _FakeTokenSession(status_code=400, payload={"error": "invalid_grant"})
+    with pytest.raises(session.SessionExpired):
+        session.ensure_session(db, key, refresh_session=fake)
+    assert repository.get_relogin_failures(db) == 1          # counted this failure
+
+
+def test_ensure_session_success_resets_relogin(tmp_path, db):
+    key = _key(tmp_path)
+    repository.increment_relogin_failures(db)                # pretend a prior failure
+    past = datetime.now(timezone.utc) - timedelta(minutes=1)
+    session.store_tokens(db, key, refresh_token="RT-old", access_token="AT-old", expires_at=past)
+    fake = _FakeTokenSession(payload={"access_token": "AT-new", "expires_in": 28800, "refresh_token": "RT-new"})
+    session.ensure_session(db, key, refresh_session=fake)
+    assert repository.get_relogin_failures(db) == 0          # store_tokens -> mark_session_ok resets

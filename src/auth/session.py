@@ -97,6 +97,7 @@ def ensure_session(conn, key, *, refresh_session=None):
         tok = refresh_access_token(decrypt(key, refresh_blob), session=refresh_session)
     except TokenRefreshError:
         repository.set_auth_state(conn, "expired")
+        repository.increment_relogin_failures(conn)
         raise SessionExpired("refresh token no longer valid; re-run init-fpl")
     access_token = tok["access_token"]
     new_refresh = tok.get("refresh_token") or decrypt(key, refresh_blob)
