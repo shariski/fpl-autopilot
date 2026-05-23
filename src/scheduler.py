@@ -37,7 +37,7 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
 
 
 def _maybe_load_key():
-    if not config.unattended_enabled():
+    if not (config.unattended_enabled() or config.telegram_interactive_enabled()):
         return None
     from .auth import master
     return master.get_master_key()
@@ -55,6 +55,10 @@ def build_scheduler(scheduler=None, key=None):
     if key is not None:
         scheduler.add_job(lambda: auto_execute_job(key), CronTrigger(minute="*/15"),
                           id="auto_execute", replace_existing=True)
+    if key is not None and config.telegram_interactive_enabled():
+        from .interface import telegram_interactive
+        scheduler.add_job(lambda: telegram_interactive.poll_once(key),
+                          CronTrigger(second="*/20"), id="telegram_poll", replace_existing=True)
     return scheduler
 
 
@@ -105,7 +109,11 @@ def auto_execute_job(key, *, conn=None, now=None, route_fn=None, cfg=None):
                          (now.isoformat(), row["id"]))
             conn.commit()
         try:
-            telegram.notify_plan(conn, plan, mode=mode)
+            from .interface import telegram_interactive
+            if telegram_interactive.is_enabled(cfg):
+                telegram_interactive.notify_plan(conn, plan, gw=row["id"], mode=mode)
+            else:
+                telegram.notify_plan(conn, plan, mode=mode)
         except Exception:
             log.exception("telegram notify_plan failed after execution")
         return plan

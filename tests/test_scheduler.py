@@ -224,3 +224,44 @@ def test_auto_execute_session_expired_propagates_even_if_alert_send_fails(db, mo
 
     with pytest.raises(SessionExpired):
         scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=boom_route, cfg=_CFG)
+
+
+# ---------------------------------------------------------------------------
+# Task 8 (2.4b): telegram interactive wiring tests
+# ---------------------------------------------------------------------------
+
+def test_maybe_load_key_loads_when_interactive(monkeypatch):
+    monkeypatch.setattr(scheduler.config, "unattended_enabled", lambda *a, **k: False)
+    monkeypatch.setattr(scheduler.config, "telegram_interactive_enabled", lambda *a, **k: True)
+    import src.auth.master as master
+    monkeypatch.setattr(master, "get_master_key", lambda: b"k")
+    assert scheduler._maybe_load_key() == b"k"
+
+
+def test_build_scheduler_registers_telegram_poll_when_interactive(monkeypatch):
+    from apscheduler.schedulers.background import BackgroundScheduler
+    monkeypatch.setattr(scheduler.config, "telegram_interactive_enabled", lambda *a, **k: True)
+    sched = scheduler.build_scheduler(BackgroundScheduler(timezone="UTC"), key=b"x")
+    assert "telegram_poll" in {j.id for j in sched.get_jobs()}
+
+
+def test_build_scheduler_no_telegram_poll_when_disabled(monkeypatch):
+    from apscheduler.schedulers.background import BackgroundScheduler
+    monkeypatch.setattr(scheduler.config, "telegram_interactive_enabled", lambda *a, **k: False)
+    sched = scheduler.build_scheduler(BackgroundScheduler(timezone="UTC"), key=b"x")
+    assert "telegram_poll" not in {j.id for j in sched.get_jobs()}
+
+
+def test_auto_execute_uses_interactive_notify_when_enabled(db, monkeypatch):
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "T")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "C")
+    from src.interface import telegram_interactive as ti
+    monkeypatch.setattr(ti, "is_enabled", lambda cfg=None: True)
+    got = {}
+    monkeypatch.setattr(ti, "notify_plan", lambda conn, plan, **k: got.update(k, n=len(plan)))
+    plan = [{"decision": "captain", "route": "notify", "confidence": 50,
+             "summary": "Captain pending: X", "executed": False,
+             "identity": {"captain_id": 5, "vice_id": 6}}]
+    scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=lambda c, k: plan, cfg=_CFG)
+    assert got["n"] == 1 and got["gw"] == 1 and got["mode"] == "manual"
