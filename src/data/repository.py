@@ -237,3 +237,37 @@ def log_activity(conn, *, decision_type, mode, action_taken, inputs=None,
          json.dumps(exec_outcome) if exec_outcome is not None else None),
     )
     conn.commit()
+
+
+def create_pending_decision(conn, *, gw, decision_type, identity, summary):
+    cur = conn.execute(
+        "INSERT INTO pending_decisions (gw, decision_type, identity_json, summary, status, created_at) "
+        "VALUES (?, ?, ?, ?, 'pending', ?)",
+        (gw, decision_type, json.dumps(identity), summary, _now()),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_pending_decision(conn, pid):
+    return conn.execute("SELECT * FROM pending_decisions WHERE id=?", (pid,)).fetchone()
+
+
+def set_pending_status(conn, pid, status):
+    conn.execute("UPDATE pending_decisions SET status=?, resolved_at=? WHERE id=?",
+                 (status, _now(), pid))
+    conn.commit()
+
+
+def get_telegram_state(conn, key):
+    row = conn.execute("SELECT value FROM telegram_state WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_telegram_state(conn, key, value):
+    conn.execute(
+        "INSERT INTO telegram_state (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, value),
+    )
+    conn.commit()

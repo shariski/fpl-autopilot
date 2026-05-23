@@ -141,3 +141,19 @@ CREATE TABLE IF NOT EXISTS understat_players (
   xa_per_90 REAL,
   updated_at TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS pending_decisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  gw INTEGER,
+  decision_type TEXT NOT NULL,
+  identity_json TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMP,
+  resolved_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS telegram_state (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
