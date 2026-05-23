@@ -1,8 +1,10 @@
 from datetime import datetime, timezone, timedelta
 
+import pytest
 from apscheduler.triggers.cron import CronTrigger
 from src import scheduler
 from src.data.db import connect, init_db
+from src.interface import telegram as tg
 
 
 def test_build_scheduler_registers_jobs():
@@ -153,3 +155,36 @@ def test_build_scheduler_with_key_adds_autoexec():
 def test_maybe_load_key_disabled_returns_none():
     # config.yaml ships with unattended.enabled: false
     assert scheduler._maybe_load_key() is None
+
+
+def test_auto_execute_notifies_plan(db, monkeypatch):
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "T")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "C")
+    sent = []
+    monkeypatch.setattr(tg, "send_message", lambda text, **k: sent.append(text) or True)
+    plan = [{"decision": "captain", "route": "execute", "confidence": 80,
+             "summary": "Captain: X", "executed": True},
+            {"decision": "transfer", "route": "notify", "confidence": 50,
+             "summary": "Transfer pending: OUT A IN B", "executed": False}]
+    scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=lambda c, k: plan, cfg=_CFG)
+    assert any(t.startswith("✅ Executed") for t in sent)
+    assert any(t.startswith("📊 Decision pending") for t in sent)
+
+
+def test_auto_execute_session_expired_alerts_and_raises(db, monkeypatch):
+    from src.auth.session import SessionExpired
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "T")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "C")
+    sent = []
+    monkeypatch.setattr(tg, "send_message", lambda text, **k: sent.append(text) or True)
+
+    def boom(conn, key):
+        raise SessionExpired("expired")
+
+    with pytest.raises(SessionExpired):
+        scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=boom, cfg=_CFG)
+    assert any(t.startswith("❌ Autopilot blocked") for t in sent)
+    assert db.execute(
+        "SELECT last_system_action_at FROM gameweeks WHERE id=1").fetchone()["last_system_action_at"] is None

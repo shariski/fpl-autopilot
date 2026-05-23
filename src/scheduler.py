@@ -71,6 +71,8 @@ def _default_route(conn, key):
 
 def auto_execute_job(key, *, conn=None, now=None, route_fn=None, cfg=None):
     from datetime import datetime, timezone, timedelta
+    from .interface import telegram
+    from .auth.session import SessionExpired
     cfg = cfg or load_config()
     if not config.unattended_enabled(cfg):
         return None
@@ -88,11 +90,17 @@ def auto_execute_job(key, *, conn=None, now=None, route_fn=None, cfg=None):
         now = now or datetime.now(timezone.utc)
         if not (now <= deadline <= now + timedelta(hours=hours)):
             return None
-        plan = (route_fn or _default_route)(conn, key)
+        try:
+            plan = (route_fn or _default_route)(conn, key)
+        except SessionExpired:
+            telegram.notify(conn, kind="alert", decision_type="auth", mode=config.mode(cfg),
+                            summary="FPL session expired — re-run init-fpl. No changes were made.")
+            raise
         if any(p["route"] == "execute" for p in plan):
             conn.execute("UPDATE gameweeks SET last_system_action_at=? WHERE id=?",
                          (now.isoformat(), row["id"]))
             conn.commit()
+        telegram.notify_plan(conn, plan, mode=config.mode(cfg))
         return plan
     finally:
         if owns:
