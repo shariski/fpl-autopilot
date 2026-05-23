@@ -244,7 +244,7 @@ def test_get_transfer_suggestions_integration(db):
     assert s["out"]["player_id"] == 1 and s["in"]["player_id"] == 4   # p5 unaffordable (12 > 8+1)
     assert s["in"]["price"] <= s["out"]["price"] + 1.0 + 1e-9         # within budget
     assert s["hit_cost"] == 0
-    assert s["confidence"] is None
+    assert isinstance(s["confidence"], int) and 0 <= s["confidence"] <= 100
     # exact contract shape
     assert set(s.keys()) == {"out", "in", "ep_delta_5gw", "hit_cost", "confidence"}
     assert set(s["out"].keys()) == {"player_id", "web_name", "price"}

@@ -1,6 +1,8 @@
 import json
 from statistics import median
 
+from src.decisions import confidence as confidence_mod
+
 POSITIONS = ("GKP", "DEF", "MID", "FWD")
 MAX_PER_CLUB = 3
 HORIZON = 5
@@ -154,10 +156,14 @@ def get_transfer_suggestions(conn):
     squad_players = [p for p in all_players if p["player_id"] in squad_set]
 
     pairs = suggest_transfers(squad_players, all_players, bank)
-    suggestions = [
-        {"out": {k: pr["out"][k] for k in ("player_id", "web_name", "price")},
-         "in":  {k: pr["in"][k] for k in ("player_id", "web_name", "price")},
-         "ep_delta_5gw": pr["ep_delta_5gw"], "hit_cost": pr["hit_cost"], "confidence": None}
-        for pr in pairs
-    ]
+    staleness = confidence_mod.hours_since_refresh(conn)
+    suggestions = []
+    for i, pr in enumerate(pairs):
+        gap = pr["ep_delta_5gw"] - pairs[i + 1]["ep_delta_5gw"] if i + 1 < len(pairs) else None
+        conf = confidence_mod.score(staleness_hours=staleness,
+                                    statuses=[pr["in"]["status"], pr["out"]["status"]], gap=gap)
+        suggestions.append(
+            {"out": {k: pr["out"][k] for k in ("player_id", "web_name", "price")},
+             "in":  {k: pr["in"][k] for k in ("player_id", "web_name", "price")},
+             "ep_delta_5gw": pr["ep_delta_5gw"], "hit_cost": pr["hit_cost"], "confidence": conf})
     return {"suggestions": suggestions, "empty_reason": None if suggestions else EMPTY_REASON}
