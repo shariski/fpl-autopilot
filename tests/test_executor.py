@@ -88,3 +88,35 @@ def test_apply_lineup_live_non_200():
     sess = _FakeSession(post_status=403)
     res = executor.apply_lineup(sess, 3122849, {"chip": None, "picks": []}, dry_run=False)
     assert not res.ok and res.status == 403
+
+
+def test_build_transfer_payload_shape():
+    out = executor.build_transfer_payload(entry=3122849, event=38, element_out=7,
+                                          element_in=99, selling_price=57, purchase_price=60)
+    assert out["chip"] is None
+    assert out["entry"] == 3122849 and out["event"] == 38
+    assert out["transfers"] == [{"element_in": 99, "element_out": 7,
+                                 "purchase_price": 60, "selling_price": 57}]
+
+
+def test_apply_transfers_dry_run_sends_nothing():
+    sess = _FakeSession()
+    res = executor.apply_transfers(sess, 3122849, {"transfers": []}, dry_run=True)
+    assert res.dry_run and res.ok and res.status is None
+    assert "entry/3122849/transfers" in res.request["url"]
+    assert sess.posted is None
+
+
+def test_apply_transfers_live_posts():
+    sess = _FakeSession(post_status=200)
+    payload = {"chip": None, "entry": 3122849, "event": 38, "transfers": []}
+    res = executor.apply_transfers(sess, 3122849, payload, dry_run=False)
+    assert not res.dry_run and res.ok and res.status == 200
+    assert sess.posted["json"] == payload
+    assert "entry/3122849/transfers" in sess.posted["url"]
+
+
+def test_apply_transfers_live_non_200():
+    sess = _FakeSession(post_status=400)
+    res = executor.apply_transfers(sess, 3122849, {"transfers": []}, dry_run=False)
+    assert not res.ok and res.status == 400
