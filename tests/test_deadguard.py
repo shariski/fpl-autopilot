@@ -81,3 +81,68 @@ def test_evaluate_user_acted_takes_precedence():
 def test_evaluate_resolved_state_noop():
     for s in ("USER_ACTED", "SYSTEM_ACTED", "DEADGUARD_EXECUTED", "DEADGUARD_SKIPPED"):
         assert _ev(20, state=s) == "noop"
+
+
+# ---------------------------------------------------------------------------
+# Task 4: user_acted, send_warning, handle_keep
+# ---------------------------------------------------------------------------
+from src.interface import telegram
+
+
+def _configure_tg(monkeypatch):
+    monkeypatch.setenv(telegram.BOT_TOKEN_ENV, "T")
+    monkeypatch.setenv(telegram.CHAT_ID_ENV, "42")
+
+
+def test_user_acted_false_when_nothing(db):
+    _seed_gw(db)
+    assert deadguard.user_acted(db, 30) is False
+
+
+def test_user_acted_true_when_last_user_action_set(db):
+    _seed_gw(db)
+    repository.touch_user_action(db, 30)
+    assert deadguard.user_acted(db, 30) is True
+
+
+def test_user_acted_true_on_confirmed_pending(db):
+    _seed_gw(db)
+    pid = repository.create_pending_decision(db, gw=30, decision_type="lineup",
+                                             identity={"captain_id": 1, "vice_id": 2}, summary="x")
+    repository.set_pending_status(db, pid, "confirmed")
+    assert deadguard.user_acted(db, 30) is True
+
+
+def test_user_acted_false_on_superseded_pending(db):
+    _seed_gw(db)
+    pid = repository.create_pending_decision(db, gw=30, decision_type="lineup",
+                                             identity={"captain_id": 1, "vice_id": 2}, summary="x")
+    repository.set_pending_status(db, pid, "superseded")
+    assert deadguard.user_acted(db, 30) is False
+
+
+def test_send_warning_sends_keep_button(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    sent = {}
+    monkeypatch.setattr(telegram, "send_message", lambda text, **k: sent.update(text=text, buttons=k.get("buttons")) or True)
+    deadguard.send_warning(db, 30, mins=30)
+    assert "Keep" in sent["text"] or "keep" in sent["text"]
+    assert sent["buttons"] == [[{"text": "✅ Keep as is", "callback_data": "k:30"}]]
+
+
+def test_handle_keep_sets_user_acted(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw(db)
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    cq = {"id": "cb", "data": "k:30", "message": {"chat": {"id": "42"}}}
+    deadguard.handle_keep(db, cq)
+    assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "USER_ACTED"
+
+
+def test_handle_keep_wrong_chat_ignored(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw(db)
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    cq = {"id": "cb", "data": "k:30", "message": {"chat": {"id": "999"}}}
+    deadguard.handle_keep(db, cq)
+    assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "PENDING"
