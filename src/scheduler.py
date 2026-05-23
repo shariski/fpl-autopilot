@@ -90,17 +90,24 @@ def auto_execute_job(key, *, conn=None, now=None, route_fn=None, cfg=None):
         now = now or datetime.now(timezone.utc)
         if not (now <= deadline <= now + timedelta(hours=hours)):
             return None
+        mode = config.mode(cfg)
         try:
             plan = (route_fn or _default_route)(conn, key)
         except SessionExpired:
-            telegram.notify(conn, kind="alert", decision_type="auth", mode=config.mode(cfg),
-                            summary="FPL session expired — re-run init-fpl. No changes were made.")
+            try:
+                telegram.notify(conn, kind="alert", decision_type="auth", mode=mode,
+                                summary="FPL session expired — re-run init-fpl. No changes were made.")
+            except Exception:
+                log.exception("telegram auth alert failed")
             raise
         if any(p["route"] == "execute" for p in plan):
             conn.execute("UPDATE gameweeks SET last_system_action_at=? WHERE id=?",
                          (now.isoformat(), row["id"]))
             conn.commit()
-        telegram.notify_plan(conn, plan, mode=config.mode(cfg))
+        try:
+            telegram.notify_plan(conn, plan, mode=mode)
+        except Exception:
+            log.exception("telegram notify_plan failed after execution")
         return plan
     finally:
         if owns:

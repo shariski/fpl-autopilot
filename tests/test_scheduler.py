@@ -188,3 +188,39 @@ def test_auto_execute_session_expired_alerts_and_raises(db, monkeypatch):
     assert any(t.startswith("❌ Autopilot blocked") for t in sent)
     assert db.execute(
         "SELECT last_system_action_at FROM gameweeks WHERE id=1").fetchone()["last_system_action_at"] is None
+
+
+def test_auto_execute_notify_failure_does_not_break_execution(db, monkeypatch):
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "T")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "C")
+
+    def boom_send(text, **k):
+        raise RuntimeError("telegram down")
+
+    monkeypatch.setattr(tg, "send_message", boom_send)
+    plan = [{"decision": "captain", "route": "execute", "confidence": 80,
+             "summary": "Captain: X", "executed": True}]
+    result = scheduler.auto_execute_job(b"key", conn=db, now=_NOW,
+                                        route_fn=lambda c, k: plan, cfg=_CFG)
+    assert result == plan
+    assert db.execute(
+        "SELECT last_system_action_at FROM gameweeks WHERE id=1").fetchone()["last_system_action_at"] is not None
+
+
+def test_auto_execute_session_expired_propagates_even_if_alert_send_fails(db, monkeypatch):
+    from src.auth.session import SessionExpired
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "T")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "C")
+
+    def boom_send(text, **k):
+        raise RuntimeError("telegram down")
+
+    monkeypatch.setattr(tg, "send_message", boom_send)
+
+    def boom_route(conn, key):
+        raise SessionExpired("expired")
+
+    with pytest.raises(SessionExpired):
+        scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=boom_route, cfg=_CFG)
