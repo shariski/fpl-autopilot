@@ -1,6 +1,10 @@
 # Cookie-Capture Auth — Design (replaces programmatic login)
 
-**Status:** approved 2026-05-23
+> **⚠️ SUPERSEDED (2026-05-23)** by `2026-05-23-token-capture-auth-design.md`. A DevTools capture
+> showed the FPL API authenticates with an `X-Api-Authorization: Bearer <JWT>` token, not the
+> cookie. This document is kept for history; do not implement it.
+
+**Status:** superseded — see banner above
 **Slice:** Phase 2.1 auth pivot (supersedes the programmatic-login mechanism from 2.1b/2.1c)
 **Depends on:** 2.1a auth/crypto (`src/auth/crypto.py`, `src/auth/master.py`), the encrypted credential store
 

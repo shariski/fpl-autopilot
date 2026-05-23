@@ -1,5 +1,8 @@
 # Cookie-Capture Auth Implementation Plan
 
+> **⚠️ SUPERSEDED (2026-05-23)** — the FPL API uses a Bearer token, not cookies. Do not execute
+> this plan. The replacement will be written from `2026-05-23-token-capture-auth-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the (now-impossible) programmatic FPL login with cookie-capture: paste a browser `Cookie:` header, validate it via `/api/me/`, store it encrypted, and verify-before-use.
