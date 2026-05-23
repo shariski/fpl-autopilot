@@ -307,3 +307,4 @@ Every decision writes one row:
 | v0.7 | 2026-05-23 | Confidence score implemented: status map (`a`→0, `d`→15, else→30); staleness from `bootstrap-static` cache timestamp; proximity gap between top-2 options. |
 | v0.8 | 2026-05-23 | Universal confidence gate: floor applies in all modes (including Hybrid); low-conf decisions always fall back to notify-and-wait. |
 | v0.9 | 2026-05-23 | Deadguard (Phase 2.5a) consumes the captain ranker for its captain/vice safety action when a Manual/Hybrid user goes silent (H-30 trigger). No threshold change — reuses existing captain selection. Transfer/bench scope deferred to 2.5b. |
+| v0.10 | 2026-05-23 | Deadguard 2.5b: bench-order optimization (rank positions 13/14/15 by next-GW xP, xMinutes tiebreaker; FPL native auto-sub does the swap); targeted transfer-if-flagged (OUT status not in a/d, free only, ep_delta_5gw >= 3.0, confidence >= 75, max 1). Captain + transfer engines reused unchanged. |
