@@ -156,6 +156,7 @@ def upsert_xp(conn, rows):
 _CRED_COLUMNS = {
     "fpl_email_encrypted", "fpl_password_encrypted",
     "session_cookie_encrypted", "csrf_token_encrypted",
+    "refresh_token_encrypted", "access_token_encrypted",
 }
 
 
@@ -185,6 +186,20 @@ def touch_session_refreshed(conn):
         (_now(),),
     )
     conn.commit()
+
+
+def set_access_expiry(conn, expires_at_iso):
+    conn.execute(
+        "INSERT INTO credentials (id, access_token_expires_at) VALUES (1, ?) "
+        "ON CONFLICT(id) DO UPDATE SET access_token_expires_at=excluded.access_token_expires_at",
+        (expires_at_iso,),
+    )
+    conn.commit()
+
+
+def get_access_expiry(conn):
+    row = conn.execute("SELECT access_token_expires_at FROM credentials WHERE id=1").fetchone()
+    return row["access_token_expires_at"] if row else None
 
 
 def get_auth_state(conn):

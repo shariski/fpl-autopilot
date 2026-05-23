@@ -121,3 +121,18 @@ def test_mark_session_ok_resets(db):
     assert repository.get_auth_state(db) == "active"
     row = db.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()
     assert row["relogin_failures"] == 0
+
+
+def test_token_columns_whitelisted(db):
+    from src.data import repository
+    repository.set_encrypted(db, "refresh_token_encrypted", b"rt")
+    repository.set_encrypted(db, "access_token_encrypted", b"at")
+    assert repository.get_encrypted(db, "refresh_token_encrypted") == b"rt"
+    assert repository.get_encrypted(db, "access_token_encrypted") == b"at"
+
+
+def test_access_expiry_get_set(db):
+    from src.data import repository
+    assert repository.get_access_expiry(db) is None
+    repository.set_access_expiry(db, "2026-05-23T12:00:00+00:00")
+    assert repository.get_access_expiry(db) == "2026-05-23T12:00:00+00:00"
