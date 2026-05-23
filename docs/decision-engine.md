@@ -253,6 +253,11 @@ Decisions are partitioned:
 | Transfer involving any hit | Notify, wait |
 | Chip activation | Notify, wait (always) |
 
+**Universal confidence gate (v0.8, 2026-05-23):** the confidence floor applies to *every*
+auto-route, not just Auto mode. In Hybrid, a captain/bench or qualifying-transfer decision whose
+`confidence < floor` falls back to notify-and-wait (rather than auto-executing). Manual mode always
+notifies regardless of confidence.
+
 ## Phase 2: deadguard rules
 
 See `docs/deadguard.md` for the full state machine. Decision-engine rules that apply in deadguard:
@@ -300,3 +305,4 @@ Every decision writes one row:
 | v0.5 | 2026-05-22 | Transfer engine v1: dropped form_adjusted_delta (no per-GW actuals), selling price = current price, FT assumed 1; hit -4/-8 path deferred to multi-transfer. |
 | v0.6 | 2026-05-22 | Chip recommender v1: DGW/BGW detection; Wildcard fixture-swing only (others deferred/dropped); DGW-xP via per-fixture sum; priority TC>BB>FH>WC. |
 | v0.7 | 2026-05-23 | Confidence score implemented: status map (`a`→0, `d`→15, else→30); staleness from `bootstrap-static` cache timestamp; proximity gap between top-2 options. |
+| v0.8 | 2026-05-23 | Universal confidence gate: floor applies in all modes (including Hybrid); low-conf decisions always fall back to notify-and-wait. |

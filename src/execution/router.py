@@ -29,3 +29,36 @@ def route(mode, decision_type, *, confidence, ep_delta=None, is_hit=False, floor
     if confidence is None or confidence < floor:
         return "notify"
     return "execute"
+
+
+def route_gameweek(conn, key, *, live=False, mode=None, session=None, ranker=None, suggester=None):
+    mode = mode or config.mode()
+    floor = config.confidence_floor()
+    caps = (ranker or captain.get_captain_picks)(conn)
+    plan = []
+    if caps["picks"]:
+        r = route(mode, "captain", confidence=caps["confidence"], floor=floor)
+        plan.append({"decision": "captain", "route": r, "confidence": caps["confidence"]})
+        if r == "execute":
+            lineup.run_lineup(conn, key, live=live, confirm_fn=_auto_approve,
+                              session=session, ranker=ranker)
+        else:
+            repository.log_activity(conn, decision_type="lineup", mode=mode,
+                                    action_taken=f"pending: captain {caps['picks'][0]['web_name']}",
+                                    inputs={"confidence": caps["confidence"], "pick": caps["picks"][0]},
+                                    executed=False)
+    sugg = (suggester or transfers.get_transfer_suggestions)(conn)
+    if sugg["suggestions"]:
+        top = sugg["suggestions"][0]
+        r = route(mode, "transfer", confidence=top["confidence"], ep_delta=top["ep_delta_5gw"],
+                  is_hit=top["hit_cost"] < 0, floor=floor)
+        plan.append({"decision": "transfer", "route": r, "confidence": top["confidence"]})
+        if r == "execute":
+            transfer_exec.run_transfer(conn, key, rank=1, live=live, confirm_fn=_auto_approve,
+                                       session=session, suggester=suggester)
+        else:
+            repository.log_activity(conn, decision_type="transfer", mode=mode,
+                                    action_taken=f"pending: OUT {top['out']['web_name']} IN {top['in']['web_name']}",
+                                    inputs={"confidence": top["confidence"], "suggestion": top},
+                                    executed=False)
+    return plan
