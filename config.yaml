@@ -39,3 +39,7 @@ notifications:
 
 xp_model:
   version: v1
+
+unattended:
+  enabled: false
+  hours_before_deadline: 2

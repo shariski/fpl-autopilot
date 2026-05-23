@@ -25,3 +25,13 @@ def test_mode_from_config():
 def test_confidence_floor_from_config():
     assert config.confidence_floor({"thresholds": {"confidence_floor": 65}}) == 65
     assert config.confidence_floor({}) == 70  # default
+
+
+def test_unattended_enabled_from_config():
+    assert config.unattended_enabled({"unattended": {"enabled": True}}) is True
+    assert config.unattended_enabled({}) is False  # default off
+
+
+def test_unattended_hours_before_from_config():
+    assert config.unattended_hours_before({"unattended": {"hours_before_deadline": 5}}) == 5
+    assert config.unattended_hours_before({}) == 2  # default

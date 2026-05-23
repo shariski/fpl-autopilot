@@ -34,3 +34,13 @@ def mode(cfg=None):
 def confidence_floor(cfg=None):
     cfg = cfg or load_config()
     return cfg.get("thresholds", {}).get("confidence_floor", 70)
+
+
+def unattended_enabled(cfg=None):
+    cfg = cfg or load_config()
+    return bool(cfg.get("unattended", {}).get("enabled", False))
+
+
+def unattended_hours_before(cfg=None):
+    cfg = cfg or load_config()
+    return cfg.get("unattended", {}).get("hours_before_deadline", 2)
