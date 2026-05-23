@@ -37,7 +37,8 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
 
 
 def _maybe_load_key():
-    if not (config.unattended_enabled() or config.telegram_interactive_enabled()):
+    if not (config.unattended_enabled() or config.telegram_interactive_enabled()
+            or config.deadguard_enabled()):
         return None
     from .auth import master
     return master.get_master_key()
@@ -59,6 +60,10 @@ def build_scheduler(scheduler=None, key=None):
         from .interface import telegram_interactive
         scheduler.add_job(lambda: telegram_interactive.poll_once(key),
                           CronTrigger(second="*/20"), id="telegram_poll", replace_existing=True)
+    if key is not None and config.deadguard_enabled():
+        from .interface import deadguard
+        scheduler.add_job(lambda: deadguard.run_deadguard_job(key),
+                          CronTrigger(minute="*/5"), id="deadguard_job", replace_existing=True)
     return scheduler
 
 

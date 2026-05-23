@@ -152,8 +152,9 @@ def test_build_scheduler_with_key_adds_autoexec():
     assert "auto_execute" in {j.id for j in sched.get_jobs()}
 
 
-def test_maybe_load_key_disabled_returns_none():
-    # config.yaml ships with unattended.enabled: false
+def test_maybe_load_key_disabled_returns_none(monkeypatch):
+    # unattended.enabled: false AND telegram.interactive: false AND deadguard.enabled: false
+    monkeypatch.setattr(scheduler.config, "deadguard_enabled", lambda *a, **k: False)
     assert scheduler._maybe_load_key() is None
 
 
@@ -265,3 +266,28 @@ def test_auto_execute_uses_interactive_notify_when_enabled(db, monkeypatch):
              "identity": {"captain_id": 5, "vice_id": 6}}]
     scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=lambda c, k: plan, cfg=_CFG)
     assert got["n"] == 1 and got["gw"] == 1 and got["mode"] == "manual"
+
+
+def test_maybe_load_key_loads_when_deadguard(monkeypatch):
+    monkeypatch.setattr(scheduler.config, "unattended_enabled", lambda *a, **k: False)
+    monkeypatch.setattr(scheduler.config, "telegram_interactive_enabled", lambda *a, **k: False)
+    monkeypatch.setattr(scheduler.config, "deadguard_enabled", lambda *a, **k: True)
+    import src.auth.master as master
+    monkeypatch.setattr(master, "get_master_key", lambda: b"k")
+    assert scheduler._maybe_load_key() == b"k"
+
+
+def test_build_scheduler_registers_deadguard_job_when_enabled(monkeypatch):
+    from apscheduler.schedulers.background import BackgroundScheduler
+    monkeypatch.setattr(scheduler.config, "telegram_interactive_enabled", lambda *a, **k: False)
+    monkeypatch.setattr(scheduler.config, "deadguard_enabled", lambda *a, **k: True)
+    sched = scheduler.build_scheduler(BackgroundScheduler(timezone="UTC"), key=b"x")
+    assert "deadguard_job" in {j.id for j in sched.get_jobs()}
+
+
+def test_build_scheduler_no_deadguard_job_when_disabled(monkeypatch):
+    from apscheduler.schedulers.background import BackgroundScheduler
+    monkeypatch.setattr(scheduler.config, "telegram_interactive_enabled", lambda *a, **k: False)
+    monkeypatch.setattr(scheduler.config, "deadguard_enabled", lambda *a, **k: False)
+    sched = scheduler.build_scheduler(BackgroundScheduler(timezone="UTC"), key=b"x")
+    assert "deadguard_job" not in {j.id for j in sched.get_jobs()}
