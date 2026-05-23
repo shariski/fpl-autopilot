@@ -603,3 +603,16 @@ def test_reeval_session_expired_alerts(db, monkeypatch):
     monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: alerts.append(k["kind"]))
     deadguard._run_reevaluate(db, b"key", 30, _CFG, apply=True)       # must NOT raise
     assert "alert" in alerts
+
+
+def test_reeval_apply_not_ok_alerts(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20), state="DEADGUARD_EXECUTED")
+    _wire_reeval(monkeypatch, cur_cap=5, cur_vice=6, cur_bench=[20, 21, 22],
+                 want_cap=7, want_vice=6, want_bench=[20, 21, 22])     # material change
+    notes = []
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: notes.append(k["kind"]))
+    monkeypatch.setattr(deadguard.lineup, "run_lineup",
+                        lambda conn, key, **k: types.SimpleNamespace(ok=False, dry_run=False, status=500))
+    deadguard._run_reevaluate(db, b"key", 30, _CFG, apply=True)
+    assert "alert" in notes and "executed" not in notes      # not-ok -> alert, not executed

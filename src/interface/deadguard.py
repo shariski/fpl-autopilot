@@ -180,10 +180,12 @@ def _run_reevaluate(conn, key, gw, cfg, *, apply):
 
     name = caps["picks"][0]["web_name"]
     if apply:
+        # run_lineup re-fetches current picks + recomputes internally; session is re-used.
         try:
             result = lineup.run_lineup(conn, key, live=True, confirm_fn=lambda d: True,
                                        optimize_bench=True, session=session)
         except Exception as e:
+            log.exception("deadguard re-eval apply failed")
             _notify(conn, "alert", f"Deadguard re-eval failed: {type(e).__name__}")
             return
         if getattr(result, "ok", False):
@@ -192,6 +194,8 @@ def _run_reevaluate(conn, key, gw, cfg, *, apply):
                                     inputs={"desired": desired, "previous": cur}, executed=True)
             _notify(conn, "executed",
                     f"Late news: re-set captain {name} + bench. You can change it back before the deadline.")
+        else:
+            _notify(conn, "alert", "Deadguard re-eval: lineup update did not complete — will retry.")
     else:
         row = conn.execute(
             "SELECT deadguard_reeval_alerted_at FROM gameweeks WHERE id=?", (gw,)).fetchone()
