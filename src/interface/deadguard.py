@@ -20,9 +20,17 @@ RESOLVED = ("USER_ACTED", "SYSTEM_ACTED", "DEADGUARD_EXECUTED", "DEADGUARD_SKIPP
 
 
 def evaluate(now, *, deadline, state, last_system_action_at, user_acted,
-             warned, triggered, warn_min, trigger_min):
-    """Return a directive: 'system_acted' | 'user_acted' | 'warn' | 'trigger' | 'noop'.
-    Pure: no I/O, deterministic for frozen inputs (B11)."""
+             warned, triggered, warn_min, trigger_min,
+             reeval_enabled=False, lockout_min=15):
+    """Return a directive: 'system_acted' | 'user_acted' | 'warn' | 'trigger'
+    | 'reeval' | 'lockout' | 'noop'. Pure: no I/O, deterministic for frozen inputs (B11)."""
+    if state == "DEADGUARD_EXECUTED":
+        if not reeval_enabled:
+            return "noop"
+        mins = (deadline - now).total_seconds() / 60
+        if mins <= 0:
+            return "noop"
+        return "lockout" if mins <= lockout_min else "reeval"
     if state in RESOLVED:
         return "noop"
     if last_system_action_at:

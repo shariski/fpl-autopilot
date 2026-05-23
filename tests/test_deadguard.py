@@ -493,3 +493,26 @@ def test_deadguard_reeval_alerted_column_and_mark(db):
     repository.mark_deadguard_reeval_alerted(db, 30)
     assert db.execute(
         "SELECT deadguard_reeval_alerted_at FROM gameweeks WHERE id=30").fetchone()["deadguard_reeval_alerted_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Task 3 (2.5c-1): evaluate() reeval/lockout for DEADGUARD_EXECUTED
+# ---------------------------------------------------------------------------
+def test_evaluate_reeval_when_executed_and_outside_lockout():
+    assert _ev(20, state="DEADGUARD_EXECUTED", reeval_enabled=True) == "reeval"   # 20 > lockout 15
+
+
+def test_evaluate_lockout_when_executed_inside_lockout():
+    assert _ev(10, state="DEADGUARD_EXECUTED", reeval_enabled=True) == "lockout"  # 0 < 10 <= 15
+
+
+def test_evaluate_reeval_past_deadline_noop():
+    assert _ev(-5, state="DEADGUARD_EXECUTED", reeval_enabled=True) == "noop"
+
+
+def test_evaluate_reeval_disabled_executed_noop():
+    assert _ev(20, state="DEADGUARD_EXECUTED") == "noop"   # reeval_enabled defaults False
+
+
+def test_evaluate_reeval_lockout_min_boundary():
+    assert _ev(15, state="DEADGUARD_EXECUTED", reeval_enabled=True) == "lockout"  # mins == lockout_min -> lockout
