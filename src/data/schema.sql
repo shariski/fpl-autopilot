@@ -89,7 +89,8 @@ CREATE TABLE IF NOT EXISTS gameweeks (
   last_user_action_at TIMESTAMP,
   last_system_action_at TIMESTAMP,
   deadguard_triggered_at TIMESTAMP,
-  deadguard_warned_at TIMESTAMP
+  deadguard_warned_at TIMESTAMP,
+  deadguard_reeval_alerted_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS activity_log (

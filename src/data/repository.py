@@ -316,6 +316,11 @@ def mark_deadguard_warned(conn, gw):
     conn.commit()
 
 
+def mark_deadguard_reeval_alerted(conn, gw):
+    conn.execute("UPDATE gameweeks SET deadguard_reeval_alerted_at=? WHERE id=?", (_now(), gw))
+    conn.commit()
+
+
 def mark_deadguard_triggered(conn, gw):
     conn.execute("UPDATE gameweeks SET deadguard_triggered_at=? WHERE id=?", (_now(), gw))
     conn.commit()

@@ -484,3 +484,12 @@ def test_trigger_session_expired_auto_freezes_at_threshold(db, monkeypatch):
     deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
     assert override.is_frozen(db) is True
     assert any("FROZEN" in s for s in alerts)
+
+
+def test_deadguard_reeval_alerted_column_and_mark(db):
+    _seed_gw(db)
+    cols = {r["name"] for r in db.execute("PRAGMA table_info(gameweeks)")}
+    assert "deadguard_reeval_alerted_at" in cols
+    repository.mark_deadguard_reeval_alerted(db, 30)
+    assert db.execute(
+        "SELECT deadguard_reeval_alerted_at FROM gameweeks WHERE id=30").fetchone()["deadguard_reeval_alerted_at"] is not None
