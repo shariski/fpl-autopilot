@@ -10,6 +10,7 @@ from src.decisions import captain
 from src.decisions import transfers
 from src.execution import lineup
 from src.execution import transfer as transfer_exec
+from src.execution import override
 from src.interface import telegram
 from src.auth.session import SessionExpired
 
@@ -80,7 +81,11 @@ def _run_trigger(conn, key, gw, cfg):
     try:
         result = lineup.run_lineup(conn, key, live=True, confirm_fn=lambda d: True, optimize_bench=True)
     except SessionExpired:
+        froze = override.maybe_auto_freeze(conn)
         _notify(conn, "alert", "Deadguard: FPL session expired — re-run init-fpl. No changes made.")
+        if froze:
+            _notify(conn, "alert", "Auto-execution FROZEN — 2 consecutive auth failures. "
+                                   "Re-run init-fpl, then unfreeze.")
         return
     except Exception as e:
         _notify(conn, "alert", f"Deadguard failed: {type(e).__name__}")
@@ -155,6 +160,9 @@ def run_deadguard_job(key, *, conn=None, now=None, cfg=None):
     conn = conn or connect(db_path(cfg))
     init_db(conn)
     try:
+        if override.is_frozen(conn):
+            log.info("deadguard skipped: frozen")
+            return None
         row = conn.execute(
             "SELECT id, deadline_utc, state, last_system_action_at, deadguard_warned_at, "
             "deadguard_triggered_at FROM gameweeks WHERE is_next=1").fetchone()

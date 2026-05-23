@@ -447,3 +447,39 @@ def test_pick_flagged_transfer_none_on_any_negative_hit(db, monkeypatch):
         sugg = {"suggestions": [{**_SUGG["suggestions"][0], "hit_cost": hc}], "empty_reason": None}
         monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn, s=sugg: s)
         assert deadguard._pick_flagged_transfer(db, _CFG) is None
+
+
+# ---------------------------------------------------------------------------
+# Task 6 (2.7): freeze checkpoint + B7 auto-freeze on SessionExpired
+# ---------------------------------------------------------------------------
+def test_job_skips_when_frozen(db, monkeypatch):
+    from src.execution import override
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    override.freeze(db, reason="test", source="user")
+    called = []
+    monkeypatch.setattr(deadguard.lineup, "run_lineup", lambda *a, **k: called.append(1))
+    out = deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert out is None and called == []
+    # fully dormant: state never advanced past PENDING
+    assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "PENDING"
+
+
+def test_trigger_session_expired_auto_freezes_at_threshold(db, monkeypatch):
+    from src.auth.session import SessionExpired
+    from src.execution import override
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    repository.increment_relogin_failures(db)
+    repository.increment_relogin_failures(db)              # at threshold; NOT yet frozen
+    alerts = []
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: alerts.append(k["summary"]))
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Cap"}], "vice_player_id": 6, "confidence": 80})
+
+    def boom(conn, key, **k):
+        raise SessionExpired("expired")
+
+    monkeypatch.setattr(deadguard.lineup, "run_lineup", boom)
+    deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert override.is_frozen(db) is True
+    assert any("FROZEN" in s for s in alerts)
