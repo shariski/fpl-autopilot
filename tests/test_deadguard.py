@@ -268,3 +268,40 @@ def test_job_generic_exception_leaves_retryable(db, monkeypatch):
 def test_evaluate_window_boundaries():
     assert _ev(30) == "trigger"     # mins == trigger_min (inclusive <=)
     assert _ev(120) == "warn"       # mins == warn_min (inclusive <=)
+
+
+def test_job_trigger_result_not_ok_retryable(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    alerts = []
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: alerts.append(k["kind"]))
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Cap"}], "vice_player_id": 6, "confidence": 80})
+    monkeypatch.setattr(deadguard.lineup, "run_lineup",
+                        lambda conn, key, **k: types.SimpleNamespace(ok=False, dry_run=False, status=500))
+    deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    row = db.execute("SELECT state, deadguard_triggered_at FROM gameweeks WHERE id=30").fetchone()
+    assert row["deadguard_triggered_at"] is None              # NOT marked -> retryable
+    assert row["state"] == "DEADGUARD_ACTIVE"
+    assert "alert" in alerts and "executed" not in alerts
+
+
+def test_handle_keep_non_digit_payload_no_crash(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw(db)
+    answered = []
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: answered.append(1) or True)
+    cq = {"id": "cb", "data": "k:abc", "message": {"chat": {"id": "42"}}}
+    deadguard.handle_keep(db, cq)
+    assert answered == [1]
+    assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "PENDING"
+
+
+def test_job_no_deadline_returns_none(db, monkeypatch):
+    db.execute("DELETE FROM gameweeks WHERE id=30")
+    db.execute("INSERT INTO gameweeks (id, is_next, state) VALUES (30, 1, 'PENDING')")
+    db.commit()
+    called = []
+    monkeypatch.setattr(deadguard.lineup, "run_lineup", lambda *a, **k: called.append(1))
+    assert deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG) is None
+    assert called == []

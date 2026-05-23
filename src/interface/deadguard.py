@@ -75,14 +75,19 @@ def _run_trigger(conn, key, gw):
         _notify(conn, "info", "Deadguard ran — no safe action (no data). Team unchanged.")
         return
     try:
-        lineup.run_lineup(conn, key, live=True, confirm_fn=lambda d: True)
+        result = lineup.run_lineup(conn, key, live=True, confirm_fn=lambda d: True)
     except SessionExpired:
         _notify(conn, "alert", "Deadguard: FPL session expired — re-run init-fpl. No changes made.")
-        return                                          # leave un-triggered; retry next tick
+        return
     except Exception as e:
         _notify(conn, "alert", f"Deadguard failed: {type(e).__name__}")
         return
-    # execution already submitted — mark triggered FIRST so a later DB error can't cause a re-submit
+    if not getattr(result, "ok", False):
+        _notify(conn, "alert", "Deadguard: captain submission did not complete — will retry.")
+        return                                          # not marked triggered -> retryable next tick
+    # Captain/vice submission succeeded. Mark triggered FIRST; re-setting the same captain is
+    # idempotent at FPL, so a crash before this mark only risks a harmless re-submit. NOTE: this
+    # idempotency does NOT hold for the non-idempotent transfers 2.5b adds — revisit then.
     name = caps["picks"][0]["web_name"]
     try:
         repository.mark_deadguard_triggered(conn, gw)
