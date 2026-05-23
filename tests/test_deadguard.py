@@ -146,3 +146,72 @@ def test_handle_keep_wrong_chat_ignored(db, monkeypatch):
     cq = {"id": "cb", "data": "k:30", "message": {"chat": {"id": "999"}}}
     deadguard.handle_keep(db, cq)
     assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "PENDING"
+
+
+# ---------------------------------------------------------------------------
+# Task 5: run_deadguard_job + _run_trigger
+# ---------------------------------------------------------------------------
+import types
+
+_CFG = {"deadguard": {"enabled": True, "warning_window_minutes": 120, "trigger_window_minutes": 30}}
+
+
+def _seed_gw_dl(db, deadline, gw=30, state="PENDING", last_system=None):
+    db.execute("DELETE FROM gameweeks WHERE id=?", (gw,))
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, is_next, state, last_system_action_at) "
+               "VALUES (?, ?, 1, ?, ?)", (gw, deadline.isoformat(), state, last_system))
+    db.commit()
+
+
+def test_job_warns_in_warning_window(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=90))
+    sent = []
+    monkeypatch.setattr(telegram, "send_message", lambda text, **k: sent.append(text) or True)
+    out = deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert out == "warn"
+    assert sent and db.execute("SELECT deadguard_warned_at FROM gameweeks WHERE id=30").fetchone()["deadguard_warned_at"] is not None
+
+
+def test_job_triggers_and_sets_captain(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: None)
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Cap"}], "vice_player_id": 6, "confidence": 80})
+    called = []
+    monkeypatch.setattr(deadguard.lineup, "run_lineup",
+                        lambda conn, key, **k: called.append(k.get("live")) or types.SimpleNamespace(ok=True, dry_run=False, status=200))
+    out = deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert out == "trigger" and called == [True]
+    assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "DEADGUARD_EXECUTED"
+
+
+def test_job_skips_when_no_pick(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: None)
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [], "vice_player_id": None, "confidence": 0})
+    called = []
+    monkeypatch.setattr(deadguard.lineup, "run_lineup", lambda *a, **k: called.append(1))
+    deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert called == []
+    assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "DEADGUARD_SKIPPED"
+
+
+def test_job_system_acted_suppresses(db, monkeypatch):
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20), last_system="2026-05-23T11:00:00+00:00")
+    called = []
+    monkeypatch.setattr(deadguard.lineup, "run_lineup", lambda *a, **k: called.append(1))
+    out = deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert out == "system_acted" and called == []
+    assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "SYSTEM_ACTED"
+
+
+def test_job_disabled_returns_none(db, monkeypatch):
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    called = []
+    monkeypatch.setattr(deadguard.lineup, "run_lineup", lambda *a, **k: called.append(1))
+    out = deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg={"deadguard": {"enabled": False}})
+    assert out is None and called == []

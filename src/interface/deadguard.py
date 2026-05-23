@@ -62,3 +62,73 @@ def handle_keep(conn, cq, *, session=None):
     if gw_s.isdigit():
         repository.touch_user_action(conn, int(gw_s))
     telegram.answer_callback_query(cq["id"], text="Kept as is ✅", session=session)
+
+
+def _run_trigger(conn, key, gw):
+    repository.set_gameweek_state(conn, gw, "DEADGUARD_ACTIVE")
+    caps = captain.get_captain_picks(conn)
+    if not caps["picks"]:
+        repository.set_gameweek_state(conn, gw, "DEADGUARD_SKIPPED")
+        repository.mark_deadguard_triggered(conn, gw)
+        repository.log_activity(conn, decision_type="deadguard", mode="deadguard",
+                                action_taken="skipped: no captain pick available", executed=False)
+        _notify(conn, "info", "Deadguard ran — no safe action (no data). Team unchanged.")
+        return
+    try:
+        lineup.run_lineup(conn, key, live=True, confirm_fn=lambda d: True)
+    except SessionExpired:
+        _notify(conn, "alert", "Deadguard: FPL session expired — re-run init-fpl. No changes made.")
+        return                                          # leave un-triggered; retry next tick
+    except Exception as e:
+        _notify(conn, "alert", f"Deadguard failed: {type(e).__name__}")
+        return
+    repository.set_gameweek_state(conn, gw, "DEADGUARD_EXECUTED")
+    repository.mark_deadguard_triggered(conn, gw)
+    name = caps["picks"][0]["web_name"]
+    repository.log_activity(conn, decision_type="deadguard", mode="deadguard",
+                            action_taken=f"captain set: {name}", inputs={"pick": caps["picks"][0]},
+                            executed=True)
+    _notify(conn, "executed", f"Deadguard set your captain: {name}")
+
+
+def _notify(conn, kind, summary):
+    try:
+        telegram.notify(conn, kind=kind, decision_type="deadguard", mode="deadguard", summary=summary)
+    except Exception:
+        log.exception("deadguard notify failed")
+
+
+def run_deadguard_job(key, *, conn=None, now=None, cfg=None):
+    cfg = cfg or load_config()
+    if not config.deadguard_enabled(cfg):
+        return None
+    owns = conn is None
+    conn = conn or connect(db_path(cfg))
+    init_db(conn)
+    try:
+        row = conn.execute(
+            "SELECT id, deadline_utc, state, last_system_action_at, deadguard_warned_at, "
+            "deadguard_triggered_at FROM gameweeks WHERE is_next=1").fetchone()
+        if not row or not row["deadline_utc"]:
+            return None
+        gw = row["id"]
+        now = now or datetime.now(timezone.utc)
+        directive = evaluate(
+            now, deadline=datetime.fromisoformat(row["deadline_utc"]), state=row["state"],
+            last_system_action_at=row["last_system_action_at"], user_acted=user_acted(conn, gw),
+            warned=bool(row["deadguard_warned_at"]), triggered=bool(row["deadguard_triggered_at"]),
+            warn_min=config.deadguard_warning_minutes(cfg),
+            trigger_min=config.deadguard_trigger_minutes(cfg))
+        if directive == "system_acted":
+            repository.set_gameweek_state(conn, gw, "SYSTEM_ACTED")
+        elif directive == "user_acted":
+            repository.set_gameweek_state(conn, gw, "USER_ACTED")
+        elif directive == "warn":
+            send_warning(conn, gw, mins=config.deadguard_trigger_minutes(cfg))
+            repository.mark_deadguard_warned(conn, gw)
+        elif directive == "trigger":
+            _run_trigger(conn, key, gw)
+        return directive
+    finally:
+        if owns:
+            conn.close()
