@@ -306,3 +306,4 @@ Every decision writes one row:
 | v0.6 | 2026-05-22 | Chip recommender v1: DGW/BGW detection; Wildcard fixture-swing only (others deferred/dropped); DGW-xP via per-fixture sum; priority TC>BB>FH>WC. |
 | v0.7 | 2026-05-23 | Confidence score implemented: status map (`a`→0, `d`→15, else→30); staleness from `bootstrap-static` cache timestamp; proximity gap between top-2 options. |
 | v0.8 | 2026-05-23 | Universal confidence gate: floor applies in all modes (including Hybrid); low-conf decisions always fall back to notify-and-wait. |
+| v0.9 | 2026-05-23 | Deadguard (Phase 2.5a) consumes the captain ranker for its captain/vice safety action when a Manual/Hybrid user goes silent (H-30 trigger). No threshold change — reuses existing captain selection. Transfer/bench scope deferred to 2.5b. |
