@@ -1,6 +1,7 @@
 from src import config
 from src.auth import session as auth_session
 from src.decisions import captain as captain_mod
+from src.decisions import bench as bench_mod
 from src.execution import executor
 from src.data import repository
 
@@ -11,7 +12,7 @@ def _format_diff(current, captain_id, vice_id):
     return f"captain {cur_c}->{captain_id}, vice {cur_v}->{vice_id}"
 
 
-def run_lineup(conn, key, *, live=False, confirm_fn=None, session=None, ranker=None):
+def run_lineup(conn, key, *, live=False, confirm_fn=None, session=None, ranker=None, optimize_bench=False):
     session = session or auth_session.ensure_session(conn, key)
     entry = config.team_id()
     current = executor.fetch_current_picks(session, entry)
@@ -20,7 +21,8 @@ def run_lineup(conn, key, *, live=False, confirm_fn=None, session=None, ranker=N
         raise executor.ExecutorError("no captain pick available (no data?)")
     captain_id = caps["picks"][0]["player_id"]
     vice_id = caps["vice_player_id"]
-    payload = executor.build_lineup_payload(current, captain_id, vice_id)
+    bench_order = bench_mod.rank_bench(conn, current) if optimize_bench else None
+    payload = executor.build_lineup_payload(current, captain_id, vice_id, bench_order=bench_order)
     diff = _format_diff(current, captain_id, vice_id)
     inputs = {"captain": caps["picks"][0], "vice_player_id": vice_id,
               "alternatives": caps["picks"][1:]}

@@ -60,3 +60,46 @@ def test_run_lineup_live_aborted(db):
     assert sess.posted is None
     row = db.execute("SELECT action_taken, executed FROM activity_log").fetchone()
     assert row["action_taken"] == "aborted" and row["executed"] == 0
+
+
+class _Sess:
+    def __init__(self):
+        self.posted = {}
+
+    def get(self, url, timeout=None):
+        return _Resp(200, {"picks": [{"element": e, "position": e, "selling_price": 50,
+                                      "is_captain": False, "is_vice_captain": False}
+                                     for e in range(1, 16)]})
+
+    def post(self, url, json=None, timeout=None):
+        self.posted = {"url": url, "json": json}
+        return _Resp(200, {})
+
+
+def _ranker2(conn):
+    return {"picks": [{"player_id": 1, "web_name": "C"}, {"player_id": 2, "web_name": "V"}],
+            "vice_player_id": 2, "confidence": 80}
+
+
+def test_run_lineup_optimize_bench_reorders(db, monkeypatch):
+    from src.execution import lineup as lineup_mod
+    from src.decisions import bench as bench_mod
+    monkeypatch.setattr(bench_mod, "rank_bench", lambda conn, picks: [15, 14, 13])
+    sess = _Sess()
+    lineup_mod.run_lineup(db, b"k", live=True, confirm_fn=lambda d: True,
+                          session=sess, ranker=_ranker2, optimize_bench=True)
+    pos = {p["element"]: p["position"] for p in sess.posted["json"]["picks"]}
+    assert pos[15] == 13 and pos[14] == 14 and pos[13] == 15
+
+
+def test_run_lineup_default_does_not_reorder(db, monkeypatch):
+    from src.execution import lineup as lineup_mod
+    from src.decisions import bench as bench_mod
+    called = []
+    monkeypatch.setattr(bench_mod, "rank_bench", lambda conn, picks: called.append(1) or [15, 14, 13])
+    sess = _Sess()
+    lineup_mod.run_lineup(db, b"k", live=True, confirm_fn=lambda d: True,
+                          session=sess, ranker=_ranker2)   # optimize_bench defaults False
+    pos = {p["element"]: p["position"] for p in sess.posted["json"]["picks"]}
+    assert pos[13] == 13 and pos[14] == 14 and pos[15] == 15
+    assert called == []                                   # rank_bench not invoked
