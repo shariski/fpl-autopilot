@@ -9,6 +9,7 @@ from src.data.db import connect, init_db
 from src.decisions import captain
 from src.decisions import transfers
 from src.execution import lineup
+from src.execution import transfer as transfer_exec
 from src.interface import telegram
 from src.auth.session import SessionExpired
 
@@ -65,7 +66,7 @@ def handle_keep(conn, cq, *, session=None):
     telegram.answer_callback_query(cq["id"], text="Kept as is ✅", session=session)
 
 
-def _run_trigger(conn, key, gw):
+def _run_trigger(conn, key, gw, cfg):
     repository.set_gameweek_state(conn, gw, "DEADGUARD_ACTIVE")
     caps = captain.get_captain_picks(conn)
     if not caps["picks"]:
@@ -75,8 +76,9 @@ def _run_trigger(conn, key, gw):
                                 action_taken="skipped: no captain pick available", executed=False)
         _notify(conn, "info", "Deadguard ran — no safe action (no data). Team unchanged.")
         return
+    # 1. lineup: captain/vice + bench order, one atomic write
     try:
-        result = lineup.run_lineup(conn, key, live=True, confirm_fn=lambda d: True)
+        result = lineup.run_lineup(conn, key, live=True, confirm_fn=lambda d: True, optimize_bench=True)
     except SessionExpired:
         _notify(conn, "alert", "Deadguard: FPL session expired — re-run init-fpl. No changes made.")
         return
@@ -84,21 +86,34 @@ def _run_trigger(conn, key, gw):
         _notify(conn, "alert", f"Deadguard failed: {type(e).__name__}")
         return
     if not getattr(result, "ok", False):
-        _notify(conn, "alert", "Deadguard: captain submission did not complete — will retry.")
-        return                                          # not marked triggered -> retryable next tick
-    # Captain/vice submission succeeded. Mark triggered FIRST; re-setting the same captain is
-    # idempotent at FPL, so a crash before this mark only risks a harmless re-submit. NOTE: this
-    # idempotency does NOT hold for the non-idempotent transfers 2.5b adds — revisit then.
+        _notify(conn, "alert", "Deadguard: lineup submission did not complete — will retry.")
+        return                                          # not marked -> retryable next tick
+    # 2. lineup succeeded -> lock once-per-GW (idempotent re-set of the same lineup is harmless)
     name = caps["picks"][0]["web_name"]
     try:
         repository.mark_deadguard_triggered(conn, gw)
         repository.set_gameweek_state(conn, gw, "DEADGUARD_EXECUTED")
-        repository.log_activity(conn, decision_type="deadguard", mode="deadguard",
-                                action_taken=f"captain set: {name}", inputs={"pick": caps["picks"][0]},
-                                executed=True)
     except Exception:
-        log.exception("deadguard post-execution bookkeeping failed (captain was already set)")
-    _notify(conn, "executed", f"Deadguard set your captain: {name}")
+        log.exception("deadguard post-execution bookkeeping failed (lineup was already set)")
+    # 3. transfer-if-flagged (best-effort; never undoes the lineup, never retried)
+    transfer_note = "no transfer"
+    try:
+        rank = _pick_flagged_transfer(conn, cfg)
+        if rank is not None:
+            tr = transfer_exec.run_transfer(conn, key, rank=rank, live=True, confirm_fn=lambda d: True)
+            if getattr(tr, "ok", False):
+                transfer_note = "transfer applied"
+            else:
+                transfer_note = "transfer failed"
+                _notify(conn, "alert", "Deadguard: flagged-player transfer did not complete.")
+    except Exception as e:
+        transfer_note = f"transfer failed ({type(e).__name__})"
+        log.exception("deadguard transfer step failed")
+        _notify(conn, "alert", f"Deadguard transfer failed: {type(e).__name__}")
+    repository.log_activity(conn, decision_type="deadguard", mode="deadguard",
+                            action_taken=f"captain {name}; bench optimized; {transfer_note}",
+                            inputs={"pick": caps["picks"][0]}, executed=True)
+    _notify(conn, "executed", f"Deadguard: captain {name}, bench optimized, {transfer_note}.")
 
 
 def _player_status(conn, player_id):
@@ -158,7 +173,7 @@ def run_deadguard_job(key, *, conn=None, now=None, cfg=None):
             send_warning(conn, gw, mins=config.deadguard_trigger_minutes(cfg))
             repository.mark_deadguard_warned(conn, gw)
         elif directive == "trigger":
-            _run_trigger(conn, key, gw)
+            _run_trigger(conn, key, gw, cfg)
         return directive
     finally:
         if owns:

@@ -358,3 +358,64 @@ def test_pick_flagged_transfer_none_when_disabled(db, monkeypatch):
     monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: _SUGG)
     cfg = {"deadguard": {"scope": {"transfer_if_flagged": False}}}
     assert deadguard._pick_flagged_transfer(db, cfg) is None
+
+
+# ---------------------------------------------------------------------------
+# Task 6: _run_trigger bench + transfer; run_deadguard_job passes cfg
+# ---------------------------------------------------------------------------
+def test_trigger_optimizes_bench_and_no_transfer(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    notes = []
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: notes.append(k["kind"]))
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Cap"}], "vice_player_id": 6, "confidence": 80})
+    lineup_kwargs = {}
+    monkeypatch.setattr(deadguard.lineup, "run_lineup",
+                        lambda conn, key, **k: lineup_kwargs.update(k) or types.SimpleNamespace(ok=True, dry_run=False, status=200))
+    monkeypatch.setattr(deadguard, "_pick_flagged_transfer", lambda conn, cfg: None)
+    xfers = []
+    monkeypatch.setattr(deadguard.transfer_exec, "run_transfer", lambda *a, **k: xfers.append(1))
+    deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert lineup_kwargs.get("optimize_bench") is True
+    assert xfers == []                                    # no qualifying transfer
+    assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "DEADGUARD_EXECUTED"
+    assert "executed" in notes
+
+
+def test_trigger_executes_flagged_transfer(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: None)
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Cap"}], "vice_player_id": 6, "confidence": 80})
+    monkeypatch.setattr(deadguard.lineup, "run_lineup",
+                        lambda conn, key, **k: types.SimpleNamespace(ok=True, dry_run=False, status=200))
+    monkeypatch.setattr(deadguard, "_pick_flagged_transfer", lambda conn, cfg: 2)
+    xfers = []
+    monkeypatch.setattr(deadguard.transfer_exec, "run_transfer",
+                        lambda conn, key, **k: xfers.append(k.get("rank")) or types.SimpleNamespace(ok=True, dry_run=False, status=200))
+    deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert xfers == [2]                                    # ran the chosen rank, live
+    assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "DEADGUARD_EXECUTED"
+
+
+def test_trigger_transfer_failure_keeps_lineup(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    alerts = []
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: alerts.append(k["kind"]))
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Cap"}], "vice_player_id": 6, "confidence": 80})
+    monkeypatch.setattr(deadguard.lineup, "run_lineup",
+                        lambda conn, key, **k: types.SimpleNamespace(ok=True, dry_run=False, status=200))
+    monkeypatch.setattr(deadguard, "_pick_flagged_transfer", lambda conn, cfg: 1)
+
+    def boom(conn, key, **k):
+        raise RuntimeError("transfer api down")
+
+    monkeypatch.setattr(deadguard.transfer_exec, "run_transfer", boom)
+    deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    row = db.execute("SELECT state, deadguard_triggered_at FROM gameweeks WHERE id=30").fetchone()
+    assert row["state"] == "DEADGUARD_EXECUTED" and row["deadguard_triggered_at"] is not None
+    assert "alert" in alerts
