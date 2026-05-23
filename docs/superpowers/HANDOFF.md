@@ -8,7 +8,7 @@ Resume point for continuing on another machine. Everything below is in git (push
 - **Phase 1 (Insight Engine) — COMPLETE.** Data layer (FPL + Understat clients, cache, sqlite),
   Analytics (FDR, xP v1, DGW), Decisions (captain, transfers, chips), Interface (FastAPI + SvelteKit
   PWA), scheduler.
-- **Phase 2 (Decision Automation) — auth + execution + routing + Telegram (out + interactive) DONE:**
+- **Phase 2 (Decision Automation) — auth + execution + routing + Telegram + deadguard (captain/vice) DONE:**
   - 2.1 Auth — **token-capture with OAuth refresh** (see "Auth reality"). `init-master-password`,
     `init-fpl` (paste refresh token), `auth-status`. `src/auth/{crypto,master,session}.py`.
   - 2.2 Action Executor — `src/execution/{executor,lineup,transfer}.py`; CLIs `execute-lineup`,
@@ -23,8 +23,14 @@ Resume point for continuing on another machine. Everything below is in git (push
     `get_updates`/`answer_callback_query` transport. One-tap Confirm/Reject via getUpdates poll in the
     daemon; re-run+verify (re-notify if changed); chat whitelist + status-gate + durable offset +
     deadline guard. Opt-in `telegram.interactive` (loads master key + registers `telegram_poll` job).
-- **Test suite: 272 passing.** `main` has 2.1–2.3 pushed; **2.4a + 2.4b are merged to main locally but
-  NOT pushed** (25 commits ahead of origin/main — push when ready).
+  - 2.5a Deadguard state machine + captain/vice safety net — `src/interface/deadguard.py` (pure
+    `evaluate` + `user_acted`/`send_warning`/`handle_keep`/`run_deadguard_job`); `gameweeks.state`
+    machine (PENDING/USER_ACTED/SYSTEM_ACTED/DEADGUARD_ACTIVE/EXECUTED/SKIPPED) + `deadguard_warned_at`
+    column. H-120 warning (Keep-as-is button, routed via `poll_once`), H-30 trigger → captain/vice via
+    `run_lineup`. USER_ACTED from Keep tap / 2.4b confirm-reject / manual CLI execute. Opt-in
+    `deadguard.enabled` (default true) → `deadguard_job`. Captain/vice ONLY (B8).
+- **Test suite: 309 passing.** `main` has 2.1–2.4 pushed; **2.5a is merged to main locally but NOT
+  pushed** (15 commits ahead of origin/main — push when ready).
 
 ## Auth reality (don't re-derive this — it cost a lot to find)
 
@@ -48,10 +54,10 @@ Programmatic email+password login is **dead**: `users.premierleague.com` is deco
 - **NEVER `git add -A`** here — it sweeps in `.claude/worktrees/` gitlinks. Stage explicit paths.
 - **B-rules in `CLAUDE.md` are binding** (B4 decision-engine is "sacred" — document changes there;
   B7 secrets encrypted/never-logged; B8 no auto chips/hits/multi; B11 dry-run first-class).
-- Decision logic lives in `docs/decision-engine.md` (changelog up to v0.8).
+- Decision logic lives in `docs/decision-engine.md` (changelog up to v0.9).
 - A `code-review-graph` MCP is available (use it before Grep per the user's global CLAUDE.md).
 
-## 2.4 Telegram — DONE (a + b; merged to main locally, not pushed)
+## 2.4 Telegram — DONE (a + b; pushed)
 
 Specs/plans under `docs/superpowers/{specs,plans}/2026-05-23-telegram-*`. **2.4a** (outbound): env-var
 storage decoupled from the master key, caller-driven from `auto_execute_job` (router stays pure, B2),
@@ -68,22 +74,34 @@ no telegram session into FPL executors). 272 tests green.
 - **Deferred → 2.4c (future):** the "Modify" button (cycle transfer rank / pick vice) + its stateful
   multi-message flow.
 
-## NEXT TASK: 2.5 Deadguard
+## 2.5a Deadguard state machine + captain/vice — DONE (merged to main locally, not pushed)
 
-Conservative fallback for Manual users who go silent before a deadline. See `docs/deadguard.md` for the
-full state machine and edge cases. Scope (CLAUDE.md B8): the full per-GW `gameweeks.state` machine
-(PENDING / USER_ACTED / DEADGUARD_ACTIVE — the `state`, `last_user_action_at`, `deadguard_triggered_at`
-columns already exist), warning windows, USER_ACTED detection, and the narrow deadguard action set
-(captain/vice + bench order + auto-sub definite-non-players always; a single free transfer if
-configured and EP delta is high; **never** hits, chips, multi, or wildcard-level rebuilds). Config
-already present in `config.yaml` under `deadguard:`. To resume: re-enter brainstorming for 2.5, then
-spec → plan → subagent-driven, exactly as the prior slices.
+Spec/plan `docs/superpowers/{specs,plans}/2026-05-23-deadguard-state-machine*`. `src/interface/deadguard.py`:
+pure `evaluate` (directive: system_acted/user_acted/warn/trigger/noop, frozen-input tests), `user_acted`
+(Keep tap / 2.4b confirm-reject / manual CLI execute), `send_warning` (H-120, Keep button), `handle_keep`
+(routed from `poll_once` on `k:`), `run_deadguard_job` + `_run_trigger` (H-30 → captain/vice via
+`run_lineup`, checks `result.ok`, EXECUTED/SKIPPED/retryable-on-failure, always notifies). `deadguard_job`
+in the scheduler (every 5 min, when key + `deadguard.enabled`). `gameweeks.deadguard_warned_at` column.
+B8: captain/vice ONLY. decision-engine.md v0.9. Reviewed (per-task + final opus; fixes: mark-triggered-first
+to avoid re-submit, check `run_lineup.ok` so a non-200 isn't reported as success). 309 tests green.
 
-Useful seams already built: the router emits a `plan` with `route`/`summary`/`executed`/`identity`;
-`pending_decisions` + the Telegram interactive loop exist (deadguard warnings could reuse them);
-`auto_execute_job` is the deadline-window daemon entry point.
+## NEXT TASK: 2.5b Deadguard — bench/auto-sub + transfer-if-flagged
 
-## Remaining Phase 2 after 2.5
+The remaining `docs/deadguard.md` action types, extending 2.5a's `_run_trigger`. Scope:
+- **Bench-order optimization + auto-sub of definite-non-players** — needs NEW capability:
+  `executor.build_lineup_payload` currently only sets captain/vice flags and **copies each pick's
+  existing `position`**; bench/sub requires a position-reordering payload builder + a bench-ranking
+  decision function (neither exists). Always-allowed per the doc.
+- **Single free transfer if a squad player is flagged out** (`deadguard.scope.transfer_if_flagged`,
+  default true) — flagged detection + stricter `min_ep_delta_for_transfer` (3.0, vs 2.0 normal) +
+  reuse `transfer.run_transfer`. `transfer_if_underperform` default false.
+- **B8 forbidden (cannot enable):** hits beyond -4, chips, multiple transfers, wildcard-level rebuilds.
+- The state machine, windows, Keep button, EXECUTED/SKIPPED, notify, and the `deadguard.scope.*` config
+  block all already exist (2.5a); 2.5b mainly adds action types inside `_run_trigger` (and the new
+  bench/sub executor + decision logic). Re-enter brainstorming for 2.5b, then spec → plan → subagent.
+
+## Remaining Phase 2 after 2.5b
+- **2.5c** (future) — late-news re-evaluation, undo, dashboard banner, multi-device (from `docs/deadguard.md`).
 - **2.7 Emergency Override** — kill switch / freeze auto-execution (also where B7's "freeze after
   repeated re-login failure" belongs; 2.4a only *alerts* at the existing `SessionExpired` point).
 - (2.6 Dry-Run is effectively satisfied — every executor + the router is dry-run-first.)
@@ -93,7 +111,7 @@ Useful seams already built: the router emits a `plan` with `route`/`summary`/`ex
 git clone git@github.com:shariski/fpl-autopilot.git    # or git pull
 cd fpl-autopilot
 python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # python3.14 also works (this machine)
-.venv/bin/pytest -q          # expect 272 passed
+.venv/bin/pytest -q          # expect 309 passed
 ```
 Local-only (re-create if you want live runs): `data/.salt` + `data/.verify` (run
 `init-master-password` then `init-fpl`), and the `~/.claude` auto-memory (this file replaces it for
