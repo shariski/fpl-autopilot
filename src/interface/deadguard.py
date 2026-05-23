@@ -52,7 +52,8 @@ def user_acted(conn, gw):
 def send_warning(conn, gw, *, mins):
     text = (f"⏳ Deadguard will set your captain when ~{mins} min remain before the deadline, "
             f"unless you act.\nTap to keep your team as-is.")
-    buttons = [[{"text": "✅ Keep as is", "callback_data": f"k:{gw}"}]]
+    buttons = [[{"text": "✅ Keep as is", "callback_data": f"k:{gw}"}],
+               [{"text": "🛑 Freeze", "callback_data": "f:1"}]]
     telegram.send_message(text, buttons=buttons)
 
 

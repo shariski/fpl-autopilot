@@ -127,7 +127,8 @@ def test_send_warning_sends_keep_button(db, monkeypatch):
     monkeypatch.setattr(telegram, "send_message", lambda text, **k: sent.update(text=text, buttons=k.get("buttons")) or True)
     deadguard.send_warning(db, 30, mins=30)
     assert "Keep" in sent["text"] or "keep" in sent["text"]
-    assert sent["buttons"] == [[{"text": "✅ Keep as is", "callback_data": "k:30"}]]
+    assert sent["buttons"] == [[{"text": "✅ Keep as is", "callback_data": "k:30"}],
+                               [{"text": "🛑 Freeze", "callback_data": "f:1"}]]
 
 
 def test_handle_keep_sets_user_acted(db, monkeypatch):

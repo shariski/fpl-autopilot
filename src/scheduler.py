@@ -130,6 +130,15 @@ def auto_execute_job(key, *, conn=None, now=None, route_fn=None, cfg=None):
                 telegram.notify_plan(conn, plan, mode=mode)
         except Exception:
             log.exception("telegram notify_plan failed after execution")
+        if config.mode(cfg) == "auto" and any(p["route"] == "execute" for p in plan):
+            try:
+                from .interface import telegram_interactive
+                if telegram_interactive.is_enabled(cfg):
+                    telegram.send_message(
+                        "🛑 Tap to freeze further auto-execution.",
+                        buttons=[[{"text": "🛑 Freeze", "callback_data": "f:1"}]])
+            except Exception:
+                log.exception("telegram freeze-button send failed")
         return plan
     finally:
         if owns:

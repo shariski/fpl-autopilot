@@ -344,3 +344,31 @@ def test_auto_execute_session_expired_no_freeze_below_threshold(db, monkeypatch)
     with pytest.raises(SessionExpired):
         scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=boom, cfg=_CFG)
     assert override.is_frozen(db) is False                 # only 1st failure (counter 0 in test) -> no freeze
+
+
+def test_auto_execute_auto_mode_sends_freeze_button(db, monkeypatch):
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "T")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "C")
+    from src.interface import telegram_interactive as ti
+    monkeypatch.setattr(ti, "is_enabled", lambda cfg=None: True)
+    monkeypatch.setattr(ti, "notify_plan", lambda *a, **k: None)
+    sent = []
+    monkeypatch.setattr(tg, "send_message", lambda text, **k: sent.append((text, k.get("buttons"))) or True)
+    cfg = {"mode": {"current": "auto"}, "unattended": {"enabled": True, "hours_before_deadline": 2}}
+    plan = [{"decision": "captain", "route": "execute", "confidence": 80,
+             "summary": "Captain: X", "executed": True}]
+    scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=lambda c, k: plan, cfg=cfg)
+    assert any(btns == [[{"text": "🛑 Freeze", "callback_data": "f:1"}]] for _, btns in sent)
+
+
+def test_auto_execute_manual_mode_no_freeze_button(db, monkeypatch):
+    _seed_gw(db, _NOW + timedelta(hours=1))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "T")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "C")
+    sent = []
+    monkeypatch.setattr(tg, "send_message", lambda text, **k: sent.append(k.get("buttons")) or True)
+    plan = [{"decision": "captain", "route": "execute", "confidence": 80,
+             "summary": "Captain: X", "executed": True}]
+    scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=lambda c, k: plan, cfg=_CFG)  # mode=manual
+    assert all(b != [[{"text": "🛑 Freeze", "callback_data": "f:1"}]] for b in sent)
