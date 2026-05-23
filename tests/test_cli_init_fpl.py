@@ -1,57 +1,86 @@
-import json
 from src import cli
-from src.auth import master, crypto, fpl_login
+from src.auth import master, crypto
 from src.data import repository
 
 
-def test_init_fpl_cli_stores_encrypted(tmp_path, monkeypatch, db, capsys):
+class _Resp:
+    def __init__(self, status_code=200, payload=None):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class _FakeTokenSession:
+    def __init__(self, *, status_code=200, payload=None):
+        self.headers = {}
+        self._status = status_code
+        self._payload = payload
+
+    def post(self, url, data=None, headers=None, timeout=None):
+        return _Resp(status_code=self._status, payload=self._payload)
+
+
+class _FakeMeSession:
+    def __init__(self, *, me_payload, me_status=200):
+        self.headers = {}
+        self._me_payload = me_payload
+        self._me_status = me_status
+
+    def get(self, url, timeout=None):
+        return _Resp(status_code=self._me_status, payload=self._me_payload)
+
+
+def _setup_master(tmp_path, monkeypatch):
     s, v = tmp_path / ".salt", tmp_path / ".verify"
     master.init_master_password("throwaway-master-12", s, v)
     monkeypatch.setenv("MASTER_PASSWORD", "throwaway-master-12")
-    monkeypatch.setenv("FPL_EMAIL", "me@example.com")
-    monkeypatch.setenv("FPL_PASSWORD", "throwaway-fpl-pw")
+    return s, v
 
-    fake = fpl_login.LoginResult(cookies={"pl_profile": "abc"}, csrf="tok", entry_id=3122849)
-    cli._init_fpl_cli(conn=db, login_fn=lambda *a, **k: fake, salt_path=s, verify_path=v)
 
+def test_init_fpl_stores_tokens(tmp_path, monkeypatch, db, capsys):
+    s, v = _setup_master(tmp_path, monkeypatch)
+    monkeypatch.setenv("FPL_REFRESH_TOKEN", "refresh-paste-xyz")
+    tok = _FakeTokenSession(payload={"access_token": "access-xyz", "expires_in": 28800, "refresh_token": "refresh-rot-xyz"})
+    me = _FakeMeSession(me_payload={"player": {"entry": 3122849}})
+    cli._init_fpl_cli(conn=db, salt_path=s, verify_path=v, refresh_session=tok, me_session=me)
     key = master.load_key("throwaway-master-12", s, v)
-    assert crypto.decrypt(key, repository.get_encrypted(db, "fpl_email_encrypted")) == "me@example.com"
-    assert crypto.decrypt(key, repository.get_encrypted(db, "fpl_password_encrypted")) == "throwaway-fpl-pw"
-    cookies = json.loads(crypto.decrypt(key, repository.get_encrypted(db, "session_cookie_encrypted")))
-    assert cookies["pl_profile"] == "abc"
-    assert crypto.decrypt(key, repository.get_encrypted(db, "csrf_token_encrypted")) == "tok"
-    row = db.execute("SELECT session_last_refreshed FROM credentials WHERE id=1").fetchone()
-    assert row["session_last_refreshed"] is not None
-
+    assert crypto.decrypt(key, repository.get_encrypted(db, "access_token_encrypted")) == "access-xyz"
+    assert crypto.decrypt(key, repository.get_encrypted(db, "refresh_token_encrypted")) == "refresh-rot-xyz"
+    assert repository.get_auth_state(db) == "active"
     out = capsys.readouterr().out
     assert "3122849" in out
-    assert "throwaway-fpl-pw" not in out  # password never echoed
+    assert "refresh-paste-xyz" not in out and "access-xyz" not in out
+
+
+def test_init_fpl_rejects_bad_refresh_token(tmp_path, monkeypatch, db, capsys):
+    s, v = _setup_master(tmp_path, monkeypatch)
+    monkeypatch.setenv("FPL_REFRESH_TOKEN", "refresh-bad")
+    tok = _FakeTokenSession(status_code=400, payload={"error": "invalid_grant"})
+    cli._init_fpl_cli(conn=db, salt_path=s, verify_path=v, refresh_session=tok,
+                      me_session=_FakeMeSession(me_payload={}))
+    assert repository.get_encrypted(db, "refresh_token_encrypted") is None
+    assert "rejected" in capsys.readouterr().out.lower()
+
+
+def test_init_fpl_rejects_wrong_team(tmp_path, monkeypatch, db, capsys):
+    s, v = _setup_master(tmp_path, monkeypatch)
+    monkeypatch.setenv("FPL_REFRESH_TOKEN", "refresh-ok")
+    tok = _FakeTokenSession(payload={"access_token": "access-xyz", "expires_in": 28800})
+    me = _FakeMeSession(me_payload={"player": {"entry": 999}})
+    cli._init_fpl_cli(conn=db, salt_path=s, verify_path=v, refresh_session=tok, me_session=me)
+    assert repository.get_encrypted(db, "refresh_token_encrypted") is None
+    assert "rejected" in capsys.readouterr().out.lower()
 
 
 def test_init_fpl_requires_master_password(tmp_path, monkeypatch, db, capsys):
-    s, v = tmp_path / ".salt", tmp_path / ".verify"  # intentionally not created
-    called = []
-    cli._init_fpl_cli(conn=db, login_fn=lambda *a, **k: called.append(1),
-                      salt_path=s, verify_path=v)
-    assert not called  # login never attempted
+    s, v = tmp_path / ".salt", tmp_path / ".verify"  # not created
+    monkeypatch.setenv("FPL_REFRESH_TOKEN", "refresh-ok")
+    cli._init_fpl_cli(conn=db, salt_path=s, verify_path=v,
+                      refresh_session=_FakeTokenSession(), me_session=_FakeMeSession(me_payload={}))
     assert "init-master-password" in capsys.readouterr().out
     assert db.execute("SELECT COUNT(*) c FROM credentials").fetchone()["c"] == 0
-
-
-def test_init_fpl_clears_freeze(tmp_path, monkeypatch, db, capsys):
-    s, v = tmp_path / ".salt", tmp_path / ".verify"
-    master.init_master_password("throwaway-master-12", s, v)
-    monkeypatch.setenv("MASTER_PASSWORD", "throwaway-master-12")
-    monkeypatch.setenv("FPL_EMAIL", "me@example.com")
-    monkeypatch.setenv("FPL_PASSWORD", "throwaway-fpl-pw")
-    repository.set_auth_state(db, "frozen")  # pretend we were frozen
-
-    fake = fpl_login.LoginResult(cookies={"pl_profile": "abc"}, csrf="tok", entry_id=3122849)
-    cli._init_fpl_cli(conn=db, login_fn=lambda *a, **k: fake, salt_path=s, verify_path=v)
-
-    assert repository.get_auth_state(db) == "active"
-    row = db.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()
-    assert row["relogin_failures"] == 0
 
 
 def test_auth_status_cli(db, capsys):
@@ -59,4 +88,4 @@ def test_auth_status_cli(db, capsys):
     cli._auth_status_cli(conn=db)
     out = capsys.readouterr().out
     assert "active" in out
-    assert "relogin_failures" in out
+    assert "auth_state" in out

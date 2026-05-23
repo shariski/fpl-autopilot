@@ -111,12 +111,11 @@ def _init_master_password_cli(salt_path=None, verify_path=None):
     print("If lost, stored credentials become unreadable and you must re-run init-fpl after a reset.")
 
 
-def _init_fpl_cli(conn=None, login_fn=None, salt_path=None, verify_path=None):
+def _init_fpl_cli(conn=None, salt_path=None, verify_path=None, refresh_session=None, me_session=None):
     import os
-    import json
-    import getpass
-    from .auth import master, crypto, fpl_login
-    from .data import repository
+    import requests
+    from datetime import datetime, timezone, timedelta
+    from .auth import master, session as auth_session
     mkw = {}
     if salt_path is not None:
         mkw["salt_path"] = salt_path
@@ -126,27 +125,28 @@ def _init_fpl_cli(conn=None, login_fn=None, salt_path=None, verify_path=None):
         print("Master password not set — run `fpl-autopilot init-master-password` first.")
         return
     key = master.get_master_key(**mkw)
-    email = os.getenv("FPL_EMAIL") or input("FPL email: ")
-    password = os.getenv("FPL_PASSWORD") or getpass.getpass("FPL password: ")
-    login_fn = login_fn or fpl_login.login
+    refresh_token = os.getenv("FPL_REFRESH_TOKEN") or input("Paste FPL refresh token: ")
     try:
-        result = login_fn(email, password, expected_team_id=cfg_team_id())
-    except fpl_login.FPLLoginError as exc:
-        print(f"FPL login failed: {exc}")
+        tok = auth_session.refresh_access_token(refresh_token, session=refresh_session)
+        entry = auth_session.validate_token(tok["access_token"], expected_team_id=cfg_team_id(), session=me_session)
+    except auth_session.TokenRefreshError as exc:
+        print(f"Refresh token rejected: {exc}")
+        return
+    except auth_session.SessionValidationError as exc:
+        print(f"Token rejected: {exc}")
+        return
+    except requests.RequestException:
+        print("Couldn't reach FPL; check your connection.")
         return
     owns_conn = conn is None
     conn = conn or connect(cfg_db_path())
     init_db(conn)
-    repository.set_encrypted(conn, "fpl_email_encrypted", crypto.encrypt(key, email))
-    repository.set_encrypted(conn, "fpl_password_encrypted", crypto.encrypt(key, password))
-    repository.set_encrypted(conn, "session_cookie_encrypted",
-                             crypto.encrypt(key, json.dumps(result.cookies)))
-    repository.set_encrypted(conn, "csrf_token_encrypted", crypto.encrypt(key, result.csrf or ""))
-    repository.touch_session_refreshed(conn)
-    repository.mark_session_ok(conn)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(tok.get("expires_in", 28800)))
+    auth_session.store_tokens(conn, key, refresh_token=tok.get("refresh_token") or refresh_token,
+                              access_token=tok["access_token"], expires_at=expires_at)
     if owns_conn:
         conn.close()
-    print(f"Authenticated as entry {result.entry_id}; session stored.")
+    print(f"Authenticated as entry {entry}; session stored.")
 
 
 def _auth_status_cli(conn=None):
@@ -159,10 +159,10 @@ def _auth_status_cli(conn=None):
         print("No stored FPL session — run `fpl-autopilot init-fpl`.")
     else:
         row = conn.execute(
-            "SELECT relogin_failures, session_last_refreshed FROM credentials WHERE id=1"
+            "SELECT session_last_refreshed FROM credentials WHERE id=1"
         ).fetchone()
         print(f"auth_state: {state}")
-        print(f"relogin_failures: {row['relogin_failures']}")
+        print(f"access_token_expires_at: {repository.get_access_expiry(conn)}")
         print(f"session_last_refreshed: {row['session_last_refreshed']}")
     if owns_conn:
         conn.close()
