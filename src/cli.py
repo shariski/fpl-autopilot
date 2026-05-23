@@ -212,6 +212,50 @@ def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
         conn.close()
 
 
+def _execute_transfer_cli(conn=None, salt_path=None, verify_path=None, live=False, rank=1,
+                          session=None, suggester=None, confirm_fn=None):
+    from .auth import master
+    from .auth.session import SessionError
+    from .execution import transfer as transfer_mod
+    from .execution import executor as executor_mod
+    mkw = {}
+    if salt_path is not None:
+        mkw["salt_path"] = salt_path
+    if verify_path is not None:
+        mkw["verify_path"] = verify_path
+    if not master.is_initialized(**mkw):
+        print("Master password not set — run `fpl-autopilot init-master-password` first.")
+        return
+    key = master.get_master_key(**mkw)
+    if confirm_fn is None:
+        def confirm_fn(diff):
+            print(f"Planned transfer: {diff}")
+            return input("Type 'yes' to submit to your live FPL team: ").strip().lower() == "yes"
+    owns_conn = conn is None
+    conn = conn or connect(cfg_db_path())
+    init_db(conn)
+    try:
+        result = transfer_mod.run_transfer(conn, key, rank=rank, live=live, confirm_fn=confirm_fn,
+                                           session=session, suggester=suggester)
+    except (executor_mod.ExecutorError, SessionError) as exc:
+        print(f"Could not execute: {exc}")
+        if owns_conn:
+            conn.close()
+        return
+    if live and result.dry_run:
+        print("Aborted — nothing submitted.")
+    elif result.dry_run:
+        print("DRY-RUN — would POST:")
+        print(f"  {result.request['method']} {result.request['url']}")
+        print(f"  body: {result.request['body']}")
+    elif result.ok:
+        print(f"Submitted. HTTP {result.status}.")
+    else:
+        print(f"Submission failed (HTTP {result.status}); nothing changed.")
+    if owns_conn:
+        conn.close()
+
+
 def serve(host="0.0.0.0", port=None, scheduler=True):
     import os
     import uvicorn
@@ -246,6 +290,9 @@ def main(argv=None):
     sub.add_parser("auth-status", help="show stored FPL session state (no secrets)")
     p_exec = sub.add_parser("execute-lineup", help="set captain & vice from the ranker (dry-run unless --live)")
     p_exec.add_argument("--live", action="store_true", help="actually submit to FPL (requires typed confirmation)")
+    p_xfer = sub.add_parser("execute-transfer", help="make one free transfer from the suggestions (dry-run unless --live)")
+    p_xfer.add_argument("--live", action="store_true", help="actually submit to FPL (requires typed confirmation)")
+    p_xfer.add_argument("--rank", type=int, default=1, help="which suggestion to execute (1-based; default 1)")
     args = parser.parse_args(argv)
     if args.command == "refresh":
         sources = (args.source,) if args.source else ("fpl", "understat")
@@ -263,6 +310,8 @@ def main(argv=None):
         _auth_status_cli()
     elif args.command == "execute-lineup":
         _execute_lineup_cli(live=args.live)
+    elif args.command == "execute-transfer":
+        _execute_transfer_cli(live=args.live, rank=args.rank)
 
 
 if __name__ == "__main__":
