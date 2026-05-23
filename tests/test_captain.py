@@ -102,7 +102,9 @@ def test_get_captain_picks_integration(db):
     result = captain.get_captain_picks(db)
 
     # shape matches docs/api-contract.md /api/captain
-    assert set(result.keys()) == {"picks", "vice_player_id"}
+    assert set(result.keys()) == {"picks", "vice_player_id", "confidence"}
+    assert isinstance(result["confidence"], int)
+    assert 0 <= result["confidence"] <= 100
     assert len(result["picks"]) == 5
     for p in result["picks"]:
         assert set(p.keys()) == {"player_id", "web_name", "xp", "fixture", "reason"}
@@ -127,7 +129,7 @@ def test_get_captain_picks_integration(db):
 def test_get_captain_picks_no_upcoming_gw_returns_empty(db):
     db.execute("INSERT INTO gameweeks (id, name, finished) VALUES (1,'GW1',1)")
     db.commit()
-    assert captain.get_captain_picks(db) == {"picks": [], "vice_player_id": None}
+    assert captain.get_captain_picks(db) == {"picks": [], "vice_player_id": None, "confidence": None}
 
 
 def test_get_captain_picks_no_xp_row_ranks_last(db):

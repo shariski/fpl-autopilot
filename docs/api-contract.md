@@ -72,10 +72,13 @@ Exactly 15 players. `id, web_name, position, team_short, price, status, is_capta
       "reason": "Highest xP (7.2). Next best Salah 6.1 — gap 1.1. Home vs FDR-2 defense."
     }
   ],
-  "vice_player_id": 328
+  "vice_player_id": 328,
+  "confidence": 75                        // integer 0–100; null when picks is empty
 }
 ```
-Until built, backend returns `{"picks": [], "vice_player_id": null}`.
+`confidence` reflects data staleness (cache age), player availability (FPL status flags), and xP gap between the top two options. Computed by `src/decisions/confidence.score()`.
+
+Until built, backend returns `{"picks": [], "vice_player_id": null, "confidence": null}`.
 
 ## GET /api/transfers — transfer ideas _(forthcoming — transfer engine)_
 

@@ -2,6 +2,8 @@
 ranks the 15-man squad for captaincy. Suggest-only — no execution/persistence (CLAUDE.md B2)."""
 import json
 
+from src.decisions import confidence as confidence_mod
+
 MODEL_VERSION = "v1"
 
 
@@ -79,12 +81,21 @@ def _build_candidate(conn, player_id, gw):
 
 
 def get_captain_picks(conn):
-    """Reader: returns the /api/captain payload {picks, vice_player_id} for the next GW."""
+    """Reader: returns the /api/captain payload {picks, vice_player_id, confidence} for the next GW."""
     gw = _next_gw(conn)
     if gw is None:
-        return {"picks": [], "vice_player_id": None}
+        return {"picks": [], "vice_player_id": None, "confidence": None}
     candidates = [c for c in (_build_candidate(conn, pid, gw)
                               for pid in _squad_element_ids(conn)) if c is not None]
     picks = rank_captains(candidates)
+    if not picks:
+        return {"picks": [], "vice_player_id": None, "confidence": None}
     vice = picks[1]["player_id"] if len(picks) > 1 else None
-    return {"picks": picks, "vice_player_id": vice}
+    ids = [picks[0]["player_id"]] + ([vice] if vice is not None else [])
+    rows = conn.execute(
+        f"SELECT status FROM players WHERE id IN ({','.join('?' * len(ids))})", ids).fetchall()
+    statuses = [r["status"] for r in rows]
+    gap = picks[0]["xp"] - picks[1]["xp"] if len(picks) > 1 else None
+    conf = confidence_mod.score(staleness_hours=confidence_mod.hours_since_refresh(conn),
+                                statuses=statuses, gap=gap)
+    return {"picks": picks, "vice_player_id": vice, "confidence": conf}
