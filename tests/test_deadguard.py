@@ -305,3 +305,56 @@ def test_job_no_deadline_returns_none(db, monkeypatch):
     monkeypatch.setattr(deadguard.lineup, "run_lineup", lambda *a, **k: called.append(1))
     assert deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG) is None
     assert called == []
+
+
+# ---------------------------------------------------------------------------
+# Task 5: _pick_flagged_transfer + _player_status
+# ---------------------------------------------------------------------------
+_SUGG = {"suggestions": [{
+    "out": {"player_id": 7, "web_name": "Out"}, "in": {"player_id": 99, "web_name": "In"},
+    "ep_delta_5gw": 5.0, "hit_cost": 0, "confidence": 80}], "empty_reason": None}
+
+
+def _seed_player_status(db, pid, status):
+    db.execute("INSERT INTO players (id, web_name, status) VALUES (?, ?, ?)", (pid, f"P{pid}", status))
+    db.commit()
+
+
+def test_pick_flagged_transfer_returns_rank_when_qualifying(db, monkeypatch):
+    _seed_player_status(db, 7, "i")   # flagged out
+    monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: _SUGG)
+    assert deadguard._pick_flagged_transfer(db, _CFG) == 1
+
+
+def test_pick_flagged_transfer_none_when_out_available(db, monkeypatch):
+    _seed_player_status(db, 7, "a")   # not flagged
+    monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: _SUGG)
+    assert deadguard._pick_flagged_transfer(db, _CFG) is None
+
+
+def test_pick_flagged_transfer_none_on_hit(db, monkeypatch):
+    _seed_player_status(db, 7, "i")
+    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "hit_cost": -4}], "empty_reason": None}
+    monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: sugg)
+    assert deadguard._pick_flagged_transfer(db, _CFG) is None
+
+
+def test_pick_flagged_transfer_none_below_threshold(db, monkeypatch):
+    _seed_player_status(db, 7, "i")
+    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "ep_delta_5gw": 2.0}], "empty_reason": None}
+    monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: sugg)
+    assert deadguard._pick_flagged_transfer(db, _CFG) is None
+
+
+def test_pick_flagged_transfer_none_low_confidence(db, monkeypatch):
+    _seed_player_status(db, 7, "i")
+    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "confidence": 50}], "empty_reason": None}
+    monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: sugg)
+    assert deadguard._pick_flagged_transfer(db, _CFG) is None
+
+
+def test_pick_flagged_transfer_none_when_disabled(db, monkeypatch):
+    _seed_player_status(db, 7, "i")
+    monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: _SUGG)
+    cfg = {"deadguard": {"scope": {"transfer_if_flagged": False}}}
+    assert deadguard._pick_flagged_transfer(db, cfg) is None

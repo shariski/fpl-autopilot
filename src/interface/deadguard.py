@@ -7,6 +7,7 @@ from src.config import load_config, db_path
 from src.data import repository
 from src.data.db import connect, init_db
 from src.decisions import captain
+from src.decisions import transfers
 from src.execution import lineup
 from src.interface import telegram
 from src.auth.session import SessionExpired
@@ -98,6 +99,27 @@ def _run_trigger(conn, key, gw):
     except Exception:
         log.exception("deadguard post-execution bookkeeping failed (captain was already set)")
     _notify(conn, "executed", f"Deadguard set your captain: {name}")
+
+
+def _player_status(conn, player_id):
+    row = conn.execute("SELECT status FROM players WHERE id=?", (player_id,)).fetchone()
+    return row["status"] if row else None
+
+
+def _pick_flagged_transfer(conn, cfg):
+    """1-based rank of the first transfer suggestion that replaces a FLAGGED squad player with a
+    free, high-EP upgrade, or None. Guards (all required): OUT status not in ('a','d'); hit_cost>=0
+    (free); ep_delta_5gw >= min_ep; confidence >= floor."""
+    if not config.deadguard_transfer_if_flagged(cfg):
+        return None
+    min_ep = config.deadguard_min_ep_delta(cfg)
+    floor = config.deadguard_confidence_floor(cfg)
+    sugg = transfers.get_transfer_suggestions(conn)
+    for i, s in enumerate(sugg["suggestions"], start=1):
+        if (_player_status(conn, s["out"]["player_id"]) not in ("a", "d")
+                and s["hit_cost"] >= 0 and s["ep_delta_5gw"] >= min_ep and s["confidence"] >= floor):
+            return i
+    return None
 
 
 def _notify(conn, kind, summary):
