@@ -222,3 +222,18 @@ def mark_session_ok(conn):
         "ON CONFLICT(id) DO UPDATE SET auth_state='active', relogin_failures=0"
     )
     conn.commit()
+
+
+def log_activity(conn, *, decision_type, mode, action_taken, inputs=None,
+                 executed=False, exec_outcome=None, gw=None, alternatives=None):
+    conn.execute(
+        "INSERT INTO activity_log (ts_utc, gw, mode, decision_type, action_taken, "
+        "inputs_json, alternatives_json, executed, exec_outcome_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (_now(), gw, mode, decision_type, action_taken,
+         json.dumps(inputs) if inputs is not None else None,
+         json.dumps(alternatives) if alternatives is not None else None,
+         executed,
+         json.dumps(exec_outcome) if exec_outcome is not None else None),
+    )
+    conn.commit()

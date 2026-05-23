@@ -125,3 +125,19 @@ def test_access_expiry_get_set(db):
     assert repository.get_access_expiry(db) is None
     repository.set_access_expiry(db, "2026-05-23T12:00:00+00:00")
     assert repository.get_access_expiry(db) == "2026-05-23T12:00:00+00:00"
+
+
+def test_log_activity_roundtrip(db):
+    import json as _json
+    from src.data import repository
+    repository.log_activity(db, decision_type="lineup", mode="manual",
+                            action_taken="captain=5, vice=6",
+                            inputs={"xp": 7.1}, executed=True,
+                            exec_outcome={"status": 200}, gw=38)
+    row = db.execute("SELECT * FROM activity_log").fetchone()
+    assert row["decision_type"] == "lineup"
+    assert row["mode"] == "manual"
+    assert row["executed"] == 1
+    assert row["gw"] == 38
+    assert _json.loads(row["inputs_json"])["xp"] == 7.1
+    assert _json.loads(row["exec_outcome_json"])["status"] == 200
