@@ -327,3 +327,48 @@ def test_poll_once_routes_keep_callback_to_deadguard(db, monkeypatch):
     monkeypatch.setattr(ti, "handle_callback", lambda conn, key, cq, **k: cr.append(cq["data"]))
     ti.poll_once(b"key", conn=db)
     assert kept == ["k:30"] and cr == []
+
+
+def test_handle_freeze_sets_frozen_and_offers_unfreeze(db, monkeypatch):
+    from src.execution import override
+    _configure(monkeypatch)                               # CHAT_ID=42
+    sent = {}
+    monkeypatch.setattr(telegram, "send_message",
+                        lambda text, **k: sent.update(text=text, buttons=k.get("buttons")) or True)
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    ti.handle_freeze(db, _cq("f:1"))
+    assert override.is_frozen(db) is True
+    assert sent["buttons"] == [[{"text": "▶️ Unfreeze", "callback_data": "u:1"}]]
+
+
+def test_handle_freeze_wrong_chat_ignored(db, monkeypatch):
+    from src.execution import override
+    _configure(monkeypatch)
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    monkeypatch.setattr(telegram, "send_message", lambda text, **k: True)
+    ti.handle_freeze(db, _cq("f:1", chat_id="999"))
+    assert override.is_frozen(db) is False
+
+
+def test_handle_unfreeze_clears(db, monkeypatch):
+    from src.execution import override
+    _configure(monkeypatch)
+    override.freeze(db, reason="x", source="user")
+    monkeypatch.setattr(telegram, "send_message", lambda text, **k: True)
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    ti.handle_unfreeze(db, _cq("u:1"))
+    assert override.is_frozen(db) is False
+
+
+def test_poll_once_routes_freeze_and_unfreeze(db, monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(ti, "is_enabled", lambda cfg=None: True)
+    updates = [{"update_id": 40, "callback_query": {"id": "f", "data": "f:1", "message": {"chat": {"id": "42"}}}},
+               {"update_id": 41, "callback_query": {"id": "u", "data": "u:1", "message": {"chat": {"id": "42"}}}}]
+    monkeypatch.setattr(telegram, "get_updates", lambda offset, **k: updates)
+    froze, thawed, confirms = [], [], []
+    monkeypatch.setattr(ti, "handle_freeze", lambda conn, cq, **k: froze.append(cq["id"]))
+    monkeypatch.setattr(ti, "handle_unfreeze", lambda conn, cq, **k: thawed.append(cq["id"]))
+    monkeypatch.setattr(ti, "handle_callback", lambda conn, key, cq, **k: confirms.append(cq["id"]))
+    ti.poll_once(b"key", conn=db)
+    assert froze == ["f"] and thawed == ["u"] and confirms == []

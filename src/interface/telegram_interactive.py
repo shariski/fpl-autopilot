@@ -8,7 +8,7 @@ from src.config import db_path
 from src.data import repository
 from src.data.db import connect, init_db
 from src.decisions import captain, transfers
-from src.execution import lineup, transfer as transfer_exec
+from src.execution import lineup, override, transfer as transfer_exec
 from src.auth.session import SessionExpired
 from src.interface import telegram
 
@@ -171,6 +171,27 @@ def handle_callback(conn, key, cq, *, session=None, now=None,
     telegram.answer_callback_query(cq["id"], text="Confirmed", session=session)
 
 
+def handle_freeze(conn, cq, *, session=None):
+    chat_id = str(cq.get("message", {}).get("chat", {}).get("id"))
+    if chat_id != os.getenv(telegram.CHAT_ID_ENV):
+        telegram.answer_callback_query(cq["id"], text="Not authorized", session=session)
+        return
+    override.freeze(conn, reason="frozen from Telegram", source="user")
+    telegram.send_message("🛑 Auto-execution FROZEN. No autonomous changes will be made.",
+                          buttons=[[{"text": "▶️ Unfreeze", "callback_data": "u:1"}]], session=session)
+    telegram.answer_callback_query(cq["id"], text="Frozen", session=session)
+
+
+def handle_unfreeze(conn, cq, *, session=None):
+    chat_id = str(cq.get("message", {}).get("chat", {}).get("id"))
+    if chat_id != os.getenv(telegram.CHAT_ID_ENV):
+        telegram.answer_callback_query(cq["id"], text="Not authorized", session=session)
+        return
+    override.unfreeze(conn, source="user")
+    telegram.send_message("▶️ Auto-execution resumed.", session=session)
+    telegram.answer_callback_query(cq["id"], text="Unfrozen", session=session)
+
+
 def poll_once(key, *, conn=None, session=None):
     if not is_enabled():
         return
@@ -184,9 +205,14 @@ def poll_once(key, *, conn=None, session=None):
             try:
                 cq = u.get("callback_query")
                 if cq:
-                    if cq.get("data", "").startswith("k:"):
+                    data = cq.get("data", "")
+                    if data.startswith("k:"):
                         from src.interface import deadguard
                         deadguard.handle_keep(conn, cq, session=session)
+                    elif data.startswith("f:"):
+                        handle_freeze(conn, cq, session=session)
+                    elif data.startswith("u:"):
+                        handle_unfreeze(conn, cq, session=session)
                     else:
                         handle_callback(conn, key, cq, session=session)
             except Exception:
