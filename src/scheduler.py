@@ -36,8 +36,15 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
             conn.close()
 
 
-def build_scheduler(scheduler=None):
-    """Register the Phase-1 cron jobs and return the (un-started) scheduler."""
+def _maybe_load_key():
+    if not config.unattended_enabled():
+        return None
+    from .auth import master
+    return master.get_master_key()
+
+
+def build_scheduler(scheduler=None, key=None):
+    """Register the cron jobs and return the (un-started) scheduler."""
     from apscheduler.schedulers.background import BackgroundScheduler
     from apscheduler.triggers.cron import CronTrigger
     scheduler = scheduler or BackgroundScheduler(timezone="UTC")
@@ -45,13 +52,16 @@ def build_scheduler(scheduler=None):
                       id="weekly_refresh", replace_existing=True)
     scheduler.add_job(refresh_and_recompute, CronTrigger(minute=0),
                       id="hourly_refresh", replace_existing=True)
+    if key is not None:
+        scheduler.add_job(lambda: auto_execute_job(key), CronTrigger(minute="*/15"),
+                          id="auto_execute", replace_existing=True)
     return scheduler
 
 
 def run_scheduler_blocking():
     """Run the cadence headless (blocks)."""
     from apscheduler.schedulers.blocking import BlockingScheduler
-    build_scheduler(BlockingScheduler(timezone="UTC")).start()
+    build_scheduler(BlockingScheduler(timezone="UTC"), key=_maybe_load_key()).start()
 
 
 def _default_route(conn, key):

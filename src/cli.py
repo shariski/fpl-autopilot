@@ -303,8 +303,8 @@ def serve(host="0.0.0.0", port=None, scheduler=True):
     port = port or int(os.getenv("PORT", "8000"))
     sched = None
     if scheduler:
-        from .scheduler import build_scheduler
-        sched = build_scheduler()
+        from .scheduler import build_scheduler, _maybe_load_key
+        sched = build_scheduler(key=_maybe_load_key())
         sched.start()
     try:
         uvicorn.run("src.interface.api:app", host=host, port=port)

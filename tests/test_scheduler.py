@@ -55,7 +55,8 @@ def test_serve_starts_scheduler(monkeypatch):
         def shutdown(self, wait=False):
             events.append("shutdown")
 
-    monkeypatch.setattr("src.scheduler.build_scheduler", lambda: FakeSched())
+    monkeypatch.setattr("src.scheduler.build_scheduler", lambda **kw: FakeSched())
+    monkeypatch.setattr("src.scheduler._maybe_load_key", lambda: None)
     monkeypatch.setattr("uvicorn.run", lambda *a, **k: events.append("uvicorn"))
     cli.serve(port=0, scheduler=True)
     assert events == ["start", "uvicorn", "shutdown"]
@@ -64,7 +65,7 @@ def test_serve_starts_scheduler(monkeypatch):
 def test_serve_no_scheduler(monkeypatch):
     import src.cli as cli
     built = []
-    monkeypatch.setattr("src.scheduler.build_scheduler", lambda: built.append(1))
+    monkeypatch.setattr("src.scheduler.build_scheduler", lambda **kw: built.append(1))
     monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
     cli.serve(port=0, scheduler=False)
     assert built == []
@@ -129,3 +130,26 @@ def test_auto_execute_disabled_skips(db):
     scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=lambda c, k: called.append(1),
                                cfg={"unattended": {"enabled": False}})
     assert not called
+
+
+# ---------------------------------------------------------------------------
+# build_scheduler key wiring + _maybe_load_key tests
+# ---------------------------------------------------------------------------
+
+def test_build_scheduler_no_key_no_autoexec():
+    from apscheduler.schedulers.background import BackgroundScheduler
+    sched = scheduler.build_scheduler(BackgroundScheduler(timezone="UTC"), key=None)
+    ids = {j.id for j in sched.get_jobs()}
+    assert "auto_execute" not in ids
+    assert "weekly_refresh" in ids and "hourly_refresh" in ids
+
+
+def test_build_scheduler_with_key_adds_autoexec():
+    from apscheduler.schedulers.background import BackgroundScheduler
+    sched = scheduler.build_scheduler(BackgroundScheduler(timezone="UTC"), key=b"x")
+    assert "auto_execute" in {j.id for j in sched.get_jobs()}
+
+
+def test_maybe_load_key_disabled_returns_none():
+    # config.yaml ships with unattended.enabled: false
+    assert scheduler._maybe_load_key() is None
