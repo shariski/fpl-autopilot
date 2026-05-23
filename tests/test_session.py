@@ -1,6 +1,5 @@
-import json
 import pytest
-import requests
+from datetime import datetime, timedelta, timezone
 from src.auth import session, master, crypto
 from src.data import repository
 
@@ -11,15 +10,24 @@ class _Resp:
         self._payload = payload
 
     def json(self):
+        if self._payload is None:
+            raise ValueError("no json")
         return self._payload
 
 
-class _FakeSession:
-    """Returns a canned /me response; ignores cookies (logic is what we test)."""
+class _FakeTokenSession:
+    def __init__(self, *, status_code=200, payload=None):
+        self.headers = {}
+        self._status = status_code
+        self._payload = payload
 
+    def post(self, url, data=None, headers=None, timeout=None):
+        return _Resp(status_code=self._status, payload=self._payload)
+
+
+class _FakeMeSession:
     def __init__(self, *, me_payload, me_status=200):
         self.headers = {}
-        self.cookies = requests.cookies.RequestsCookieJar()
         self._me_payload = me_payload
         self._me_status = me_status
 
@@ -32,92 +40,78 @@ def _key(tmp_path):
     return master.init_master_password("throwaway-master-12", s, v)
 
 
-def _store_cookies(db, key, cookies):
-    repository.set_encrypted(db, "session_cookie_encrypted", crypto.encrypt(key, json.dumps(cookies)))
+def test_refresh_access_token_ok():
+    fake = _FakeTokenSession(payload={"access_token": "AT", "expires_in": 28800, "refresh_token": "RT2"})
+    out = session.refresh_access_token("rt", session=fake)
+    assert out["access_token"] == "AT"
 
 
-def test_ensure_session_valid(tmp_path, db):
+def test_refresh_access_token_oauth_error():
+    fake = _FakeTokenSession(status_code=400, payload={"error": "invalid_grant"})
+    with pytest.raises(session.TokenRefreshError) as exc:
+        session.refresh_access_token("rt-throwaway", session=fake)
+    assert "invalid_grant" in str(exc.value)
+    assert "rt-throwaway" not in str(exc.value)
+
+
+def test_validate_token_ok():
+    fake = _FakeMeSession(me_payload={"player": {"entry": 3122849}})
+    assert session.validate_token("AT", expected_team_id=3122849, session=fake) == 3122849
+
+
+def test_validate_token_team_mismatch():
+    fake = _FakeMeSession(me_payload={"player": {"entry": 999}})
+    with pytest.raises(session.SessionValidationError):
+        session.validate_token("AT", expected_team_id=3122849, session=fake)
+
+
+def test_validate_token_not_authenticated():
+    fake = _FakeMeSession(me_payload={"player": None})
+    with pytest.raises(session.SessionValidationError):
+        session.validate_token("AT", expected_team_id=3122849, session=fake)
+
+
+def test_store_tokens_roundtrip(tmp_path, db):
     key = _key(tmp_path)
-    _store_cookies(db, key, {"pl_profile": "abc"})
-    repository.mark_session_ok(db)
-    fake = _FakeSession(me_payload={"player": {"entry": 3122849}})
-    called = []
-    out = session.ensure_session(db, key, expected_team_id=3122849,
-                                 login_fn=lambda *a, **k: called.append(1), session=fake)
-    assert out is fake
-    assert not called  # no re-login when the session is valid
+    exp = datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc)
+    session.store_tokens(db, key, refresh_token="RT", access_token="AT", expires_at=exp)
+    assert crypto.decrypt(key, repository.get_encrypted(db, "refresh_token_encrypted")) == "RT"
+    assert crypto.decrypt(key, repository.get_encrypted(db, "access_token_encrypted")) == "AT"
+    assert repository.get_access_expiry(db) == exp.isoformat()
     assert repository.get_auth_state(db) == "active"
+
+
+def test_ensure_session_uses_cached_token(tmp_path, db):
+    key = _key(tmp_path)
+    future = datetime.now(timezone.utc) + timedelta(hours=4)
+    session.store_tokens(db, key, refresh_token="RT", access_token="AT-cached", expires_at=future)
+    boom = _FakeTokenSession(status_code=500, payload={"error": "should_not_be_called"})
+    s = session.ensure_session(db, key, refresh_session=boom)
+    assert s.headers["X-Api-Authorization"] == "Bearer AT-cached"
+
+
+def test_ensure_session_refreshes_when_expired(tmp_path, db):
+    key = _key(tmp_path)
+    past = datetime.now(timezone.utc) - timedelta(minutes=1)
+    session.store_tokens(db, key, refresh_token="RT-old", access_token="AT-old", expires_at=past)
+    fake = _FakeTokenSession(payload={"access_token": "AT-new", "expires_in": 28800, "refresh_token": "RT-new"})
+    s = session.ensure_session(db, key, refresh_session=fake)
+    assert s.headers["X-Api-Authorization"] == "Bearer AT-new"
+    assert crypto.decrypt(key, repository.get_encrypted(db, "access_token_encrypted")) == "AT-new"
+    assert crypto.decrypt(key, repository.get_encrypted(db, "refresh_token_encrypted")) == "RT-new"
+
+
+def test_ensure_session_refresh_failure_expires(tmp_path, db):
+    key = _key(tmp_path)
+    past = datetime.now(timezone.utc) - timedelta(minutes=1)
+    session.store_tokens(db, key, refresh_token="RT", access_token="AT", expires_at=past)
+    fake = _FakeTokenSession(status_code=400, payload={"error": "invalid_grant"})
+    with pytest.raises(session.SessionExpired):
+        session.ensure_session(db, key, refresh_session=fake)
+    assert repository.get_auth_state(db) == "expired"
 
 
 def test_ensure_session_not_initialized(tmp_path, db):
     key = _key(tmp_path)
-    fake = _FakeSession(me_payload={"player": {"entry": 3122849}})
     with pytest.raises(session.SessionNotInitialized):
-        session.ensure_session(db, key, expected_team_id=3122849, session=fake)
-
-
-def test_ensure_session_frozen_refuses(tmp_path, db):
-    key = _key(tmp_path)
-    _store_cookies(db, key, {"pl_profile": "abc"})
-    repository.set_auth_state(db, "frozen")
-    called = []
-    with pytest.raises(session.SessionFrozen):
-        session.ensure_session(db, key, expected_team_id=3122849,
-                               login_fn=lambda *a, **k: called.append(1),
-                               session=_FakeSession(me_payload={}))
-    assert not called  # frozen refuses without attempting login
-
-
-def _store_creds(db, key, cookies):
-    _store_cookies(db, key, cookies)
-    repository.set_encrypted(db, "fpl_email_encrypted", crypto.encrypt(key, "me@example.com"))
-    repository.set_encrypted(db, "fpl_password_encrypted", crypto.encrypt(key, "throwaway-fpl-pw"))
-
-
-def test_ensure_session_relogin_ok(tmp_path, db):
-    from src.auth import fpl_login
-    key = _key(tmp_path)
-    _store_creds(db, key, {"pl_profile": "stale"})
-    repository.mark_session_ok(db)
-    expired = _FakeSession(me_payload={}, me_status=200)  # no player -> expired
-    fresh = fpl_login.LoginResult(cookies={"pl_profile": "fresh"}, csrf="t2", entry_id=3122849)
-    out = session.ensure_session(db, key, expected_team_id=3122849,
-                                 login_fn=lambda *a, **k: fresh, session=expired)
-    assert isinstance(out, requests.Session)
-    assert repository.get_auth_state(db) == "active"
-    row = db.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()
-    assert row["relogin_failures"] == 0
-    stored = json.loads(crypto.decrypt(key, repository.get_encrypted(db, "session_cookie_encrypted")))
-    assert stored == {"pl_profile": "fresh"}
-
-
-def _failing_login(*a, **k):
-    from src.auth.fpl_login import FPLLoginError
-    raise FPLLoginError("bad creds")
-
-
-def test_ensure_session_relogin_fails_once(tmp_path, db):
-    key = _key(tmp_path)
-    _store_creds(db, key, {"pl_profile": "stale"})
-    repository.mark_session_ok(db)
-    with pytest.raises(session.ReloginFailed):
-        session.ensure_session(db, key, expected_team_id=3122849,
-                               login_fn=_failing_login, session=_FakeSession(me_payload={}))
-    assert repository.get_auth_state(db) == "expired"
-    row = db.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()
-    assert row["relogin_failures"] == 1
-
-
-def test_ensure_session_freezes_after_two(tmp_path, db):
-    key = _key(tmp_path)
-    _store_creds(db, key, {"pl_profile": "stale"})
-    repository.mark_session_ok(db)
-    # first failed re-login
-    with pytest.raises(session.ReloginFailed):
-        session.ensure_session(db, key, expected_team_id=3122849,
-                               login_fn=_failing_login, session=_FakeSession(me_payload={}))
-    # second consecutive failure -> frozen
-    with pytest.raises(session.SessionFrozen):
-        session.ensure_session(db, key, expected_team_id=3122849,
-                               login_fn=_failing_login, session=_FakeSession(me_payload={}))
-    assert repository.get_auth_state(db) == "frozen"
+        session.ensure_session(db, key, refresh_session=_FakeTokenSession())
