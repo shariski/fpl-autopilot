@@ -31,3 +31,19 @@ def build_lineup_payload(current_picks, captain_id, vice_id):
         for p in current_picks
     ]
     return {"chip": None, "picks": picks}
+
+
+def fetch_current_picks(session, entry_id):
+    resp = session.get(MY_TEAM_URL.format(entry=entry_id), timeout=TIMEOUT)
+    if resp.status_code != 200:
+        raise ExecutorError(f"could not read current team (HTTP {resp.status_code})")
+    return resp.json().get("picks", [])
+
+
+def apply_lineup(session, entry_id, payload, *, dry_run):
+    url = MY_TEAM_URL.format(entry=entry_id)
+    request = {"method": "POST", "url": url, "body": payload}
+    if dry_run:
+        return ExecResult(dry_run=True, request=request, status=None, ok=True)
+    resp = session.post(url, json=payload, timeout=TIMEOUT)
+    return ExecResult(dry_run=False, request=request, status=resp.status_code, ok=resp.status_code == 200)
