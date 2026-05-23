@@ -215,3 +215,32 @@ def test_job_disabled_returns_none(db, monkeypatch):
     monkeypatch.setattr(deadguard.lineup, "run_lineup", lambda *a, **k: called.append(1))
     out = deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg={"deadguard": {"enabled": False}})
     assert out is None and called == []
+
+
+def test_job_session_expired_leaves_retryable(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    from src.auth.session import SessionExpired
+    alerts = []
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: alerts.append(k["kind"]))
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Cap"}], "vice_player_id": 6, "confidence": 80})
+
+    def boom(conn, key, **k):
+        raise SessionExpired("expired")
+
+    monkeypatch.setattr(deadguard.lineup, "run_lineup", boom)
+    deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    row = db.execute("SELECT state, deadguard_triggered_at FROM gameweeks WHERE id=30").fetchone()
+    assert row["deadguard_triggered_at"] is None        # NOT marked -> retryable next tick
+    assert row["state"] == "DEADGUARD_ACTIVE"
+    assert "alert" in alerts
+
+
+def test_user_acted_false_on_expired_or_failed(db):
+    _seed_gw(db)
+    for st in ("expired", "failed"):
+        pid = repository.create_pending_decision(db, gw=30, decision_type="lineup",
+                                                 identity={"captain_id": 1, "vice_id": 2}, summary="x")
+        repository.set_pending_status(db, pid, st)
+    assert deadguard.user_acted(db, 30) is False
