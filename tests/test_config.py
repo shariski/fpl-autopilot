@@ -50,3 +50,15 @@ def test_deadguard_accessors_from_config():
     assert config.deadguard_warning_minutes({}) == 120     # default
     assert config.deadguard_trigger_minutes({"deadguard": {"trigger_window_minutes": 45}}) == 45
     assert config.deadguard_trigger_minutes({}) == 30      # default
+
+
+def test_deadguard_scope_accessors():
+    cfg = {"deadguard": {"scope": {"transfer_if_flagged": False, "min_ep_delta_for_transfer": 4.0,
+                                   "confidence_floor": 80}}}
+    assert config.deadguard_transfer_if_flagged(cfg) is False
+    assert config.deadguard_min_ep_delta(cfg) == 4.0
+    assert config.deadguard_confidence_floor(cfg) == 80
+    # defaults when the block/keys are absent (explicit empty dict must NOT fall back to config.yaml)
+    assert config.deadguard_transfer_if_flagged({}) is True
+    assert config.deadguard_min_ep_delta({}) == 3.0
+    assert config.deadguard_confidence_floor({}) == 75

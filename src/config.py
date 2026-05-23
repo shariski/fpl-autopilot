@@ -64,3 +64,20 @@ def deadguard_warning_minutes(cfg=None):
 def deadguard_trigger_minutes(cfg=None):
     cfg = cfg if cfg is not None else load_config()
     return cfg.get("deadguard", {}).get("trigger_window_minutes", 30)
+
+
+def _deadguard_scope(cfg):
+    cfg = cfg if cfg is not None else load_config()
+    return cfg.get("deadguard", {}).get("scope", {})
+
+
+def deadguard_transfer_if_flagged(cfg=None):
+    return bool(_deadguard_scope(cfg).get("transfer_if_flagged", True))
+
+
+def deadguard_min_ep_delta(cfg=None):
+    return _deadguard_scope(cfg).get("min_ep_delta_for_transfer", 3.0)
+
+
+def deadguard_confidence_floor(cfg=None):
+    return _deadguard_scope(cfg).get("confidence_floor", 75)
