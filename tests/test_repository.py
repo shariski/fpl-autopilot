@@ -105,22 +105,11 @@ def test_auth_state_get_set(db):
     assert repository.get_auth_state(db) == "frozen"
 
 
-def test_increment_relogin_failures(db):
-    from src.data import repository
-    assert repository.increment_relogin_failures(db) == 1
-    assert repository.increment_relogin_failures(db) == 2
-    row = db.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()
-    assert row["relogin_failures"] == 2
-
-
 def test_mark_session_ok_resets(db):
     from src.data import repository
-    repository.set_auth_state(db, "frozen")
-    repository.increment_relogin_failures(db)
+    repository.set_auth_state(db, "expired")
     repository.mark_session_ok(db)
     assert repository.get_auth_state(db) == "active"
-    row = db.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()
-    assert row["relogin_failures"] == 0
 
 
 def test_token_columns_whitelisted(db):

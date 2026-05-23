@@ -216,15 +216,6 @@ def set_auth_state(conn, state):
     conn.commit()
 
 
-def increment_relogin_failures(conn):
-    conn.execute(
-        "INSERT INTO credentials (id, relogin_failures) VALUES (1, 1) "
-        "ON CONFLICT(id) DO UPDATE SET relogin_failures=COALESCE(relogin_failures, 0) + 1"
-    )
-    conn.commit()
-    return conn.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()["relogin_failures"]
-
-
 def mark_session_ok(conn):
     conn.execute(
         "INSERT INTO credentials (id, auth_state, relogin_failures) VALUES (1, 'active', 0) "
