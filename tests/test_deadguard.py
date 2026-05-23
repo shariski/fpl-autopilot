@@ -616,3 +616,43 @@ def test_reeval_apply_not_ok_alerts(db, monkeypatch):
                         lambda conn, key, **k: types.SimpleNamespace(ok=False, dry_run=False, status=500))
     deadguard._run_reevaluate(db, b"key", 30, _CFG, apply=True)
     assert "alert" in notes and "executed" not in notes      # not-ok -> alert, not executed
+
+
+# ---------------------------------------------------------------------------
+# Task 5 (2.5c-1): run_deadguard_job dispatches reeval/lockout
+# ---------------------------------------------------------------------------
+def test_job_dispatches_reeval(db, monkeypatch):
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20), state="DEADGUARD_EXECUTED")
+    called = []
+    monkeypatch.setattr(deadguard, "_run_reevaluate",
+                        lambda conn, key, gw, cfg, *, apply: called.append(apply))
+    out = deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert out == "reeval" and called == [True]
+
+
+def test_job_dispatches_lockout(db, monkeypatch):
+    _seed_gw_dl(db, _NOW + timedelta(minutes=10), state="DEADGUARD_EXECUTED")
+    called = []
+    monkeypatch.setattr(deadguard, "_run_reevaluate",
+                        lambda conn, key, gw, cfg, *, apply: called.append(apply))
+    out = deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert out == "lockout" and called == [False]
+
+
+def test_job_reeval_disabled_noop(db, monkeypatch):
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20), state="DEADGUARD_EXECUTED")
+    called = []
+    monkeypatch.setattr(deadguard, "_run_reevaluate", lambda *a, **k: called.append(1))
+    out = deadguard.run_deadguard_job(b"key", conn=db, now=_NOW,
+                                      cfg={"deadguard": {"enabled": True, "reeval_if_late_news": False}})
+    assert out == "noop" and called == []
+
+
+def test_job_frozen_skips_reeval(db, monkeypatch):
+    from src.execution import override
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20), state="DEADGUARD_EXECUTED")
+    override.freeze(db, reason="x", source="user")
+    called = []
+    monkeypatch.setattr(deadguard, "_run_reevaluate", lambda *a, **k: called.append(1))
+    out = deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert out is None and called == []

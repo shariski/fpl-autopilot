@@ -261,7 +261,9 @@ def run_deadguard_job(key, *, conn=None, now=None, cfg=None):
             last_system_action_at=row["last_system_action_at"], user_acted=user_acted(conn, gw),
             warned=bool(row["deadguard_warned_at"]), triggered=bool(row["deadguard_triggered_at"]),
             warn_min=config.deadguard_warning_minutes(cfg),
-            trigger_min=config.deadguard_trigger_minutes(cfg))
+            trigger_min=config.deadguard_trigger_minutes(cfg),
+            reeval_enabled=config.deadguard_reeval_enabled(cfg),
+            lockout_min=config.deadguard_reeval_lockout_minutes(cfg))
         if directive == "system_acted":
             repository.set_gameweek_state(conn, gw, "SYSTEM_ACTED")
         elif directive == "user_acted":
@@ -271,6 +273,10 @@ def run_deadguard_job(key, *, conn=None, now=None, cfg=None):
             repository.mark_deadguard_warned(conn, gw)
         elif directive == "trigger":
             _run_trigger(conn, key, gw, cfg)
+        elif directive == "reeval":
+            _run_reevaluate(conn, key, gw, cfg, apply=True)
+        elif directive == "lockout":
+            _run_reevaluate(conn, key, gw, cfg, apply=False)
         return directive
     finally:
         if owns:
