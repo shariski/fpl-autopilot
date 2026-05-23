@@ -120,3 +120,34 @@ def test_apply_transfers_live_non_200():
     sess = _FakeSession(post_status=400)
     res = executor.apply_transfers(sess, 3122849, {"transfers": []}, dry_run=False)
     assert not res.ok and res.status == 400
+
+
+def _full_picks():
+    return [{"element": e, "position": e, "selling_price": 50,
+             "is_captain": False, "is_vice_captain": False} for e in range(1, 16)]
+
+
+def test_build_lineup_payload_reorders_bench():
+    from src.execution import executor
+    payload = executor.build_lineup_payload(_full_picks(), captain_id=1, vice_id=2,
+                                            bench_order=[15, 13, 14])
+    pos = {p["element"]: p["position"] for p in payload["picks"]}
+    assert pos[15] == 13 and pos[13] == 14 and pos[14] == 15   # reassigned in given order
+    assert pos[1] == 1 and pos[11] == 11 and pos[12] == 12     # starters + sub-GK unchanged
+    caps = {p["element"]: p["is_captain"] for p in payload["picks"]}
+    vices = {p["element"]: p["is_vice_captain"] for p in payload["picks"]}
+    assert caps[1] is True and vices[2] is True
+
+
+def test_build_lineup_payload_bad_bench_order_raises():
+    import pytest
+    from src.execution import executor
+    with pytest.raises(executor.ExecutorError):
+        executor.build_lineup_payload(_full_picks(), 1, 2, bench_order=[13, 14, 99])  # 99 not on bench
+
+
+def test_build_lineup_payload_none_unchanged():
+    from src.execution import executor
+    payload = executor.build_lineup_payload(_full_picks(), 1, 2)
+    pos = {p["element"]: p["position"] for p in payload["picks"]}
+    assert pos[13] == 13 and pos[14] == 14 and pos[15] == 15

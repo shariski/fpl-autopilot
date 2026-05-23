@@ -17,7 +17,7 @@ class ExecResult:
     ok: bool
 
 
-def build_lineup_payload(current_picks, captain_id, vice_id):
+def build_lineup_payload(current_picks, captain_id, vice_id, bench_order=None):
     if captain_id == vice_id:
         raise ExecutorError("captain and vice must be different players")
     elements = {p["element"] for p in current_picks}
@@ -25,8 +25,14 @@ def build_lineup_payload(current_picks, captain_id, vice_id):
         raise ExecutorError(f"captain {captain_id} not in current squad")
     if vice_id not in elements:
         raise ExecutorError(f"vice {vice_id} not in current squad")
+    pos_override = {}
+    if bench_order is not None:
+        current_bench = {p["element"] for p in current_picks if p["position"] in (13, 14, 15)}
+        if set(bench_order) != current_bench:
+            raise ExecutorError("bench_order must be exactly the current bench (positions 13-15)")
+        pos_override = {element: 13 + i for i, element in enumerate(bench_order)}
     picks = [
-        {"element": p["element"], "position": p["position"],
+        {"element": p["element"], "position": pos_override.get(p["element"], p["position"]),
          "is_captain": p["element"] == captain_id,
          "is_vice_captain": p["element"] == vice_id}
         for p in current_picks
