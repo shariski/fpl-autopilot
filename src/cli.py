@@ -164,7 +164,47 @@ def _auth_status_cli(conn=None):
         print(f"auth_state: {state}")
         print(f"access_token_expires_at: {repository.get_access_expiry(conn)}")
         print(f"session_last_refreshed: {row['session_last_refreshed']}")
+    from .execution import override
+    fr = override.status(conn)
+    print(f"frozen: {('yes (' + fr['source'] + ') — ' + fr['reason']) if fr else 'no'}")
+    print(f"relogin_failures: {repository.get_relogin_failures(conn)}")
     if owns_conn:
+        conn.close()
+
+
+def _freeze_cli(*, reason="frozen from CLI", conn=None):
+    from .execution import override
+    owns = conn is None
+    conn = conn or connect(cfg_db_path())
+    init_db(conn)
+    override.freeze(conn, reason=reason, source="user")
+    print("🛑 Frozen — autonomous execution (auto + deadguard) halted.")
+    if owns:
+        conn.close()
+
+
+def _unfreeze_cli(conn=None):
+    from .execution import override
+    owns = conn is None
+    conn = conn or connect(cfg_db_path())
+    init_db(conn)
+    override.unfreeze(conn, source="user")
+    print("▶️ Unfrozen — autonomous execution resumed.")
+    if owns:
+        conn.close()
+
+
+def _freeze_status_cli(conn=None):
+    from .execution import override
+    owns = conn is None
+    conn = conn or connect(cfg_db_path())
+    init_db(conn)
+    st = override.status(conn)
+    if st is None:
+        print("not frozen")
+    else:
+        print(f"FROZEN since {st['since']} (source: {st['source']}) — {st['reason']}")
+    if owns:
         conn.close()
 
 
@@ -347,6 +387,10 @@ def main(argv=None):
     p_route = sub.add_parser("route-gameweek", help="route captain + transfer per mode/confidence (dry-run unless --live)")
     p_route.add_argument("--live", action="store_true", help="execute the auto-routed decisions (requires typed confirmation)")
     p_route.add_argument("--mode", choices=["auto", "manual", "hybrid"], default=None, help="override config mode for this run")
+    p_freeze = sub.add_parser("freeze", help="halt all autonomous FPL execution (auto + deadguard)")
+    p_freeze.add_argument("--reason", default="frozen from CLI")
+    sub.add_parser("unfreeze", help="resume autonomous FPL execution")
+    sub.add_parser("freeze-status", help="show whether autonomous execution is frozen")
     args = parser.parse_args(argv)
     if args.command == "refresh":
         sources = (args.source,) if args.source else ("fpl", "understat")
@@ -368,6 +412,12 @@ def main(argv=None):
         _execute_transfer_cli(live=args.live, rank=args.rank)
     elif args.command == "route-gameweek":
         _route_gameweek_cli(live=args.live, mode=args.mode)
+    elif args.command == "freeze":
+        _freeze_cli(reason=args.reason)
+    elif args.command == "unfreeze":
+        _unfreeze_cli()
+    elif args.command == "freeze-status":
+        _freeze_status_cli()
 
 
 if __name__ == "__main__":
