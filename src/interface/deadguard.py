@@ -6,13 +6,16 @@ from src import config
 from src.config import load_config, db_path
 from src.data import repository
 from src.data.db import connect, init_db
+from src.analytics import xp
 from src.decisions import captain
 from src.decisions import transfers
+from src.decisions import bench
 from src.execution import lineup
 from src.execution import transfer as transfer_exec
+from src.execution import executor
 from src.execution import override
 from src.interface import telegram
-from src.auth.session import SessionExpired
+from src.auth.session import SessionExpired, ensure_session
 
 log = logging.getLogger(__name__)
 
@@ -131,6 +134,76 @@ def _run_trigger(conn, key, gw, cfg):
     except Exception:
         log.exception("deadguard summary log failed (lineup and transfer already applied)")
     _notify(conn, "executed", f"Deadguard: captain {name}, bench optimized, {transfer_note}.")
+
+
+def _current_lineup(picks):
+    """(captain_id, vice_id, [bench element ids at positions 13/14/15, in order]) from FPL /my-team picks."""
+    captain_id = next((p["element"] for p in picks if p.get("is_captain")), None)
+    vice_id = next((p["element"] for p in picks if p.get("is_vice_captain")), None)
+    benched = [p["element"] for p in sorted(picks, key=lambda p: p["position"]) if p["position"] in (13, 14, 15)]
+    return (captain_id, vice_id, benched)
+
+
+def _run_reevaluate(conn, key, gw, cfg, *, apply):
+    # 1. force-fresh FPL availability data so the ranker sees late news (cache-bypassed; FPL only, B6).
+    #    Lazy import mirrors scheduler.refresh_and_recompute (cli<->scheduler cycle).
+    try:
+        from src.cli import refresh
+        refresh(cfg=cfg, conn=conn, sources=("fpl",), full=True)
+        xp.compute_and_store(conn)
+    except Exception:
+        log.exception("deadguard re-eval refresh failed")
+        return
+
+    # 2. desired vs current lineup
+    try:
+        session = ensure_session(conn, key)
+        current = executor.fetch_current_picks(session, config.team_id(cfg))
+        caps = captain.get_captain_picks(conn)
+        if not caps["picks"]:
+            return
+        desired = (caps["picks"][0]["player_id"], caps["vice_player_id"], bench.rank_bench(conn, current))
+        cur = _current_lineup(current)
+    except SessionExpired:
+        froze = override.maybe_auto_freeze(conn)
+        _notify(conn, "alert", "Deadguard re-eval: FPL session expired — re-run init-fpl.")
+        if froze:
+            _notify(conn, "alert", "Auto-execution FROZEN — 2 consecutive auth failures. "
+                                   "Re-run init-fpl, then unfreeze.")
+        return
+    except Exception:
+        log.exception("deadguard re-eval compare failed")
+        return
+
+    if desired == cur:
+        return
+
+    name = caps["picks"][0]["web_name"]
+    if apply:
+        try:
+            result = lineup.run_lineup(conn, key, live=True, confirm_fn=lambda d: True,
+                                       optimize_bench=True, session=session)
+        except Exception as e:
+            _notify(conn, "alert", f"Deadguard re-eval failed: {type(e).__name__}")
+            return
+        if getattr(result, "ok", False):
+            repository.log_activity(conn, decision_type="deadguard", mode="deadguard",
+                                    action_taken=f"late-news re-eval: captain/bench updated (captain {name})",
+                                    inputs={"desired": desired, "previous": cur}, executed=True)
+            _notify(conn, "executed",
+                    f"Late news: re-set captain {name} + bench. You can change it back before the deadline.")
+    else:
+        row = conn.execute(
+            "SELECT deadguard_reeval_alerted_at FROM gameweeks WHERE id=?", (gw,)).fetchone()
+        if row["deadguard_reeval_alerted_at"]:
+            return
+        repository.mark_deadguard_reeval_alerted(conn, gw)
+        repository.log_activity(conn, decision_type="deadguard", mode="deadguard",
+                                action_taken="late-news re-eval: missed update (within lockout)",
+                                inputs={"desired": desired, "previous": cur}, executed=False)
+        _notify(conn, "alert",
+                f"Late news: your lineup may need a change (captain {name}), but it's too close to the "
+                f"deadline for me to change it safely. You may want to act.")
 
 
 def _player_status(conn, player_id):

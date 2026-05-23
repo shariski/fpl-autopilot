@@ -516,3 +516,90 @@ def test_evaluate_reeval_disabled_executed_noop():
 
 def test_evaluate_reeval_lockout_min_boundary():
     assert _ev(15, state="DEADGUARD_EXECUTED", reeval_enabled=True) == "lockout"  # mins == lockout_min -> lockout
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (2.5c-1): _current_lineup + _run_reevaluate
+# ---------------------------------------------------------------------------
+def _fake_picks(captain, vice, bench):
+    """FPL /my-team picks shape: element, position, is_captain, is_vice_captain."""
+    picks = [{"element": captain, "position": 1, "is_captain": True, "is_vice_captain": False},
+             {"element": vice, "position": 2, "is_captain": False, "is_vice_captain": True}]
+    for i, el in enumerate(bench):
+        picks.append({"element": el, "position": 13 + i, "is_captain": False, "is_vice_captain": False})
+    return picks
+
+
+def _wire_reeval(monkeypatch, *, cur_cap, cur_vice, cur_bench, want_cap, want_vice, want_bench):
+    monkeypatch.setattr("src.cli.refresh", lambda **k: None)
+    monkeypatch.setattr(deadguard.xp, "compute_and_store", lambda conn: None)
+    monkeypatch.setattr(deadguard, "ensure_session", lambda conn, key: object())
+    monkeypatch.setattr(deadguard.config, "team_id", lambda cfg=None: 1)
+    monkeypatch.setattr(deadguard.executor, "fetch_current_picks",
+                        lambda session, entry: _fake_picks(cur_cap, cur_vice, cur_bench))
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": want_cap, "web_name": "Cap"}],
+                                      "vice_player_id": want_vice, "confidence": 80})
+    monkeypatch.setattr(deadguard.bench, "rank_bench", lambda conn, current: list(want_bench))
+
+
+def test_reeval_apply_material_change_resets_lineup(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20), state="DEADGUARD_EXECUTED")
+    _wire_reeval(monkeypatch, cur_cap=5, cur_vice=6, cur_bench=[20, 21, 22],
+                 want_cap=7, want_vice=6, want_bench=[20, 21, 22])     # captain 5 -> 7
+    notes = []
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: notes.append(k["kind"]))
+    ran = []
+    monkeypatch.setattr(deadguard.lineup, "run_lineup",
+                        lambda conn, key, **k: ran.append(k) or types.SimpleNamespace(ok=True, dry_run=False, status=200))
+    deadguard._run_reevaluate(db, b"key", 30, _CFG, apply=True)
+    assert ran and ran[0].get("optimize_bench") is True and ran[0].get("live") is True
+    assert "executed" in notes
+
+
+def test_reeval_no_change_is_noop(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20), state="DEADGUARD_EXECUTED")
+    _wire_reeval(monkeypatch, cur_cap=5, cur_vice=6, cur_bench=[20, 21, 22],
+                 want_cap=5, want_vice=6, want_bench=[20, 21, 22])     # identical
+    notes = []
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: notes.append(k["kind"]))
+    ran = []
+    monkeypatch.setattr(deadguard.lineup, "run_lineup", lambda *a, **k: ran.append(1))
+    deadguard._run_reevaluate(db, b"key", 30, _CFG, apply=True)
+    assert ran == [] and notes == []
+
+
+def test_reeval_lockout_alerts_once_no_apply(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=10), state="DEADGUARD_EXECUTED")
+    _wire_reeval(monkeypatch, cur_cap=5, cur_vice=6, cur_bench=[20, 21, 22],
+                 want_cap=7, want_vice=6, want_bench=[20, 21, 22])
+    notes = []
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: notes.append(k["kind"]))
+    ran = []
+    monkeypatch.setattr(deadguard.lineup, "run_lineup", lambda *a, **k: ran.append(1))
+    deadguard._run_reevaluate(db, b"key", 30, _CFG, apply=False)
+    deadguard._run_reevaluate(db, b"key", 30, _CFG, apply=False)      # second tick
+    assert ran == []                                                  # never applied
+    assert notes.count("alert") == 1                                  # alerted exactly once
+    assert db.execute(
+        "SELECT deadguard_reeval_alerted_at FROM gameweeks WHERE id=30").fetchone()["deadguard_reeval_alerted_at"] is not None
+
+
+def test_reeval_session_expired_alerts(db, monkeypatch):
+    from src.auth.session import SessionExpired
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20), state="DEADGUARD_EXECUTED")
+    monkeypatch.setattr("src.cli.refresh", lambda **k: None)
+    monkeypatch.setattr(deadguard.xp, "compute_and_store", lambda conn: None)
+
+    def boom(conn, key):
+        raise SessionExpired("expired")
+
+    monkeypatch.setattr(deadguard, "ensure_session", boom)
+    alerts = []
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: alerts.append(k["kind"]))
+    deadguard._run_reevaluate(db, b"key", 30, _CFG, apply=True)       # must NOT raise
+    assert "alert" in alerts
