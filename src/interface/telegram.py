@@ -66,3 +66,15 @@ def notify(conn, *, kind, decision_type, mode, summary, session=None):
             inputs={"kind": kind, "summary": summary, "decision_type": decision_type},
             executed=False)
     return ok
+
+
+def notify_plan(conn, plan, *, mode, session=None):
+    """Best-effort: notify per plan entry (executed -> confirmation, else pending info).
+    Early-returns when unconfigured so callers with minimal plan dicts never touch
+    summary/executed keys (keeps the existing scheduler/router tests untouched)."""
+    if not is_configured():
+        return
+    for entry in plan:
+        kind = "executed" if entry["executed"] else "info"
+        notify(conn, kind=kind, decision_type=entry["decision"], mode=mode,
+               summary=entry["summary"], session=session)

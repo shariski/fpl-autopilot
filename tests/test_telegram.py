@@ -130,3 +130,24 @@ def test_notify_failure_logs_one_row_without_token(db, monkeypatch):
     assert r["decision_type"] == "notification"
     assert r["executed"] == 0
     assert "SECRET_TOKEN" not in (r["action_taken"] + (r["inputs_json"] or ""))
+
+
+def test_notify_plan_noop_unconfigured(monkeypatch):
+    monkeypatch.delenv(telegram.BOT_TOKEN_ENV, raising=False)
+    monkeypatch.delenv(telegram.CHAT_ID_ENV, raising=False)
+    calls = []
+    monkeypatch.setattr(telegram, "notify", lambda *a, **k: calls.append(k))
+    telegram.notify_plan(None, [{"decision": "captain", "executed": True, "summary": "x"}], mode="auto")
+    assert calls == []
+
+
+def test_notify_plan_maps_kinds(monkeypatch):
+    _configure(monkeypatch)
+    calls = []
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: calls.append(k))
+    plan = [{"decision": "captain", "executed": True, "summary": "Cap: X"},
+            {"decision": "transfer", "executed": False, "summary": "OUT A IN B"}]
+    telegram.notify_plan("CONN", plan, mode="hybrid")
+    assert [c["kind"] for c in calls] == ["executed", "info"]
+    assert [c["decision_type"] for c in calls] == ["captain", "transfer"]
+    assert [c["summary"] for c in calls] == ["Cap: X", "OUT A IN B"]
