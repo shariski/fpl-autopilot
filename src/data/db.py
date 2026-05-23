@@ -28,7 +28,7 @@ def _migrate_credentials(conn):
 
 
 def _migrate_gameweeks(conn):
-    """Add deadguard_warned_at to an existing gameweeks table (idempotent)."""
+    """Add deadguard columns (warned_at, reeval_alerted_at) to an existing gameweeks table (idempotent)."""
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(gameweeks)")}
     if "deadguard_warned_at" not in cols:
         conn.execute("ALTER TABLE gameweeks ADD COLUMN deadguard_warned_at TIMESTAMP")
