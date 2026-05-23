@@ -184,7 +184,11 @@ def poll_once(key, *, conn=None, session=None):
             try:
                 cq = u.get("callback_query")
                 if cq:
-                    handle_callback(conn, key, cq, session=session)
+                    if cq.get("data", "").startswith("k:"):
+                        from src.interface import deadguard
+                        deadguard.handle_keep(conn, cq, session=session)
+                    else:
+                        handle_callback(conn, key, cq, session=session)
             except Exception:
                 log.exception("telegram handle_callback failed; advancing offset to avoid a poison loop")
             repository.set_telegram_state(conn, "update_offset", str(u["update_id"] + 1))

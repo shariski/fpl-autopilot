@@ -313,3 +313,17 @@ def test_poll_once_advances_offset_when_handle_raises(db, monkeypatch):
     monkeypatch.setattr(ti, "handle_callback", boom)
     ti.poll_once(b"key", conn=db)   # must NOT raise
     assert repository.get_telegram_state(db, "update_offset") == "21"
+
+
+def test_poll_once_routes_keep_callback_to_deadguard(db, monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(ti, "is_enabled", lambda cfg=None: True)
+    updates = [{"update_id": 30, "callback_query": {"id": "k", "data": "k:30", "message": {"chat": {"id": "42"}}}}]
+    monkeypatch.setattr(telegram, "get_updates", lambda offset, **k: updates)
+    from src.interface import deadguard
+    kept = []
+    monkeypatch.setattr(deadguard, "handle_keep", lambda conn, cq, **k: kept.append(cq["data"]))
+    cr = []
+    monkeypatch.setattr(ti, "handle_callback", lambda conn, key, cq, **k: cr.append(cq["data"]))
+    ti.poll_once(b"key", conn=db)
+    assert kept == ["k:30"] and cr == []
