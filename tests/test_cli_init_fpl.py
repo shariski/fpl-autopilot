@@ -89,3 +89,21 @@ def test_auth_status_cli(db, capsys):
     out = capsys.readouterr().out
     assert "active" in out
     assert "auth_state" in out
+
+
+class _BoomTokenSession:
+    headers = {}
+
+    def post(self, *a, **k):
+        import requests
+        raise requests.ConnectionError("network down")
+
+
+def test_init_fpl_network_error_stores_nothing(tmp_path, monkeypatch, db, capsys):
+    s, v = _setup_master(tmp_path, monkeypatch)
+    monkeypatch.setenv("FPL_REFRESH_TOKEN", "refresh-ok")
+    cli._init_fpl_cli(conn=db, salt_path=s, verify_path=v,
+                      refresh_session=_BoomTokenSession(), me_session=_FakeMeSession(me_payload={}))
+    assert repository.get_encrypted(db, "refresh_token_encrypted") is None
+    out = capsys.readouterr().out.lower()
+    assert "couldn't reach" in out or "connection" in out

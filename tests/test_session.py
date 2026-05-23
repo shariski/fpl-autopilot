@@ -115,3 +115,22 @@ def test_ensure_session_not_initialized(tmp_path, db):
     key = _key(tmp_path)
     with pytest.raises(session.SessionNotInitialized):
         session.ensure_session(db, key, refresh_session=_FakeTokenSession())
+
+
+class _BoomTokenSession:
+    """A token session whose POST fails at the network layer."""
+    headers = {}
+
+    def post(self, *a, **k):
+        import requests
+        raise requests.ConnectionError("network down")
+
+
+def test_ensure_session_network_error_is_not_expiry(tmp_path, db):
+    import requests
+    key = _key(tmp_path)
+    past = datetime.now(timezone.utc) - timedelta(minutes=1)
+    session.store_tokens(db, key, refresh_token="RT", access_token="AT", expires_at=past)
+    with pytest.raises(requests.RequestException):
+        session.ensure_session(db, key, refresh_session=_BoomTokenSession())
+    assert repository.get_auth_state(db) == "active"  # a network blip must NOT flip to expired
