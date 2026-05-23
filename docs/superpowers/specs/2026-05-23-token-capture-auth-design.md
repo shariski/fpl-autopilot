@@ -16,7 +16,7 @@ The FPL web app uses **PingOne (OAuth2/OIDC)** for auth. Verified live on 2026-0
 - The SPA refreshes the access token with a **public-client refresh-token grant** (seen in the
   app bundle): `POST https://account.premierleague.com/as/token`,
   `Content-Type: application/x-www-form-urlencoded`,
-  body `grant_type=refresh_token&refresh_token=<rt>&client_id=bfcbaf69-aade-4c1b-8f00-c1cb8e193030`.
+  body `grant_type=refresh_token&refresh_token=<rt>&client_id=bfcbaf69-aade-4c1b-8f00-c1cb8a193030`.
 - The OIDC discovery doc (`/as/.well-known/openid-configuration`) lists `refresh_token` in
   `grant_types_supported`, and **the token endpoint is reachable by a plain HTTP client** — a
   scripted POST returns a normal JSON OAuth error, not a Cloudflare block. (Cloudflare fronts the
@@ -47,7 +47,7 @@ refresh end-to-end; if it fails, we capture the SPA's exact `/as/token` request 
 ```python
 TOKEN_URL = "https://account.premierleague.com/as/token"
 ME_URL = "https://fantasy.premierleague.com/api/me/"
-CLIENT_ID = "bfcbaf69-aade-4c1b-8f00-c1cb8e193030"   # public SPA client id (from the access-token JWT)
+CLIENT_ID = "bfcbaf69-aade-4c1b-8f00-c1cb8a193030"   # public SPA client id (from the access-token JWT)
 TIMEOUT = 10
 EXPIRY_SKEW_SECONDS = 120   # refresh slightly early
 ```
