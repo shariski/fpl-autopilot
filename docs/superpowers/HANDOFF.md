@@ -8,7 +8,7 @@ Resume point for continuing on another machine. Everything below is in git (push
 - **Phase 1 (Insight Engine) — COMPLETE.** Data layer (FPL + Understat clients, cache, sqlite),
   Analytics (FDR, xP v1, DGW), Decisions (captain, transfers, chips), Interface (FastAPI + SvelteKit
   PWA), scheduler.
-- **Phase 2 (Decision Automation) — auth + execution + routing + outbound notifications DONE:**
+- **Phase 2 (Decision Automation) — auth + execution + routing + Telegram (out + interactive) DONE:**
   - 2.1 Auth — **token-capture with OAuth refresh** (see "Auth reality"). `init-master-password`,
     `init-fpl` (paste refresh token), `auth-status`. `src/auth/{crypto,master,session}.py`.
   - 2.2 Action Executor — `src/execution/{executor,lineup,transfer}.py`; CLIs `execute-lineup`,
@@ -18,8 +18,13 @@ Resume point for continuing on another machine. Everything below is in git (push
   - 2.4a Telegram outbound notifier — `src/interface/telegram.py` (`is_configured`, `send_message`,
     `notify`, `notify_plan`); wired into `auto_execute_job` (post-exec + pending-info + auth alert).
     Env vars `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (silent no-op when unset). Outbound only.
-- **Test suite: 238 passing.** `main` has 2.1–2.3 pushed; **2.4a is merged to main locally but NOT
-  pushed** (push when ready).
+  - 2.4b Telegram interactive confirm — `src/interface/telegram_interactive.py` (`send_pending`,
+    `notify_plan`, `poll_once`, `handle_callback`); `pending_decisions` + `telegram_state` tables;
+    `get_updates`/`answer_callback_query` transport. One-tap Confirm/Reject via getUpdates poll in the
+    daemon; re-run+verify (re-notify if changed); chat whitelist + status-gate + durable offset +
+    deadline guard. Opt-in `telegram.interactive` (loads master key + registers `telegram_poll` job).
+- **Test suite: 272 passing.** `main` has 2.1–2.3 pushed; **2.4a + 2.4b are merged to main locally but
+  NOT pushed** (25 commits ahead of origin/main — push when ready).
 
 ## Auth reality (don't re-derive this — it cost a lot to find)
 
@@ -46,48 +51,49 @@ Programmatic email+password login is **dead**: `users.premierleague.com` is deco
 - Decision logic lives in `docs/decision-engine.md` (changelog up to v0.8).
 - A `code-review-graph` MCP is available (use it before Grep per the user's global CLAUDE.md).
 
-## 2.4a Telegram outbound notifier — DONE (merged to main locally, not pushed)
+## 2.4 Telegram — DONE (a + b; merged to main locally, not pushed)
 
-Spec `docs/superpowers/specs/2026-05-23-telegram-notifier-design.md`; plan
-`docs/superpowers/plans/2026-05-23-telegram-notifier.md`. Locked decisions: env-var storage (decoupled
-from the master key so alerts work without it), **caller-driven** from `auto_execute_job` (the router
-stays pure — B2), three triggers (post-exec ✅ / pending-info 📊 / auth-failure ❌ at the existing
-`SessionExpired` point) + failure-to-send logging via `repository.log_activity` (B9/B10). No
-`decision-engine.md` change (no decision logic touched). Reviewed (spec ✅, quality APPROVED, final
-opus READY-TO-MERGE). 238 tests green.
+Specs/plans under `docs/superpowers/{specs,plans}/2026-05-23-telegram-*`. **2.4a** (outbound): env-var
+storage decoupled from the master key, caller-driven from `auto_execute_job` (router stays pure, B2),
+post-exec ✅ / pending-info 📊 / auth-failure ❌ + failure-to-send logging. **2.4b** (interactive):
+`pending_decisions` + `telegram_state` tables; `telegram_interactive.{send_pending,notify_plan,
+poll_once,handle_callback}`; one-tap Confirm/Reject via a `telegram_poll` getUpdates job in the daemon;
+**re-run + verify** on confirm (execute only if the recompute still matches what was shown, else
+re-notify); chat-id whitelist + status-gate idempotency + durable update offset + deadline guard; B8
+keeps it to a single captain/transfer via the existing executors. Opt-in `telegram.interactive`
+(default false) → `_maybe_load_key` loads the key + `build_scheduler` registers the poll job. No
+`decision-engine.md` change. Both slices reviewed (per-task spec ✅/quality + final opus; review fixes
+applied: send_message json-hardening, scheduler notify exception-safety, poll_once poison-loop guard,
+no telegram session into FPL executors). 272 tests green.
+- **Deferred → 2.4c (future):** the "Modify" button (cycle transfer rank / pick vice) + its stateful
+  multi-message flow.
 
-## NEXT TASK: 2.4b — Interactive confirm
+## NEXT TASK: 2.5 Deadguard
 
-The other half of 2.4 (B9 "the primary interface during a gameweek"). Scope: inline
-confirm/reject/modify buttons that *act*; inbound callback handling (long-poll `getUpdates`);
-confirm→execute wiring (the async one-tap loop). The 2.4a `send_message(text, *, buttons=...)` client
-already accepts an `inline_keyboard` payload for reuse — 2.4b builds the inbound half.
+Conservative fallback for Manual users who go silent before a deadline. See `docs/deadguard.md` for the
+full state machine and edge cases. Scope (CLAUDE.md B8): the full per-GW `gameweeks.state` machine
+(PENDING / USER_ACTED / DEADGUARD_ACTIVE — the `state`, `last_user_action_at`, `deadguard_triggered_at`
+columns already exist), warning windows, USER_ACTED detection, and the narrow deadguard action set
+(captain/vice + bench order + auto-sub definite-non-players always; a single free transfer if
+configured and EP delta is high; **never** hits, chips, multi, or wildcard-level rebuilds). Config
+already present in `config.yaml` under `deadguard:`. To resume: re-enter brainstorming for 2.5, then
+spec → plan → subagent-driven, exactly as the prior slices.
 
-Things to brainstorm for 2.4b:
-- **Inbound mechanism:** long-poll `getUpdates` (simplest, self-hosted, no public URL) vs webhook.
-- **Pending→tap state:** the router currently writes a "pending" `activity_log` row when it routes to
-  `notify`; 2.4b needs to persist enough to map an inbound callback back to that exact decision and
-  then execute it (likely a small pending-decisions table or a callback_data token referencing the
-  decision). This is the core design question.
-- **Allowed callbacks:** confirm/reject/modify for captain & single transfer only; chips & hits stay
-  forbidden (B8) even via a tap.
-- **R3 still holds:** the agent never runs the live inbound loop or live execution; the user does.
+Useful seams already built: the router emits a `plan` with `route`/`summary`/`executed`/`identity`;
+`pending_decisions` + the Telegram interactive loop exist (deadguard warnings could reuse them);
+`auto_execute_job` is the deadline-window daemon entry point.
 
-To resume: re-enter the brainstorming skill for 2.4b, then spec → plan → subagent-driven, exactly as
-the prior slices.
-
-## Remaining Phase 2 after 2.4b
-- **2.5 Deadguard** — conservative fallback for Manual users who go silent: the full `gameweeks.state`
-  machine (PENDING/USER_ACTED/DEADGUARD_ACTIVE), warning windows, narrow scope (`docs/deadguard.md`).
-- **2.7 Emergency Override** — kill switch / freeze auto-execution.
+## Remaining Phase 2 after 2.5
+- **2.7 Emergency Override** — kill switch / freeze auto-execution (also where B7's "freeze after
+  repeated re-login failure" belongs; 2.4a only *alerts* at the existing `SessionExpired` point).
 - (2.6 Dry-Run is effectively satisfied — every executor + the router is dry-run-first.)
 
 ## Machine setup (Mac mini)
 ```bash
 git clone git@github.com:shariski/fpl-autopilot.git    # or git pull
 cd fpl-autopilot
-python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest -q          # expect 212 passed
+python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # python3.14 also works (this machine)
+.venv/bin/pytest -q          # expect 272 passed
 ```
 Local-only (re-create if you want live runs): `data/.salt` + `data/.verify` (run
 `init-master-password` then `init-fpl`), and the `~/.claude` auto-memory (this file replaces it for
