@@ -271,3 +271,23 @@ def set_telegram_state(conn, key, value):
         (key, value),
     )
     conn.commit()
+
+
+def set_gameweek_state(conn, gw, state):
+    conn.execute("UPDATE gameweeks SET state=? WHERE id=?", (state, gw))
+    conn.commit()
+
+
+def mark_deadguard_warned(conn, gw):
+    conn.execute("UPDATE gameweeks SET deadguard_warned_at=? WHERE id=?", (_now(), gw))
+    conn.commit()
+
+
+def mark_deadguard_triggered(conn, gw):
+    conn.execute("UPDATE gameweeks SET deadguard_triggered_at=? WHERE id=?", (_now(), gw))
+    conn.commit()
+
+
+def touch_user_action(conn, gw):
+    conn.execute("UPDATE gameweeks SET last_user_action_at=?, state='USER_ACTED' WHERE id=?", (_now(), gw))
+    conn.commit()

@@ -27,7 +27,15 @@ def _migrate_credentials(conn):
         conn.execute("ALTER TABLE credentials ADD COLUMN access_token_expires_at TEXT")
 
 
+def _migrate_gameweeks(conn):
+    """Add deadguard_warned_at to an existing gameweeks table (idempotent)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(gameweeks)")}
+    if "deadguard_warned_at" not in cols:
+        conn.execute("ALTER TABLE gameweeks ADD COLUMN deadguard_warned_at TIMESTAMP")
+
+
 def init_db(conn):
     conn.executescript(SCHEMA_PATH.read_text())
     _migrate_credentials(conn)
+    _migrate_gameweeks(conn)
     conn.commit()
