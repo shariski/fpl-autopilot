@@ -41,3 +41,12 @@ def test_telegram_interactive_enabled_from_config():
     assert config.telegram_interactive_enabled({"telegram": {"interactive": True}}) is True
     assert config.telegram_interactive_enabled({"telegram": {}}) is False
     assert config.telegram_interactive_enabled({}) is False  # default off
+
+
+def test_deadguard_accessors_from_config():
+    assert config.deadguard_enabled({"deadguard": {"enabled": True}}) is True
+    assert config.deadguard_enabled({}) is False
+    assert config.deadguard_warning_minutes({"deadguard": {"warning_window_minutes": 90}}) == 90
+    assert config.deadguard_warning_minutes({}) == 120     # default
+    assert config.deadguard_trigger_minutes({"deadguard": {"trigger_window_minutes": 45}}) == 45
+    assert config.deadguard_trigger_minutes({}) == 30      # default

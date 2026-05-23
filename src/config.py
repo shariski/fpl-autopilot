@@ -49,3 +49,18 @@ def unattended_hours_before(cfg=None):
 def telegram_interactive_enabled(cfg=None):
     cfg = cfg or load_config()
     return bool(cfg.get("telegram", {}).get("interactive", False))
+
+
+def deadguard_enabled(cfg=None):
+    cfg = cfg if cfg is not None else load_config()
+    return bool(cfg.get("deadguard", {}).get("enabled", False))
+
+
+def deadguard_warning_minutes(cfg=None):
+    cfg = cfg if cfg is not None else load_config()
+    return cfg.get("deadguard", {}).get("warning_window_minutes", 120)
+
+
+def deadguard_trigger_minutes(cfg=None):
+    cfg = cfg if cfg is not None else load_config()
+    return cfg.get("deadguard", {}).get("trigger_window_minutes", 30)
