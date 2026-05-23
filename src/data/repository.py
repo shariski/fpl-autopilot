@@ -224,6 +224,20 @@ def mark_session_ok(conn):
     conn.commit()
 
 
+def increment_relogin_failures(conn):
+    conn.execute(
+        "INSERT INTO credentials (id, relogin_failures) VALUES (1, 1) "
+        "ON CONFLICT(id) DO UPDATE SET relogin_failures = relogin_failures + 1"
+    )
+    conn.commit()
+    return get_relogin_failures(conn)
+
+
+def get_relogin_failures(conn):
+    row = conn.execute("SELECT relogin_failures FROM credentials WHERE id=1").fetchone()
+    return row["relogin_failures"] if row else 0
+
+
 def log_activity(conn, *, decision_type, mode, action_taken, inputs=None,
                  executed=False, exec_outcome=None, gw=None, alternatives=None):
     conn.execute(
@@ -270,6 +284,25 @@ def set_telegram_state(conn, key, value):
         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (key, value),
     )
+    conn.commit()
+
+
+def get_system_state(conn, key):
+    row = conn.execute("SELECT value FROM system_state WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_system_state(conn, key, value):
+    conn.execute(
+        "INSERT INTO system_state (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, value),
+    )
+    conn.commit()
+
+
+def clear_system_state(conn, key):
+    conn.execute("DELETE FROM system_state WHERE key=?", (key,))
     conn.commit()
 
 

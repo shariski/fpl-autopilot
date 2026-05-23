@@ -141,3 +141,37 @@ def test_log_activity_roundtrip(db):
     assert row["gw"] == 38
     assert _json.loads(row["inputs_json"])["xp"] == 7.1
     assert _json.loads(row["exec_outcome_json"])["status"] == 200
+
+
+def test_system_state_round_trip(db):
+    from src.data import repository
+    assert repository.get_system_state(db, "freeze") is None
+    repository.set_system_state(db, "freeze", '{"a": 1}')
+    assert repository.get_system_state(db, "freeze") == '{"a": 1}'
+    repository.set_system_state(db, "freeze", '{"a": 2}')          # upsert in place
+    assert repository.get_system_state(db, "freeze") == '{"a": 2}'
+    assert db.execute("SELECT COUNT(*) c FROM system_state").fetchone()["c"] == 1
+
+
+def test_clear_system_state(db):
+    from src.data import repository
+    repository.set_system_state(db, "freeze", "x")
+    repository.clear_system_state(db, "freeze")
+    assert repository.get_system_state(db, "freeze") is None
+    repository.clear_system_state(db, "freeze")                    # idempotent: no error when absent
+
+
+def test_relogin_failures_increment_and_get(db):
+    from src.data import repository
+    assert repository.get_relogin_failures(db) == 0               # no row yet
+    assert repository.increment_relogin_failures(db) == 1
+    assert repository.increment_relogin_failures(db) == 2
+    assert repository.get_relogin_failures(db) == 2
+
+
+def test_mark_session_ok_resets_relogin_failures(db):
+    from src.data import repository
+    repository.increment_relogin_failures(db)
+    repository.increment_relogin_failures(db)
+    repository.mark_session_ok(db)                                # existing helper resets to 0
+    assert repository.get_relogin_failures(db) == 0
