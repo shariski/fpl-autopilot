@@ -6,6 +6,8 @@ __pycache__/
 data/logs/*.log
 .serena/
 .code-review-graph/
+.claude/worktrees/
+.claire/
 *.egg-info/
 data/.salt
 data/.verify
