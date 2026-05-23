@@ -51,3 +51,151 @@ def test_notify_plan_routes_executed_and_pending(db, monkeypatch):
              "identity": {"out_id": 7, "in_id": 99}}]
     ti.notify_plan(db, plan, gw=30, mode="hybrid")
     assert calls == [("notify", "executed"), ("pending", "transfer")]
+
+
+import types
+from datetime import datetime, timezone, timedelta
+from src.auth.session import SessionExpired
+from src.data import repository
+
+_NOW = datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc)
+
+
+def _seed_gw(db, gw=30, deadline=None):
+    deadline = deadline or (_NOW + timedelta(hours=1))
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, is_next) VALUES (?, ?, 1)",
+               (gw, deadline.isoformat()))
+    db.commit()
+
+
+def _cq(data, chat_id="42", cb_id="cb1"):
+    return {"id": cb_id, "data": data, "message": {"chat": {"id": chat_id}}}
+
+
+def _ranker_caps(captain_id=5, vice_id=6, name="Cap"):
+    def f(conn):
+        return {"picks": [{"player_id": captain_id, "web_name": name, "xp": 8.0}],
+                "vice_player_id": vice_id, "confidence": 80}
+    return f
+
+
+def _suggester_top(out_id=7, in_id=99):
+    def f(conn):
+        return {"suggestions": [{"out": {"player_id": out_id, "web_name": "O", "price": 5.0},
+                                 "in": {"player_id": in_id, "web_name": "I", "price": 6.0},
+                                 "ep_delta_5gw": 5.0, "hit_cost": 0, "confidence": 80}],
+                "empty_reason": None}
+    return f
+
+
+def _ok_result(*a, **k):
+    return types.SimpleNamespace(ok=True, dry_run=False, status=200)
+
+
+def test_handle_callback_wrong_chat_ignored(db, monkeypatch):
+    _configure(monkeypatch)  # CHAT_ID=42
+    _seed_gw(db)
+    pid = repository.create_pending_decision(db, gw=30, decision_type="lineup",
+                                             identity={"captain_id": 5, "vice_id": 6}, summary="Captain pending: Cap")
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    executed = []
+    ti.handle_callback(db, b"key", _cq(f"c:{pid}", chat_id="999"), now=_NOW,
+                       ranker=_ranker_caps(), lineup_fn=lambda *a, **k: executed.append(1))
+    assert executed == []
+    assert db.execute("SELECT status FROM pending_decisions WHERE id=?", (pid,)).fetchone()["status"] == "pending"
+
+
+def test_handle_callback_reject(db, monkeypatch):
+    _configure(monkeypatch)
+    _seed_gw(db)
+    pid = repository.create_pending_decision(db, gw=30, decision_type="transfer",
+                                             identity={"out_id": 7, "in_id": 99}, summary="Transfer pending: OUT O IN I")
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    monkeypatch.setattr(telegram, "notify", lambda *a, **k: None)
+    executed = []
+    ti.handle_callback(db, b"key", _cq(f"r:{pid}"), now=_NOW,
+                       transfer_fn=lambda *a, **k: executed.append(1))
+    assert executed == []
+    assert db.execute("SELECT status FROM pending_decisions WHERE id=?", (pid,)).fetchone()["status"] == "rejected"
+
+
+def test_handle_callback_already_resolved_ignored(db, monkeypatch):
+    _configure(monkeypatch)
+    _seed_gw(db)
+    pid = repository.create_pending_decision(db, gw=30, decision_type="lineup",
+                                             identity={"captain_id": 5, "vice_id": 6}, summary="x")
+    repository.set_pending_status(db, pid, "confirmed")
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    executed = []
+    ti.handle_callback(db, b"key", _cq(f"c:{pid}"), now=_NOW,
+                       ranker=_ranker_caps(), lineup_fn=lambda *a, **k: executed.append(1))
+    assert executed == []  # idempotent: not re-executed
+
+
+def test_handle_callback_confirm_match_executes(db, monkeypatch):
+    _configure(monkeypatch)
+    _seed_gw(db)
+    pid = repository.create_pending_decision(db, gw=30, decision_type="transfer",
+                                             identity={"out_id": 7, "in_id": 99}, summary="Transfer pending: OUT O IN I")
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    notes = []
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: notes.append(k["kind"]))
+    executed = []
+
+    def fake_transfer(conn, key, **k):
+        executed.append((k.get("live"), k.get("rank")))
+        return _ok_result()
+
+    ti.handle_callback(db, b"key", _cq(f"c:{pid}"), now=_NOW,
+                       suggester=_suggester_top(7, 99), transfer_fn=fake_transfer)
+    assert executed == [(True, 1)]
+    assert db.execute("SELECT status FROM pending_decisions WHERE id=?", (pid,)).fetchone()["status"] == "confirmed"
+    assert "executed" in notes
+
+
+def test_handle_callback_confirm_changed_supersedes(db, monkeypatch):
+    _configure(monkeypatch)
+    _seed_gw(db)
+    pid = repository.create_pending_decision(db, gw=30, decision_type="transfer",
+                                             identity={"out_id": 7, "in_id": 99}, summary="Transfer pending: OUT O IN I")
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    monkeypatch.setattr(telegram, "send_message", lambda text, **k: True)
+    executed = []
+    # suggester now returns a DIFFERENT in player (88 != 99)
+    ti.handle_callback(db, b"key", _cq(f"c:{pid}"), now=_NOW,
+                       suggester=_suggester_top(7, 88), transfer_fn=lambda *a, **k: executed.append(1))
+    assert executed == []
+    assert db.execute("SELECT status FROM pending_decisions WHERE id=?", (pid,)).fetchone()["status"] == "superseded"
+    # a NEW pending row was created for the changed recommendation
+    assert db.execute("SELECT COUNT(*) c FROM pending_decisions WHERE status='pending'").fetchone()["c"] == 1
+
+
+def test_handle_callback_confirm_past_deadline_expires(db, monkeypatch):
+    _configure(monkeypatch)
+    _seed_gw(db, deadline=_NOW - timedelta(hours=1))  # already passed
+    pid = repository.create_pending_decision(db, gw=30, decision_type="lineup",
+                                             identity={"captain_id": 5, "vice_id": 6}, summary="x")
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    executed = []
+    ti.handle_callback(db, b"key", _cq(f"c:{pid}"), now=_NOW,
+                       ranker=_ranker_caps(), lineup_fn=lambda *a, **k: executed.append(1))
+    assert executed == []
+    assert db.execute("SELECT status FROM pending_decisions WHERE id=?", (pid,)).fetchone()["status"] == "expired"
+
+
+def test_handle_callback_confirm_execution_failure_marks_failed(db, monkeypatch):
+    _configure(monkeypatch)
+    _seed_gw(db)
+    pid = repository.create_pending_decision(db, gw=30, decision_type="lineup",
+                                             identity={"captain_id": 5, "vice_id": 6}, summary="Captain pending: Cap")
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    alerts = []
+    monkeypatch.setattr(telegram, "notify", lambda conn, **k: alerts.append(k["kind"]))
+
+    def boom(conn, key, **k):
+        raise SessionExpired("expired")
+
+    ti.handle_callback(db, b"key", _cq(f"c:{pid}"), now=_NOW,
+                       ranker=_ranker_caps(), lineup_fn=boom)
+    assert db.execute("SELECT status FROM pending_decisions WHERE id=?", (pid,)).fetchone()["status"] == "failed"
+    assert "alert" in alerts
