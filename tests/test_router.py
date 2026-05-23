@@ -115,3 +115,22 @@ def test_route_gameweek_low_conf_captain_gated(db):
                                  session=sess, ranker=_ranker(60), suggester=_suggester(80, 5.0))
     routes = {p["decision"]: p["route"] for p in plan}
     assert routes["captain"] == "notify"
+
+
+def test_route_gameweek_plan_has_summary_and_executed(db):
+    sess = _FakeSession(_current())
+    plan = router.route_gameweek(db, key=b"u", live=False, mode="auto",
+                                 session=sess, ranker=_ranker(82), suggester=_suggester(80, 5.0))
+    by = {p["decision"]: p for p in plan}
+    assert by["captain"]["executed"] is True
+    assert "Captain: Cap" in by["captain"]["summary"]
+    assert by["transfer"]["executed"] is True
+    assert "OUT O" in by["transfer"]["summary"] and "IN I" in by["transfer"]["summary"]
+
+
+def test_route_gameweek_notify_entries_executed_false(db):
+    sess = _FakeSession(_current())
+    plan = router.route_gameweek(db, key=b"u", live=False, mode="manual",
+                                 session=sess, ranker=_ranker(90), suggester=_suggester(90, 9.0))
+    assert all(p["executed"] is False for p in plan)
+    assert all("pending" in p["summary"].lower() for p in plan)
