@@ -85,3 +85,48 @@ def test_send_message_false_on_ok_false(monkeypatch):
 def test_send_message_false_on_network_error(monkeypatch):
     _configure(monkeypatch)
     assert telegram.send_message("x", session=_FakeSession(boom=True)) is False
+
+
+def test_format_executed():
+    assert telegram._format("executed", "Captain: X") == "✅ Executed\nCaptain: X"
+
+
+def test_format_info_has_review_suffix():
+    out = telegram._format("info", "Captain pending: X")
+    assert out == "📊 Decision pending\nCaptain pending: X\nReview before the deadline."
+
+
+def test_format_alert():
+    assert telegram._format("alert", "session expired").startswith("❌ Autopilot blocked")
+
+
+def test_notify_noop_unconfigured_no_log(db, monkeypatch):
+    monkeypatch.delenv(telegram.BOT_TOKEN_ENV, raising=False)
+    monkeypatch.delenv(telegram.CHAT_ID_ENV, raising=False)
+    sent = []
+    monkeypatch.setattr(telegram, "send_message", lambda *a, **k: sent.append(1) or True)
+    assert telegram.notify(db, kind="info", decision_type="captain", mode="manual", summary="s") is False
+    assert sent == []
+    assert db.execute("SELECT COUNT(*) c FROM activity_log").fetchone()["c"] == 0
+
+
+def test_notify_success_no_failure_log(db, monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(telegram, "send_message", lambda text, **k: True)
+    assert telegram.notify(db, kind="executed", decision_type="captain", mode="auto",
+                           summary="Captain: X") is True
+    assert db.execute("SELECT COUNT(*) c FROM activity_log").fetchone()["c"] == 0
+
+
+def test_notify_failure_logs_one_row_without_token(db, monkeypatch):
+    _configure(monkeypatch, token="SECRET_TOKEN")
+    monkeypatch.setattr(telegram, "send_message", lambda text, **k: False)
+    assert telegram.notify(db, kind="info", decision_type="transfer", mode="hybrid",
+                           summary="OUT A IN B") is False
+    rows = db.execute(
+        "SELECT decision_type, action_taken, inputs_json, executed FROM activity_log").fetchall()
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["decision_type"] == "notification"
+    assert r["executed"] == 0
+    assert "SECRET_TOKEN" not in (r["action_taken"] + (r["inputs_json"] or ""))

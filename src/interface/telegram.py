@@ -1,5 +1,6 @@
 import os
 import requests
+from src.data import repository
 
 BOT_TOKEN_ENV = "TELEGRAM_BOT_TOKEN"
 CHAT_ID_ENV = "TELEGRAM_CHAT_ID"
@@ -34,3 +35,34 @@ def send_message(text, *, buttons=None, session=None):
         return bool((resp.json() or {}).get("ok"))
     except ValueError:
         return False
+
+
+_ICONS = {
+    "executed": "✅ Executed",
+    "info": "📊 Decision pending",
+    "alert": "❌ Autopilot blocked",
+}
+
+
+def _format(kind, summary):
+    """B9 copy: functional icon + header + caller-built summary (action/reason/impact)."""
+    header = _ICONS.get(kind, _ICONS["info"])
+    if kind == "info":
+        return f"{header}\n{summary}\nReview before the deadline."
+    return f"{header}\n{summary}"
+
+
+def notify(conn, *, kind, decision_type, mode, summary, session=None):
+    """Send one B9 notification. Silent no-op (no send, no log) when unconfigured.
+    On a send failure while configured, log ONE activity row (B9/B10) and return
+    False. Never raises."""
+    if not is_configured():
+        return False
+    ok = send_message(_format(kind, summary), session=session)
+    if not ok:
+        repository.log_activity(
+            conn, decision_type="notification", mode=mode,
+            action_taken=f"telegram send failed ({decision_type}/{kind})",
+            inputs={"kind": kind, "summary": summary, "decision_type": decision_type},
+            executed=False)
+    return ok
