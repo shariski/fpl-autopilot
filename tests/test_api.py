@@ -183,3 +183,35 @@ def test_status_frozen_suppresses_warning(seeded, monkeypatch):
     assert s["frozen"] is True
     assert not any(b["level"] == "warning" for b in s["banners"])
     assert any(b["level"] == "error" for b in s["banners"])
+
+
+@pytest.fixture
+def client_conn():
+    from src.interface.api import app
+    from src.interface.deps import get_db
+    conn = connect(":memory:", check_same_thread=False)
+    init_db(conn)
+    seed(conn)
+    app.dependency_overrides[get_db] = lambda: conn
+    yield TestClient(app), conn
+    app.dependency_overrides.clear()
+    conn.close()
+
+
+def test_freeze_endpoint(client):
+    r = client.post("/api/freeze")
+    assert r.status_code == 200 and r.json()["frozen"] is True
+
+
+def test_unfreeze_endpoint(client):
+    client.post("/api/freeze")
+    r = client.post("/api/unfreeze")
+    assert r.status_code == 200 and r.json()["frozen"] is False
+
+
+def test_keep_endpoint_sets_user_acted(client_conn):
+    client, conn = client_conn
+    r = client.post("/api/deadguard/keep")
+    assert r.status_code == 200
+    state = conn.execute("SELECT state FROM gameweeks WHERE is_next=1").fetchone()["state"]
+    assert state == "USER_ACTED"
