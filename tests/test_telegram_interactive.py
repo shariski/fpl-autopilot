@@ -403,3 +403,36 @@ def test_handle_callback_confirm_executes_even_when_frozen(db, monkeypatch):
                        ranker=_ranker_caps(5, 6), lineup_fn=fake_lineup)
     assert executed == [True]   # freeze does not gate the explicit user Confirm
     assert db.execute("SELECT status FROM pending_decisions WHERE id=?", (pid,)).fetchone()["status"] == "confirmed"
+
+
+def test_handle_undo_calls_run_undo(db, monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    from src.interface import deadguard
+    calls = []
+    monkeypatch.setattr(deadguard, "run_undo", lambda conn, key, gw, **k: calls.append((gw, k.get("live"))))
+    ti.handle_undo(db, b"key", _cq("z:30"))
+    assert calls == [(30, True)]
+
+
+def test_handle_undo_wrong_chat_ignored(db, monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(telegram, "answer_callback_query", lambda cid, **k: True)
+    from src.interface import deadguard
+    calls = []
+    monkeypatch.setattr(deadguard, "run_undo", lambda conn, key, gw, **k: calls.append(1))
+    ti.handle_undo(db, b"key", _cq("z:30", chat_id="999"))
+    assert calls == []
+
+
+def test_poll_once_routes_undo(db, monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(ti, "is_enabled", lambda cfg=None: True)
+    updates = [{"update_id": 50, "callback_query": {"id": "z", "data": "z:30", "message": {"chat": {"id": "42"}}}}]
+    monkeypatch.setattr(telegram, "get_updates", lambda offset, **k: updates)
+    seen = []
+    monkeypatch.setattr(ti, "handle_undo", lambda conn, key, cq, **k: seen.append(cq["id"]))
+    confirms = []
+    monkeypatch.setattr(ti, "handle_callback", lambda conn, key, cq, **k: confirms.append(cq["id"]))
+    ti.poll_once(b"key", conn=db)
+    assert seen == ["z"] and confirms == []

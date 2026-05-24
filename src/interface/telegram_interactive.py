@@ -192,6 +192,20 @@ def handle_unfreeze(conn, cq, *, session=None):
     telegram.answer_callback_query(cq["id"], text="Unfrozen", session=session)
 
 
+def handle_undo(conn, key, cq, *, session=None):
+    chat_id = str(cq.get("message", {}).get("chat", {}).get("id"))
+    if chat_id != os.getenv(telegram.CHAT_ID_ENV):
+        telegram.answer_callback_query(cq["id"], text="Not authorized", session=session)
+        return
+    _, _, gw_s = cq.get("data", "").partition(":")
+    if not gw_s.isdigit():
+        telegram.answer_callback_query(cq["id"], text="Unknown action", session=session)
+        return
+    from src.interface import deadguard
+    deadguard.run_undo(conn, key, int(gw_s), live=True, confirm_fn=lambda d: True)
+    telegram.answer_callback_query(cq["id"], text="Undo requested", session=session)
+
+
 def poll_once(key, *, conn=None, session=None):
     if not is_enabled():
         return
@@ -213,6 +227,8 @@ def poll_once(key, *, conn=None, session=None):
                         handle_freeze(conn, cq, session=session)
                     elif data.startswith("u:"):
                         handle_unfreeze(conn, cq, session=session)
+                    elif data.startswith("z:"):
+                        handle_undo(conn, key, cq, session=session)
                     else:
                         handle_callback(conn, key, cq, session=session)
             except Exception:
