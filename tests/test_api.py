@@ -149,8 +149,11 @@ def test_status_frozen_banner(seeded):
     assert any(b["level"] == "error" and "boom" in b["text"] for b in s["banners"])
 
 
-def test_status_warning_window_banner(seeded):
+def test_status_warning_window_banner(seeded, monkeypatch):
     from datetime import datetime, timezone, timedelta
+    monkeypatch.setattr(queries, "load_config",
+                        lambda: {"mode": {"current": "manual"},
+                                 "deadguard": {"enabled": True, "warning_window_minutes": 120}})
     soon = (datetime.now(timezone.utc) + timedelta(minutes=60)).isoformat()
     seeded.execute("UPDATE gameweeks SET deadline_utc=?, state='PENDING' WHERE is_next=1", (soon,))
     seeded.commit()
@@ -164,3 +167,19 @@ def test_status_executed_banner(seeded):
     seeded.commit()
     s = queries.get_status(seeded)
     assert any(b["level"] == "info" for b in s["banners"])
+
+
+def test_status_frozen_suppresses_warning(seeded, monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    from src.execution import override
+    monkeypatch.setattr(queries, "load_config",
+                        lambda: {"mode": {"current": "manual"},
+                                 "deadguard": {"enabled": True, "warning_window_minutes": 120}})
+    soon = (datetime.now(timezone.utc) + timedelta(minutes=60)).isoformat()
+    seeded.execute("UPDATE gameweeks SET deadline_utc=?, state='PENDING' WHERE is_next=1", (soon,))
+    seeded.commit()
+    override.freeze(seeded, reason="x", source="user")
+    s = queries.get_status(seeded)
+    assert s["frozen"] is True
+    assert not any(b["level"] == "warning" for b in s["banners"])
+    assert any(b["level"] == "error" for b in s["banners"])
