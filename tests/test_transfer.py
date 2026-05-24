@@ -97,3 +97,64 @@ def test_run_transfer_out_not_in_squad(db):
     sess = _FakeSession([p for p in _current() if p["element"] != 7])
     with pytest.raises(executor.ExecutorError):
         transfer.run_transfer(db, key=b"unused", session=sess, suggester=_suggester)
+
+
+class _Resp:
+    def __init__(self, status_code=200, payload=None):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class _UndoSession:
+    def __init__(self, picks, post_status=200):
+        self._picks = picks
+        self._post_status = post_status
+        self.posted = None
+        self.headers = {}
+
+    def get(self, url, timeout=None):
+        return _Resp(200, {"picks": self._picks})
+
+    def post(self, url, json=None, timeout=None):
+        self.posted = json
+        return _Resp(self._post_status, {})
+
+
+def _seed_next_gw_and_player(db, out_id=7, out_price=5.4):
+    db.execute("INSERT INTO gameweeks (id, is_next, finished) VALUES (30, 1, 0)")
+    db.execute("INSERT INTO players (id, web_name, price) VALUES (?, 'Out', ?)", (out_id, out_price))
+    db.commit()
+
+
+def test_run_undo_transfer_builds_reverse_payload(db):
+    from src.execution import transfer as transfer_mod
+    _seed_next_gw_and_player(db, out_id=7, out_price=5.4)
+    sess = _UndoSession([{"element": 99, "selling_price": 60}])
+    res = transfer_mod.run_undo_transfer(db, b"key", out_id=7, in_id=99, live=True,
+                                         confirm_fn=lambda d: True, session=sess)
+    assert res.ok
+    t = sess.posted["transfers"][0]
+    assert t["element_out"] == 99 and t["element_in"] == 7
+    assert t["selling_price"] == 60
+    assert t["purchase_price"] == 54
+
+
+def test_run_undo_transfer_dry_run_does_not_post(db):
+    from src.execution import transfer as transfer_mod
+    _seed_next_gw_and_player(db)
+    sess = _UndoSession([{"element": 99, "selling_price": 60}])
+    res = transfer_mod.run_undo_transfer(db, b"key", out_id=7, in_id=99, live=False, session=sess)
+    assert res.dry_run is True and sess.posted is None
+
+
+def test_run_undo_transfer_in_player_gone_raises(db):
+    from src.execution import transfer as transfer_mod
+    from src.execution import executor as executor_mod
+    _seed_next_gw_and_player(db)
+    sess = _UndoSession([{"element": 11, "selling_price": 50}])
+    with pytest.raises(executor_mod.ExecutorError):
+        transfer_mod.run_undo_transfer(db, b"key", out_id=7, in_id=99, live=True,
+                                       confirm_fn=lambda d: True, session=sess)

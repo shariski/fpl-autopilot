@@ -46,3 +46,33 @@ def run_transfer(conn, key, *, rank=1, live=False, confirm_fn=None, session=None
                             inputs=inputs, executed=(result.ok and not result.dry_run),
                             exec_outcome={"status": result.status, "request": result.request})
     return result
+
+
+def run_undo_transfer(conn, key, *, out_id, in_id, live=False, confirm_fn=None, session=None):
+    """Reverse a transfer: sell in_id (bought earlier), buy back out_id. Free pre-deadline (FPL nets it)."""
+    session = session or auth_session.ensure_session(conn, key)
+    entry = config.team_id()
+    current = executor.fetch_current_picks(session, entry)
+    selling_price = next((p["selling_price"] for p in current if p["element"] == in_id), None)
+    if selling_price is None:
+        raise executor.ExecutorError(f"player {in_id} not in current squad — cannot undo")
+    row = conn.execute("SELECT price FROM players WHERE id=?", (out_id,)).fetchone()
+    if row is None:
+        raise executor.ExecutorError(f"player {out_id} not found — cannot undo")
+    purchase_price = round(row["price"] * 10)
+    event = transfers._next_gw(conn)
+    payload = executor.build_transfer_payload(entry=entry, event=event, element_out=in_id, element_in=out_id,
+                                              selling_price=selling_price, purchase_price=purchase_price)
+    diff = f"UNDO: OUT {in_id} -> IN {out_id}"
+    url = executor.TRANSFERS_URL.format(entry=entry)
+    if live and (confirm_fn is None or not confirm_fn(diff)):
+        repository.log_activity(conn, decision_type="transfer", mode="manual", action_taken="undo aborted",
+                                executed=False, exec_outcome={"diff": diff})
+        return executor.ExecResult(dry_run=True, request={"method": "POST", "url": url, "body": payload},
+                                   status=None, ok=False)
+    result = executor.apply_transfers(session, entry, payload, dry_run=not live)
+    repository.log_activity(conn, decision_type="transfer", mode="manual",
+                            action_taken=(f"undo: OUT {in_id} IN {out_id}" if live else "undo dry-run"),
+                            executed=(result.ok and not result.dry_run),
+                            exec_outcome={"status": result.status, "request": result.request})
+    return result
