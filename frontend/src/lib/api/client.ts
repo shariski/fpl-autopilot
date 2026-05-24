@@ -34,6 +34,16 @@ async function getJson<T>(path: string, fetchFn: Fetch): Promise<T> {
 	return res.json() as Promise<T>;
 }
 
+export async function fetchStatus(fetchFn: Fetch = fetch): Promise<Status> {
+	return getJson<Status>('/api/status', fetchFn);
+}
+
+export async function postAction(path: string, fetchFn: Fetch = fetch): Promise<Status> {
+	const res = await fetchFn(`${API_BASE}${path}`, { method: 'POST' });
+	if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
+	return res.json() as Promise<Status>;
+}
+
 const EMPTY_CAPTAIN: Captain = { picks: [], vice_player_id: null };
 const EMPTY_TRANSFERS: Transfers = { suggestions: [], empty_reason: null };
 const EMPTY_CHIPS: Chips = { recommendation: null };

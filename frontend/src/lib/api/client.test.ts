@@ -87,3 +87,37 @@ describe('fetchDashboard', () => {
 		await expect(fetchDashboard(stubFetch(allPayloads, ['/api/squad']))).rejects.toThrow(/squad/);
 	});
 });
+
+describe('fetchStatus', () => {
+	it('GETs /api/status and returns the status', async () => {
+		let path = '';
+		const f = (async (p: string) => {
+			path = p;
+			return { ok: true, status: 200, json: async () => ({ frozen: false, banners: [] }) } as Response;
+		}) as unknown as typeof fetch;
+		const { fetchStatus } = await import('./client');
+		const s = await fetchStatus(f);
+		expect(path).toBe('/api/status');
+		expect(s.frozen).toBe(false);
+	});
+});
+
+describe('postAction', () => {
+	it('POSTs to the path and returns the fresh status', async () => {
+		let seen: { path: string; method: string | undefined } | null = null;
+		const f = (async (p: string, init: RequestInit) => {
+			seen = { path: p, method: init?.method };
+			return { ok: true, status: 200, json: async () => ({ frozen: true, banners: [] }) } as Response;
+		}) as unknown as typeof fetch;
+		const { postAction } = await import('./client');
+		const s = await postAction('/api/freeze', f);
+		expect(seen).toEqual({ path: '/api/freeze', method: 'POST' });
+		expect(s.frozen).toBe(true);
+	});
+
+	it('throws on a non-ok response', async () => {
+		const f = (async () => ({ ok: false, status: 500, json: async () => ({}) }) as Response) as unknown as typeof fetch;
+		const { postAction } = await import('./client');
+		await expect(postAction('/api/freeze', f)).rejects.toThrow(/freeze/);
+	});
+});

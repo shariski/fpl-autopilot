@@ -60,6 +60,7 @@ export const fullMock: Dashboard = {
 		deadline_utc: '2026-05-24T13:00:00Z',
 		mode: 'manual',
 		data_fresh_as_of_utc: '2026-05-22T09:00:00Z',
+		frozen: false,
 		banners: [{ level: 'warning', text: 'Understat data is 8 days stale.' }]
 	},
 	squad: { gw: 37, bank: 2.3, team_value: 99.7, free_transfers: 1, players },

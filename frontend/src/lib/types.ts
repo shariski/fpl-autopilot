@@ -7,6 +7,7 @@ export type Chip = 'wildcard' | 'free_hit' | 'bench_boost' | 'triple_captain';
 export interface Banner {
 	level: 'info' | 'warning' | 'error';
 	text: string;
+	action?: { label: string; endpoint: string };
 }
 
 export interface Status {
@@ -15,6 +16,7 @@ export interface Status {
 	deadline_utc: string;
 	mode: Mode;
 	data_fresh_as_of_utc: string;
+	frozen: boolean;
 	banners: Banner[];
 }
 
