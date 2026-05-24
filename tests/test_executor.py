@@ -103,7 +103,7 @@ def test_apply_transfers_dry_run_sends_nothing():
     sess = _FakeSession()
     res = executor.apply_transfers(sess, 3122849, {"transfers": []}, dry_run=True)
     assert res.dry_run and res.ok and res.status is None
-    assert "entry/3122849/transfers" in res.request["url"]
+    assert res.request["url"] == "https://fantasy.premierleague.com/api/transfers/"
     assert sess.posted is None
 
 
@@ -113,7 +113,7 @@ def test_apply_transfers_live_posts():
     res = executor.apply_transfers(sess, 3122849, payload, dry_run=False)
     assert not res.dry_run and res.ok and res.status == 200
     assert sess.posted["json"] == payload
-    assert "entry/3122849/transfers" in sess.posted["url"]
+    assert sess.posted["url"] == "https://fantasy.premierleague.com/api/transfers/"
 
 
 def test_apply_transfers_live_non_200():

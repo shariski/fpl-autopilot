@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 
 MY_TEAM_URL = "https://fantasy.premierleague.com/api/my-team/{entry}/"
-TRANSFERS_URL = "https://fantasy.premierleague.com/api/entry/{entry}/transfers/"
+# The transfer-SUBMIT endpoint; the entry id goes in the POST body (see build_transfer_payload),
+# not the URL. (`/api/entry/{entry}/transfers/` is the read-only transfer HISTORY — POST → 405.)
+# `.format(entry=...)` is a harmless no-op here (no placeholder); callers pass entry anyway.
+TRANSFERS_URL = "https://fantasy.premierleague.com/api/transfers/"
 TIMEOUT = 10
 
 

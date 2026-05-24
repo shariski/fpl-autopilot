@@ -69,7 +69,7 @@ def test_run_transfer_live_confirmed(db):
     res = transfer.run_transfer(db, key=b"unused", live=True, confirm_fn=lambda d: True,
                                 session=sess, suggester=_suggester)
     assert not res.dry_run and res.ok and sess.posted is not None
-    assert "entry/" in sess.posted["url"] and sess.posted["url"].endswith("/transfers/")
+    assert sess.posted["url"] == "https://fantasy.premierleague.com/api/transfers/"
     assert db.execute("SELECT executed FROM activity_log").fetchone()["executed"] == 1
 
 
