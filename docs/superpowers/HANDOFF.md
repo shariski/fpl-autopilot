@@ -1,4 +1,4 @@
-# FPL Autopilot — Session Handoff (2026-05-23)
+# FPL Autopilot — Session Handoff (2026-05-24)
 
 Resume point for continuing on another machine. Everything below is in git (pushed to
 `github.com:shariski/fpl-autopilot`); your local auto-memory and secrets do **not** transfer.
@@ -37,8 +37,12 @@ Resume point for continuing on another machine. Everything below is in git (push
     table; `src/execution/override.py` gate; `auto_execute_job` + `run_deadguard_job` short-circuit when
     frozen (explicit Confirm NOT gated); `ensure_session` counts refresh failures → freeze at 2; Telegram
     🛑/▶️ + CLI `freeze`/`unfreeze`/`freeze-status`. (See "2.7" section below.)
-- **Test suite: 361 passing.** Phase-2 slices 2.1–2.5b + **2.7 Emergency Override** are merged to `main`
-  and pushed to origin.
+  - 2.5c-1 Deadguard late-news re-evaluation — after DEADGUARD_EXECUTED, `evaluate` returns `reeval`/`lockout`;
+    `_run_reevaluate` force-refreshes FPL + re-checks the lineup, auto-applying a material captain/bench change
+    (>15 min out) or alert-only in the ≤15-min lockout. Lineup-only (B8). decision-engine.md v0.11. (See "2.5c-1".)
+  - 2.5c-2 Deadguard undo (transfer) — deadguard records its transfer; one-tap ↩️ Undo (Telegram `z:` + CLI
+    `undo-transfer`) reverses it before the deadline → USER_ACTED; refuses safely if too late / squad changed.
+- **Test suite: 395 passing.** Phase-2 slices 2.1–2.5b + 2.7 + **2.5c-1/2.5c-2** are merged to `main` and pushed to origin.
 
 ## Auth reality (don't re-derive this — it cost a lot to find)
 
@@ -62,7 +66,7 @@ Programmatic email+password login is **dead**: `users.premierleague.com` is deco
 - **NEVER `git add -A`** here — it sweeps in `.claude/worktrees/` gitlinks. Stage explicit paths.
 - **B-rules in `CLAUDE.md` are binding** (B4 decision-engine is "sacred" — document changes there;
   B7 secrets encrypted/never-logged; B8 no auto chips/hits/multi; B11 dry-run first-class).
-- Decision logic lives in `docs/decision-engine.md` (changelog up to v0.9).
+- Decision logic lives in `docs/decision-engine.md` (changelog up to v0.11).
 - A `code-review-graph` MCP is available (use it before Grep per the user's global CLAUDE.md).
 
 ## 2.4 Telegram — DONE (a + b; pushed)
@@ -120,18 +124,33 @@ regression-tested). 361 tests green.
   `DEADGUARD_ACTIVE` can linger after a SessionExpired-aborted trigger (pre-existing from 2.5a, benign —
   not a RESOLVED state, so it re-runs cleanly).
 
-## NEXT TASK: 2.5c — late-news / undo / dashboard banner (last Phase-2 slice)
+## 2.5c-1 / 2.5c-2 — DONE (merged to main, pushed)
 
-From `docs/deadguard.md`: late-news re-evaluation (re-run the decision if a player's status changes after a
-deadguard action but before the deadline), an undo path, a dashboard freeze/deadguard banner, and the
-multi-device notes. The dashboard freeze indicator naturally belongs here. Re-enter brainstorming for 2.5c,
-then spec → plan → subagent. After 2.5c, **Phase 2 (Decision Automation) is complete** and **Phase 3 (AI
-Layer)** is next (LLM reasoning, mini-league context, personalization, conversational interface).
+2.5c was decomposed into three sub-slices (late-news re-eval / undo / dashboard). Two are done:
+- **2.5c-1 late-news re-evaluation** — specs/plans `docs/superpowers/{specs,plans}/2026-05-23-deadguard-late-news-reeval*`.
+  `evaluate` gains `reeval`/`lockout` directives for DEADGUARD_EXECUTED (gated by `reeval_if_late_news`, default on;
+  `reeval_lockout_minutes` 15). `_run_reevaluate` force-refreshes FPL bootstrap (cache-bypassed) + recomputes the
+  lineup; on a material captain/vice/bench change it auto-applies via `run_lineup` when >15 min out, else alert-only
+  (once, via `gameweeks.deadguard_reeval_alerted_at`). Lineup-only (B8); frozen → dormant (2.7). decision-engine.md v0.11.
+- **2.5c-2 undo (transfer)** — specs/plans `.../2026-05-24-deadguard-undo-transfer*`. `_run_trigger` records the
+  transfer (`gameweeks.deadguard_transfer_json`) + sends a ↩️ Undo button; `transfer.run_undo_transfer` reverses it
+  (sell bought, buy back sold; free pre-deadline); `deadguard.run_undo` guards (recorded / not-undone / before-deadline)
+  → reverse → `mark_deadguard_transfer_undone` + USER_ACTED + notify; Telegram `z:` handler + CLI `undo-transfer`
+  (dry-run/`--live`). Not freeze-gated (user action). No decision-engine.md change. Both reviewed (per-task + final opus).
+
+## NEXT TASK: 2.5c-3 — dashboard deadguard/freeze banner + keep/undo controls + multi-device (last Phase-2 slice)
+
+The frontend half of `docs/deadguard.md` ("user opens the dashboard during/after deadguard"): a SvelteKit banner
+showing deadguard countdown / freeze state, with Keep-as-is + post-exec "what changed" + Undo controls, plus the
+**WRITE endpoints** the GET-only `src/interface/api.py` currently lacks (deadguard/freeze status + keep + undo).
+Multi-device folds in (the dashboard reads/writes the same backend state). Re-enter brainstorming for 2.5c-3 (offer
+the visual companion — it's UI-heavy), then spec → plan → subagent. After 2.5c-3, **Phase 2 (Decision Automation) is
+complete** → **Phase 3 (AI Layer)** (LLM reasoning, mini-league context, personalization, conversational interface).
 
 ## Phase 2 status
-- **DONE:** 2.1 auth · 2.2 executor · 2.3 router · 2.4a/b Telegram · 2.5a/b deadguard · 2.7 emergency override.
+- **DONE:** 2.1 auth · 2.2 executor · 2.3 router · 2.4a/b Telegram · 2.5a/b deadguard · 2.7 override · 2.5c-1/2.5c-2.
 - 2.6 Dry-Run — effectively satisfied (every executor + the router is dry-run-first).
-- **2.5c** — the only remaining Phase-2 slice (see NEXT TASK).
+- **2.5c-3** (dashboard banner + multi-device) — the only remaining Phase-2 slice (see NEXT TASK).
 
 ## Tech debt / cleanup (small, non-blocking — flagged in 2.5 reviews)
 - `src/decisions/bench.py` imports the private `transfers._next_gw` (captain.py does the same) — extract
@@ -145,7 +164,7 @@ Layer)** is next (LLM reasoning, mini-league context, personalization, conversat
 git clone git@github.com:shariski/fpl-autopilot.git    # or git pull
 cd fpl-autopilot
 python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # python3.14 also works (this machine)
-.venv/bin/pytest -q          # expect 329 passed
+.venv/bin/pytest -q          # expect 395 passed
 ```
 Local-only (re-create if you want live runs): `data/.salt` + `data/.verify` (run
 `init-master-password` then `init-fpl`), and the `~/.claude` auto-memory (this file replaces it for
