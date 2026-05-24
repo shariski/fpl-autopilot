@@ -153,16 +153,34 @@ presentational `Header` (`onaction` callback: Freeze/Unfreeze toggle + banner Ke
 postAction + ~30s status polling (multi-device). 8 TDD tasks (pytest + vitest), final opus review clean (web
 layer holds no key, makes no FPL call). api-contract.md/deadguard.md/runbook.md updated.
 
-## NEXT: live end-to-end test against the real account (then Phase 3)
+## Live e2e against the real account — DONE (2026-05-24, GW38, team 3122849)
 
-Phase 2 is feature-complete but has only ever run on fixtures (R3 — the agent never ran live). Before Phase 3,
-the USER drives a real-account smoke test (the agent prepares the runbook + watches output, never runs live login/
-execution): `init-master-password` → `init-fpl` (paste refresh token) → `auth-status`; then dry-run a
-`route-gameweek` / `execute-lineup` / `execute-transfer`, then `--live`; bring up `serve` + the dashboard; exercise
-freeze/unfreeze + Keep; (optionally) the daemon's deadguard/telegram loop. `docs/runbook.md` is the operational
-guide. Capture any real-API schema drift (B6 schema assertions) or auth-flow surprises.
+First real-account run (user drove all live steps; agent ran only read-only `refresh` + local analytics, R3).
+**Validated live, end to end:** `refresh` (bootstrap-static 840 players / 380 fixtures / understat 523-matched —
+no B6 schema drift) → local fdr/xp compute → read-only decisions (captain Haaland, 1 transfer suggestion) →
+`init-master-password`/`init-fpl`/`auth-status` (live `/as/token` OAuth refresh + `/me` team check → `active`) →
+dry-run `route-gameweek`/`execute-lineup`/`execute-transfer` → **live `execute-transfer` HTTP 200** (João Pedro →
+Calvert-Lewin) → **live `execute-lineup` HTTP 200** (Haaland C, Thiaw VC) → dashboard (Freeze toggle works).
 
-After the e2e test → **Phase 3 (AI Layer)** — LLM reasoning, mini-league context, personalization, conversational interface.
+**Bug found + fixed (live-verified): transfers POST endpoint.** `execute-transfer --live` returned **405** —
+`TRANSFERS_URL` was `/api/entry/{entry}/transfers/` (read-only history) instead of the submit endpoint
+`/api/transfers/` (entry in body). Fixed in `executor.py` + 3 tests that had enshrined the wrong URL (commit
+`3ac4f98`); retried live → **200**. `MY_TEAM_URL` was already correct (lineup POST 200).
+
+**Findings / backlog (for Phase 3):**
+- **Dashboard read-model is public + one-GW-behind.** `get_squad` sources the squad from the *public*
+  `/entry/{id}/event/{gw}/picks/` snapshot (last finished GW, here GW37) — so it can't show the live upcoming
+  team or a pending GW38 transfer (those are auth-only via `/api/my-team/`). The dashboard showed João Pedro +
+  re-suggested the transfer already made. Wire the authed `/my-team` (live picks + real `free_transfers`) into
+  the read model. **Good Phase-3 first item.**
+- **No standalone `recompute` CLI** — a bare `refresh` fetches data but leaves `fdr`/`xp` stale (only the
+  scheduler's `refresh_and_recompute` recomputes). Add a `recompute` command (or have `refresh` recompute).
+- **`serve` doesn't serve the SPA** — it's the API only; the dashboard needs `cd frontend && npm run dev`
+  (Vite proxies `/api`). `client.ts` intends same-origin in prod, but no static mount exists in `api.py`. Wire it.
+- **`free_transfers` still unknown to the executor** — `run_transfer` can't see your FT count (auth-only field
+  not wired), so a transfer with no FT left would silently be a −4 hit. Surface it from `/my-team`.
+
+After these (or straight to) → **Phase 3 (AI Layer)** — LLM reasoning, mini-league context, personalization, conversational interface.
 
 ## Phase 2 status — COMPLETE
 - **DONE:** 2.1 auth · 2.2 executor · 2.3 router · 2.4a/b Telegram · 2.5a/b deadguard · 2.7 override · 2.5c-1/2.5c-2/2.5c-3.
