@@ -1,4 +1,6 @@
 import json
+from datetime import datetime, timezone
+from src import config
 from src.config import load_config
 
 
@@ -7,19 +9,47 @@ def _next_gw(conn):
     return r["gw"] if r and r["gw"] is not None else None
 
 
+def _status_banners(conn, nxt, frozen_status, cfg, now):
+    banners = []
+    if frozen_status is not None:
+        banners.append({"level": "error",
+                        "text": f"Auto-execution frozen — {frozen_status['reason']}."})
+    if nxt is None:
+        return banners
+    state = nxt["state"]
+    deadline = datetime.fromisoformat(nxt["deadline_utc"]) if nxt["deadline_utc"] else None
+    if state == "DEADGUARD_EXECUTED":
+        banners.append({"level": "info",
+                        "text": "Deadguard set your team this gameweek. "
+                                "Undo a transfer via Telegram or `undo-transfer` before the deadline."})
+    elif (state == "PENDING" and frozen_status is None and config.deadguard_enabled(cfg)
+          and deadline is not None):
+        mins = (deadline - now).total_seconds() / 60
+        if 0 < mins <= config.deadguard_warning_minutes(cfg):
+            banners.append({"level": "warning",
+                            "text": f"Deadguard will set your team in ~{int(mins)} min unless you act.",
+                            "action": {"label": "Keep as is", "endpoint": "/api/deadguard/keep"}})
+    return banners
+
+
 def get_status(conn):
+    from src.execution import override
     cur = conn.execute("SELECT id, deadline_utc FROM gameweeks WHERE is_current=1").fetchone()
-    nxt = conn.execute("SELECT id, deadline_utc FROM gameweeks WHERE is_next=1").fetchone()
+    nxt = conn.execute("SELECT id, deadline_utc, state FROM gameweeks WHERE is_next=1").fetchone()
     fresh = conn.execute("SELECT MAX(last_fetched_utc) AS m FROM cache_meta").fetchone()
-    mode = load_config().get("mode", {}).get("current", "manual")
+    cfg = load_config()
+    mode = cfg.get("mode", {}).get("current", "manual")
     deadline_src = nxt or cur
+    frozen_status = override.status(conn)
+    now = datetime.now(timezone.utc)
     return {
         "current_gw": cur["id"] if cur else None,
         "next_gw": nxt["id"] if nxt else None,
         "deadline_utc": deadline_src["deadline_utc"] if deadline_src else None,
         "mode": mode,
         "data_fresh_as_of_utc": fresh["m"] if fresh else None,
-        "banners": [],
+        "frozen": frozen_status is not None,
+        "banners": _status_banners(conn, nxt, frozen_status, cfg, now),
     }
 
 

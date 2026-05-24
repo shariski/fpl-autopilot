@@ -134,3 +134,33 @@ def test_chips_endpoint_wired(client):
     r = client.get("/api/chips")
     assert r.status_code == 200
     assert "recommendation" in r.json()  # real recommender output (null on the seeded single-GW data)
+
+
+def test_status_has_frozen_false_by_default(seeded):
+    s = queries.get_status(seeded)
+    assert s["frozen"] is False
+
+
+def test_status_frozen_banner(seeded):
+    from src.execution import override
+    override.freeze(seeded, reason="boom", source="user")
+    s = queries.get_status(seeded)
+    assert s["frozen"] is True
+    assert any(b["level"] == "error" and "boom" in b["text"] for b in s["banners"])
+
+
+def test_status_warning_window_banner(seeded):
+    from datetime import datetime, timezone, timedelta
+    soon = (datetime.now(timezone.utc) + timedelta(minutes=60)).isoformat()
+    seeded.execute("UPDATE gameweeks SET deadline_utc=?, state='PENDING' WHERE is_next=1", (soon,))
+    seeded.commit()
+    s = queries.get_status(seeded)
+    warn = [b for b in s["banners"] if b["level"] == "warning"]
+    assert warn and warn[0]["action"] == {"label": "Keep as is", "endpoint": "/api/deadguard/keep"}
+
+
+def test_status_executed_banner(seeded):
+    seeded.execute("UPDATE gameweeks SET state='DEADGUARD_EXECUTED' WHERE is_next=1")
+    seeded.commit()
+    s = queries.get_status(seeded)
+    assert any(b["level"] == "info" for b in s["banners"])
