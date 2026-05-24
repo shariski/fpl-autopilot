@@ -99,15 +99,6 @@ def test_run_transfer_out_not_in_squad(db):
         transfer.run_transfer(db, key=b"unused", session=sess, suggester=_suggester)
 
 
-class _Resp:
-    def __init__(self, status_code=200, payload=None):
-        self.status_code = status_code
-        self._payload = payload
-
-    def json(self):
-        return self._payload
-
-
 class _UndoSession:
     def __init__(self, picks, post_status=200):
         self._picks = picks
@@ -155,6 +146,18 @@ def test_run_undo_transfer_in_player_gone_raises(db):
     from src.execution import executor as executor_mod
     _seed_next_gw_and_player(db)
     sess = _UndoSession([{"element": 11, "selling_price": 50}])
+    with pytest.raises(executor_mod.ExecutorError):
+        transfer_mod.run_undo_transfer(db, b"key", out_id=7, in_id=99, live=True,
+                                       confirm_fn=lambda d: True, session=sess)
+
+
+def test_run_undo_transfer_out_player_unknown_raises(db):
+    import pytest
+    from src.execution import transfer as transfer_mod
+    from src.execution import executor as executor_mod
+    db.execute("INSERT INTO gameweeks (id, is_next, finished) VALUES (30, 1, 0)")   # no players row for out_id 7
+    db.commit()
+    sess = _UndoSession([{"element": 99, "selling_price": 60}])                      # in_id present; out_id not in players
     with pytest.raises(executor_mod.ExecutorError):
         transfer_mod.run_undo_transfer(db, b"key", out_id=7, in_id=99, live=True,
                                        confirm_fn=lambda d: True, session=sess)

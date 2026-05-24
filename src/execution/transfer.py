@@ -64,15 +64,16 @@ def run_undo_transfer(conn, key, *, out_id, in_id, live=False, confirm_fn=None, 
     payload = executor.build_transfer_payload(entry=entry, event=event, element_out=in_id, element_in=out_id,
                                               selling_price=selling_price, purchase_price=purchase_price)
     diff = f"UNDO: OUT {in_id} -> IN {out_id}"
+    inputs = {"out_id": out_id, "in_id": in_id, "selling_price": selling_price, "purchase_price": purchase_price}
     url = executor.TRANSFERS_URL.format(entry=entry)
     if live and (confirm_fn is None or not confirm_fn(diff)):
         repository.log_activity(conn, decision_type="transfer", mode="manual", action_taken="undo aborted",
-                                executed=False, exec_outcome={"diff": diff})
+                                inputs=inputs, executed=False, exec_outcome={"diff": diff})
         return executor.ExecResult(dry_run=True, request={"method": "POST", "url": url, "body": payload},
                                    status=None, ok=False)
     result = executor.apply_transfers(session, entry, payload, dry_run=not live)
     repository.log_activity(conn, decision_type="transfer", mode="manual",
                             action_taken=(f"undo: OUT {in_id} IN {out_id}" if live else "undo dry-run"),
-                            executed=(result.ok and not result.dry_run),
+                            inputs=inputs, executed=(result.ok and not result.dry_run),
                             exec_outcome={"status": result.status, "request": result.request})
     return result
