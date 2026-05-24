@@ -42,7 +42,12 @@ Resume point for continuing on another machine. Everything below is in git (push
     (>15 min out) or alert-only in the ≤15-min lockout. Lineup-only (B8). decision-engine.md v0.11. (See "2.5c-1".)
   - 2.5c-2 Deadguard undo (transfer) — deadguard records its transfer; one-tap ↩️ Undo (Telegram `z:` + CLI
     `undo-transfer`) reverses it before the deadline → USER_ACTED; refuses safely if too late / squad changed.
-- **Test suite: 395 passing.** Phase-2 slices 2.1–2.5b + 2.7 + **2.5c-1/2.5c-2** are merged to `main` and pushed to origin.
+  - 2.5c-3 Dashboard deadguard/freeze banner + controls — `get_status` returns `frozen` + populated `banners`
+    (`Header.svelte` renders them + a Freeze/Unfreeze toggle + a warning-window Keep button); POST `/api/freeze`,
+    `/api/unfreeze`, `/api/deadguard/keep` (DB-state only, no key); `serve` binds 127.0.0.1 by default; dashboard
+    polls `/api/status` (~30s + focus) → multi-device. No dashboard live FPL write (Undo stays Telegram/CLI).
+- **PHASE 2 (Decision Automation) — COMPLETE.** **Test suite: 404 pytest + 50 vitest passing**, all merged to
+  `main` and pushed to origin.
 
 ## Auth reality (don't re-derive this — it cost a lot to find)
 
@@ -138,19 +143,30 @@ regression-tested). 361 tests green.
   → reverse → `mark_deadguard_transfer_undone` + USER_ACTED + notify; Telegram `z:` handler + CLI `undo-transfer`
   (dry-run/`--live`). Not freeze-gated (user action). No decision-engine.md change. Both reviewed (per-task + final opus).
 
-## NEXT TASK: 2.5c-3 — dashboard deadguard/freeze banner + keep/undo controls + multi-device (last Phase-2 slice)
+## 2.5c-3 — DONE (merged to main, pushed)
 
-The frontend half of `docs/deadguard.md` ("user opens the dashboard during/after deadguard"): a SvelteKit banner
-showing deadguard countdown / freeze state, with Keep-as-is + post-exec "what changed" + Undo controls, plus the
-**WRITE endpoints** the GET-only `src/interface/api.py` currently lacks (deadguard/freeze status + keep + undo).
-Multi-device folds in (the dashboard reads/writes the same backend state). Re-enter brainstorming for 2.5c-3 (offer
-the visual companion — it's UI-heavy), then spec → plan → subagent. After 2.5c-3, **Phase 2 (Decision Automation) is
-complete** → **Phase 3 (AI Layer)** (LLM reasoning, mini-league context, personalization, conversational interface).
+Specs/plans `docs/superpowers/{specs,plans}/2026-05-24-dashboard-deadguard-controls*`. `get_status` →
+`frozen` + `banners` (with optional `action`); POST `/api/freeze`/`/api/unfreeze`/`/api/deadguard/keep`
+(DB-state only, no master key, no FPL call); `serve` binds 127.0.0.1 by default (the API now mutates state —
+use `--host 0.0.0.0` for LAN). Frontend: `Status.frozen`/`Banner.action?` types, `client.postAction`/`fetchStatus`,
+presentational `Header` (`onaction` callback: Freeze/Unfreeze toggle + banner Keep button), `+page.svelte` owns
+postAction + ~30s status polling (multi-device). 8 TDD tasks (pytest + vitest), final opus review clean (web
+layer holds no key, makes no FPL call). api-contract.md/deadguard.md/runbook.md updated.
 
-## Phase 2 status
-- **DONE:** 2.1 auth · 2.2 executor · 2.3 router · 2.4a/b Telegram · 2.5a/b deadguard · 2.7 override · 2.5c-1/2.5c-2.
-- 2.6 Dry-Run — effectively satisfied (every executor + the router is dry-run-first).
-- **2.5c-3** (dashboard banner + multi-device) — the only remaining Phase-2 slice (see NEXT TASK).
+## NEXT: live end-to-end test against the real account (then Phase 3)
+
+Phase 2 is feature-complete but has only ever run on fixtures (R3 — the agent never ran live). Before Phase 3,
+the USER drives a real-account smoke test (the agent prepares the runbook + watches output, never runs live login/
+execution): `init-master-password` → `init-fpl` (paste refresh token) → `auth-status`; then dry-run a
+`route-gameweek` / `execute-lineup` / `execute-transfer`, then `--live`; bring up `serve` + the dashboard; exercise
+freeze/unfreeze + Keep; (optionally) the daemon's deadguard/telegram loop. `docs/runbook.md` is the operational
+guide. Capture any real-API schema drift (B6 schema assertions) or auth-flow surprises.
+
+After the e2e test → **Phase 3 (AI Layer)** — LLM reasoning, mini-league context, personalization, conversational interface.
+
+## Phase 2 status — COMPLETE
+- **DONE:** 2.1 auth · 2.2 executor · 2.3 router · 2.4a/b Telegram · 2.5a/b deadguard · 2.7 override · 2.5c-1/2.5c-2/2.5c-3.
+- 2.6 Dry-Run — satisfied (every executor + the router is dry-run-first).
 
 ## Tech debt / cleanup (small, non-blocking — flagged in 2.5 reviews)
 - `src/decisions/bench.py` imports the private `transfers._next_gw` (captain.py does the same) — extract
@@ -164,7 +180,8 @@ complete** → **Phase 3 (AI Layer)** (LLM reasoning, mini-league context, perso
 git clone git@github.com:shariski/fpl-autopilot.git    # or git pull
 cd fpl-autopilot
 python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # python3.14 also works (this machine)
-.venv/bin/pytest -q          # expect 395 passed
+.venv/bin/pytest -q          # expect 404 passed
+cd frontend && npm install && npm test   # frontend (vitest): expect 50 passed  (npm install needed once)
 ```
 Local-only (re-create if you want live runs): `data/.salt` + `data/.verify` (run
 `init-master-password` then `init-fpl`), and the `~/.claude` auto-memory (this file replaces it for
