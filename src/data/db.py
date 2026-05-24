@@ -34,6 +34,10 @@ def _migrate_gameweeks(conn):
         conn.execute("ALTER TABLE gameweeks ADD COLUMN deadguard_warned_at TIMESTAMP")
     if "deadguard_reeval_alerted_at" not in cols:
         conn.execute("ALTER TABLE gameweeks ADD COLUMN deadguard_reeval_alerted_at TIMESTAMP")
+    if "deadguard_transfer_json" not in cols:
+        conn.execute("ALTER TABLE gameweeks ADD COLUMN deadguard_transfer_json TEXT")
+    if "deadguard_transfer_undone_at" not in cols:
+        conn.execute("ALTER TABLE gameweeks ADD COLUMN deadguard_transfer_undone_at TIMESTAMP")
 
 
 def init_db(conn):

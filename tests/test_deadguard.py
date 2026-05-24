@@ -656,3 +656,15 @@ def test_job_frozen_skips_reeval(db, monkeypatch):
     monkeypatch.setattr(deadguard, "_run_reevaluate", lambda *a, **k: called.append(1))
     out = deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
     assert out is None and called == []
+
+
+def test_deadguard_transfer_record_round_trip(db):
+    _seed_gw(db)
+    cols = {r["name"] for r in db.execute("PRAGMA table_info(gameweeks)")}
+    assert "deadguard_transfer_json" in cols and "deadguard_transfer_undone_at" in cols
+    assert repository.get_deadguard_transfer(db, 30) is None
+    repository.set_deadguard_transfer(db, 30, 7, 99)
+    assert repository.get_deadguard_transfer(db, 30) == {"out_id": 7, "in_id": 99}
+    repository.mark_deadguard_transfer_undone(db, 30)
+    assert db.execute(
+        "SELECT deadguard_transfer_undone_at FROM gameweeks WHERE id=30").fetchone()["deadguard_transfer_undone_at"] is not None

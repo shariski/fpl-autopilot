@@ -326,6 +326,22 @@ def mark_deadguard_triggered(conn, gw):
     conn.commit()
 
 
+def set_deadguard_transfer(conn, gw, out_id, in_id):
+    conn.execute("UPDATE gameweeks SET deadguard_transfer_json=? WHERE id=?",
+                 (json.dumps({"out_id": out_id, "in_id": in_id}), gw))
+    conn.commit()
+
+
+def get_deadguard_transfer(conn, gw):
+    row = conn.execute("SELECT deadguard_transfer_json FROM gameweeks WHERE id=?", (gw,)).fetchone()
+    return json.loads(row["deadguard_transfer_json"]) if row and row["deadguard_transfer_json"] else None
+
+
+def mark_deadguard_transfer_undone(conn, gw):
+    conn.execute("UPDATE gameweeks SET deadguard_transfer_undone_at=? WHERE id=?", (_now(), gw))
+    conn.commit()
+
+
 def touch_user_action(conn, gw):
     conn.execute("UPDATE gameweeks SET last_user_action_at=?, state='USER_ACTED' WHERE id=?", (_now(), gw))
     conn.commit()
