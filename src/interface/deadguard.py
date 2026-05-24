@@ -114,12 +114,16 @@ def _run_trigger(conn, key, gw, cfg):
         log.exception("deadguard post-execution bookkeeping failed (lineup was already set)")
     # 3. transfer-if-flagged (best-effort; never undoes the lineup, never retried)
     transfer_note = "no transfer"
+    transfer_applied = False
     try:
         rank = _pick_flagged_transfer(conn, cfg)
         if rank is not None:
             tr = transfer_exec.run_transfer(conn, key, rank=rank, live=True, confirm_fn=lambda d: True)
             if getattr(tr, "ok", False):
                 transfer_note = "transfer applied"
+                transfer_applied = True
+                body = tr.request["body"]["transfers"][0]
+                repository.set_deadguard_transfer(conn, gw, body["element_out"], body["element_in"])
             else:
                 transfer_note = "transfer failed"
                 _notify(conn, "alert", "Deadguard: flagged-player transfer did not complete.")
@@ -134,6 +138,12 @@ def _run_trigger(conn, key, gw, cfg):
     except Exception:
         log.exception("deadguard summary log failed (lineup and transfer already applied)")
     _notify(conn, "executed", f"Deadguard: captain {name}, bench optimized, {transfer_note}.")
+    if transfer_applied:
+        try:
+            telegram.send_message("↩️ Undo the transfer? Free before the deadline.",
+                                  buttons=[[{"text": "↩️ Undo", "callback_data": f"z:{gw}"}]])
+        except Exception:
+            log.exception("deadguard undo-button send failed")
 
 
 def _current_lineup(picks):

@@ -395,7 +395,9 @@ def test_trigger_executes_flagged_transfer(db, monkeypatch):
     monkeypatch.setattr(deadguard, "_pick_flagged_transfer", lambda conn, cfg: 2)
     xfers = []
     monkeypatch.setattr(deadguard.transfer_exec, "run_transfer",
-                        lambda conn, key, **k: xfers.append(k.get("rank")) or types.SimpleNamespace(ok=True, dry_run=False, status=200))
+                        lambda conn, key, **k: xfers.append(k.get("rank")) or types.SimpleNamespace(
+                            ok=True, dry_run=False, status=200,
+                            request={"method": "POST", "url": "u", "body": {"transfers": [{"element_out": 7, "element_in": 99}]}}))
     deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
     assert xfers == [2]                                    # ran the chosen rank, live
     assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "DEADGUARD_EXECUTED"
@@ -751,3 +753,42 @@ def test_run_undo_session_expired_alerts(db, monkeypatch):
     assert "alert" in alerts
     assert db.execute(
         "SELECT deadguard_transfer_undone_at FROM gameweeks WHERE id=30").fetchone()["deadguard_transfer_undone_at"] is None
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (2.5c-2): deadguard records undo target + sends Undo button
+# ---------------------------------------------------------------------------
+def test_trigger_records_undo_target_and_sends_button(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20), state="PENDING")
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: None)
+    sent = []
+    monkeypatch.setattr(deadguard.telegram, "send_message", lambda text, **k: sent.append(k.get("buttons")) or True)
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Cap"}], "vice_player_id": 6, "confidence": 80})
+    monkeypatch.setattr(deadguard.lineup, "run_lineup",
+                        lambda conn, key, **k: types.SimpleNamespace(ok=True, dry_run=False, status=200))
+    monkeypatch.setattr(deadguard, "_pick_flagged_transfer", lambda conn, cfg: 1)
+    monkeypatch.setattr(deadguard.transfer_exec, "run_transfer",
+                        lambda conn, key, **k: types.SimpleNamespace(
+                            ok=True, dry_run=False, status=200,
+                            request={"method": "POST", "url": "u", "body": {"transfers": [{"element_out": 7, "element_in": 99}]}}))
+    deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert repository.get_deadguard_transfer(db, 30) == {"out_id": 7, "in_id": 99}
+    assert [[{"text": "↩️ Undo", "callback_data": "z:30"}]] in sent
+
+
+def test_trigger_no_transfer_no_undo_record(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20), state="PENDING")
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: None)
+    sent = []
+    monkeypatch.setattr(deadguard.telegram, "send_message", lambda text, **k: sent.append(k.get("buttons")) or True)
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Cap"}], "vice_player_id": 6, "confidence": 80})
+    monkeypatch.setattr(deadguard.lineup, "run_lineup",
+                        lambda conn, key, **k: types.SimpleNamespace(ok=True, dry_run=False, status=200))
+    monkeypatch.setattr(deadguard, "_pick_flagged_transfer", lambda conn, cfg: None)
+    deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
+    assert repository.get_deadguard_transfer(db, 30) is None
+    assert all(b != [[{"text": "↩️ Undo", "callback_data": "z:30"}]] for b in sent)
