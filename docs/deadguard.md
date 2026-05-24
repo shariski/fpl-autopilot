@@ -190,6 +190,16 @@ Deadguard interacts with the three modes as follows:
 
 The deadguard is disabled if `mode = auto` and `confidence_floor` is set very low — in that case Auto effectively absorbs deadguard's role. But the default config keeps deadguard active in all modes.
 
+## Undo (transfer) — Telegram + CLI (Phase 2.5c-2)
+
+When deadguard makes its single free transfer, it records the swap on the gameweek and offers a one-tap
+**↩️ Undo** (Telegram button `z:{gw}`, or `fpl-autopilot undo-transfer --live`). Undo submits the reverse
+transfer (sell the bought player, buy back the sold one) — free while still pending before the deadline — then
+marks the gameweek USER_ACTED (which also stops late-news re-evaluation). It is available only before the
+deadline and only once; if the deadline has passed or the bought player is no longer in the squad, undo refuses
+with a notice rather than making a new transfer. Undo is a deliberate user action, so the 2.7 emergency freeze
+does not block it. Lineup changes (captain/bench) are not undone — they are user-adjustable.
+
 ## Emergency override (freeze) interaction (Phase 2.7)
 
 When an emergency freeze is active, `run_deadguard_job` short-circuits at the very top and is
