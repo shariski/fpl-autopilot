@@ -395,7 +395,7 @@ def _route_gameweek_cli(conn=None, salt_path=None, verify_path=None, live=False,
         conn.close()
 
 
-def serve(host="0.0.0.0", port=None, scheduler=True):
+def serve(host="127.0.0.1", port=None, scheduler=True):
     import os
     import uvicorn
     port = port or int(os.getenv("PORT", "8000"))
@@ -419,7 +419,7 @@ def main(argv=None):
     p_refresh.add_argument("--source", choices=["fpl", "understat"], default=None,
                            help="restrict to one source (default: both)")
     p_serve = sub.add_parser("serve", help="run the FastAPI server")
-    p_serve.add_argument("--host", default="0.0.0.0")
+    p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=None)
     p_serve.add_argument("--no-scheduler", action="store_true",
                          help="run the API without the background scheduler")

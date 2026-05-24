@@ -372,3 +372,9 @@ def test_auto_execute_manual_mode_no_freeze_button(db, monkeypatch):
              "summary": "Captain: X", "executed": True}]
     scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=lambda c, k: plan, cfg=_CFG)  # mode=manual
     assert all(b != [[{"text": "🛑 Freeze", "callback_data": "f:1"}]] for b in sent)
+
+
+def test_serve_defaults_to_localhost():
+    import inspect
+    import src.cli as cli
+    assert inspect.signature(cli.serve).parameters["host"].default == "127.0.0.1"
