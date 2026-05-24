@@ -3,7 +3,7 @@
 The shared interface between the PWA dashboard (Interface layer) and the FastAPI backend. The dashboard is built against these shapes (with mock data) and the backend fulfills them. This lets the two be built in parallel.
 
 **Conventions**
-- All endpoints are `GET`, JSON, read-only in Phase 1. Base path `/api`.
+- Base path `/api`. Phase-1 endpoints are `GET`, JSON, read-only. Phase-2 state-mutating write endpoints are `POST` (see below).
 - Prices and money are floats in £m (e.g. `14.7`, `2.3`).
 - FDR values are integers `1`–`5` (1 = easiest, 5 = hardest).
 - Positions are `GKP | DEF | MID | FWD`. Player `status` is the FPL flag `a|d|i|s|u`.
@@ -24,13 +24,29 @@ These payloads map to the dashboard sections defined in `docs/product-spec.md` (
   "next_gw": null,
   "deadline_utc": "2026-05-24T13:00:00Z",
   "mode": "manual",                       // auto | manual | hybrid | deadguard | frozen
+  "frozen": false,                        // (Phase 2.5c-3) true when an emergency freeze is active
   "data_fresh_as_of_utc": "2026-05-22T09:00:00Z",
-  "banners": [                            // setup/health banners; [] when all good
-    {"level": "warning", "text": "Understat data is 8 days stale."}
+  "banners": [                            // setup/health banners + deadguard/freeze state; [] when all good
+    {
+      "level": "warning",                 // info | warning | error
+      "text": "Deadguard runs in ~47 min.",
+      "action": {                         // optional; present on actionable banners only
+        "label": "Keep as is",
+        "endpoint": "/api/deadguard/keep"
+      }
+    }
   ]
 }
 ```
-All _(live)_ except `mode` (currently always `manual` until Phase 2).
+
+**`Status.frozen`** _(Phase 2.5c-3, live)_: `true` when an emergency freeze is active (autonomous writes are
+halted). Mirrors the `mode: "frozen"` value but is an explicit boolean for UI toggles.
+
+**`Banner.action`** _(Phase 2.5c-3)_: optional field present only on banners that expose a one-click action.
+`endpoint` is the POST path the dashboard calls when the user taps `label` (no body required; returns the
+fresh `Status`). Absent on purely informational banners.
+
+All other fields _(live)_ except `mode` (currently always `manual` until Phase 2).
 
 ## GET /api/squad — my team (pitch view)
 
@@ -148,6 +164,45 @@ Per squad player across the next N gameweeks (the 5×6 grid in `product-spec.md`
 }
 ```
 Supports query params later (`?gw=`, `?limit=`); Phase-1 default returns the most recent ~20.
+
+---
+
+## POST /api/freeze — activate emergency freeze _(Phase 2.5c-3)_
+
+No request body. Activates the emergency freeze (sets `frozen = true` in DB state). No FPL API call is made.
+Returns the fresh `Status` object (same shape as `GET /api/status`).
+
+**Constraint:** localhost only (`127.0.0.1`). No auth token required — freeze is plaintext operational state
+(CLAUDE.md B7 / runbook freeze section).
+
+```
+POST /api/freeze
+→ 200  Status   (frozen: true, mode: "frozen", banners updated)
+→ 200  Status   (already frozen — idempotent)
+```
+
+## POST /api/unfreeze — deactivate emergency freeze _(Phase 2.5c-3)_
+
+No request body. Clears the emergency freeze (`frozen = false`, mode reverts to previous operating mode).
+Returns the fresh `Status`.
+
+```
+POST /api/unfreeze
+→ 200  Status   (frozen: false, mode restored)
+→ 200  Status   (was not frozen — idempotent)
+```
+
+## POST /api/deadguard/keep — signal USER_ACTED to suppress deadguard _(Phase 2.5c-3)_
+
+No request body. Records a USER_ACTED event for the current gameweek, which prevents deadguard from triggering
+its automatic actions for that GW (equivalent to the user confirming "I'm watching, do nothing"). Returns the
+fresh `Status` (the deadguard warning banner will be absent after this call).
+
+```
+POST /api/deadguard/keep
+→ 200  Status   (deadguard warning banner removed)
+→ 200  Status   (already USER_ACTED this GW — idempotent)
+```
 
 ---
 

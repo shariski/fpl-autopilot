@@ -207,3 +207,12 @@ When an emergency freeze is active, `run_deadguard_job` short-circuits at the ve
 manual control (or auth broke and the system froze itself per B7); deadguard does nothing until
 the freeze is cleared (`fpl-autopilot unfreeze` or the ▶️ Unfreeze Telegram button). Freezing does
 **not** change deadguard's scope (B8) — it only stops it from running.
+
+## Dashboard banner + controls (Phase 2.5c-3)
+
+The dashboard polls `/api/status` (~30 s + on focus) and shows deadguard/freeze state: a red banner +
+Unfreeze toggle when frozen; an amber "deadguard in ~Xm" banner with a **Keep as is** button in the warning
+window (→ USER_ACTED); an info banner after deadguard executed (with a Telegram/CLI undo hint). A **Freeze**
+toggle is always in the header. These are no-key DB-state writes (`POST /api/freeze` / `/api/unfreeze` /
+`/api/deadguard/keep`); the dashboard performs no live FPL write (Undo stays Telegram/CLI). The backend is the
+single source of truth, so a second device reflects changes within one poll.

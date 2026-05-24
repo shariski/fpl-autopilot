@@ -149,6 +149,17 @@ autonomy, not deliberate action).
 - **Status:** `fpl-autopilot freeze-status`, or the `frozen:` / `relogin_failures:` lines in
   `fpl-autopilot auth-status`.
 - **No master password is required** to freeze/unfreeze — the freeze is plaintext operational state.
+- **Dashboard controls (Phase 2.5c-3):** the **Freeze / Unfreeze** toggle in the dashboard header
+  and the **Keep as is** banner button also write freeze/deadguard state via `POST /api/freeze`,
+  `POST /api/unfreeze`, `POST /api/deadguard/keep` — same effect as the CLI commands above.
+
+### `fpl-autopilot serve` binds localhost by default (Phase 2.5c-3)
+
+`fpl-autopilot serve` binds to `127.0.0.1` (localhost) by default. This is intentional: the API now
+exposes state-mutating endpoints (`/api/freeze`, `/api/unfreeze`, `/api/deadguard/keep`) that carry no
+authentication — exposing them on an open interface would be unsafe. To deliberately expose the dashboard
+on the local network (e.g. to reach it from a phone on the same Wi-Fi), pass `--host 0.0.0.0` and accept
+that anyone on the LAN can trigger a freeze or suppress deadguard.
 
 ### Automatic freeze (B7)
 After **two consecutive** failed token refreshes, the system freezes itself (`source="auto"`) and
