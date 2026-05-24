@@ -335,8 +335,7 @@ def _undo_transfer_cli(conn=None, salt_path=None, verify_path=None, live=False,
             print("No upcoming gameweek.")
             return
         try:
-            result = deadguard.run_undo(conn, key, gw, live=live, confirm_fn=confirm_fn,
-                                        **({"session": session} if session is not None else {}))
+            result = deadguard.run_undo(conn, key, gw, live=live, confirm_fn=confirm_fn, session=session)
         except (executor_mod.ExecutorError, SessionError) as exc:
             print(f"Could not undo: {exc}")
             return
