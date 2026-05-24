@@ -732,3 +732,22 @@ def test_run_undo_not_ok_alerts(db, monkeypatch):
     assert "alert" in notes
     assert db.execute(
         "SELECT deadguard_transfer_undone_at FROM gameweeks WHERE id=30").fetchone()["deadguard_transfer_undone_at"] is None
+    assert db.execute("SELECT state FROM gameweeks WHERE id=30").fetchone()["state"] == "DEADGUARD_EXECUTED"
+
+
+def test_run_undo_session_expired_alerts(db, monkeypatch):
+    from src.auth.session import SessionExpired
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=60), state="DEADGUARD_EXECUTED")
+    repository.set_deadguard_transfer(db, 30, 7, 99)
+    alerts = []
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: alerts.append(k["kind"]))
+
+    def boom(conn, key, **k):
+        raise SessionExpired("expired")
+
+    monkeypatch.setattr(deadguard.transfer_exec, "run_undo_transfer", boom)
+    deadguard.run_undo(db, b"key", 30, now=_NOW)        # must NOT raise
+    assert "alert" in alerts
+    assert db.execute(
+        "SELECT deadguard_transfer_undone_at FROM gameweeks WHERE id=30").fetchone()["deadguard_transfer_undone_at"] is None
