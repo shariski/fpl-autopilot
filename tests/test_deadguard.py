@@ -668,3 +668,67 @@ def test_deadguard_transfer_record_round_trip(db):
     repository.mark_deadguard_transfer_undone(db, 30)
     assert db.execute(
         "SELECT deadguard_transfer_undone_at FROM gameweeks WHERE id=30").fetchone()["deadguard_transfer_undone_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Task 3 (2.5c-2): run_undo
+# ---------------------------------------------------------------------------
+def test_run_undo_nothing_to_undo(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=60), state="DEADGUARD_EXECUTED")   # no transfer recorded
+    notes, ran = [], []
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: notes.append(k["kind"]))
+    monkeypatch.setattr(deadguard.transfer_exec, "run_undo_transfer", lambda *a, **k: ran.append(1))
+    deadguard.run_undo(db, b"key", 30, now=_NOW)
+    assert ran == [] and "info" in notes
+
+
+def test_run_undo_already_undone(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=60), state="DEADGUARD_EXECUTED")
+    repository.set_deadguard_transfer(db, 30, 7, 99)
+    repository.mark_deadguard_transfer_undone(db, 30)
+    ran = []
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: None)
+    monkeypatch.setattr(deadguard.transfer_exec, "run_undo_transfer", lambda *a, **k: ran.append(1))
+    deadguard.run_undo(db, b"key", 30, now=_NOW)
+    assert ran == []
+
+
+def test_run_undo_past_deadline(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW - timedelta(minutes=1), state="DEADGUARD_EXECUTED")     # deadline passed
+    repository.set_deadguard_transfer(db, 30, 7, 99)
+    ran = []
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: None)
+    monkeypatch.setattr(deadguard.transfer_exec, "run_undo_transfer", lambda *a, **k: ran.append(1))
+    deadguard.run_undo(db, b"key", 30, now=_NOW)
+    assert ran == []
+
+
+def test_run_undo_success_marks_and_user_acted(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=60), state="DEADGUARD_EXECUTED")
+    repository.set_deadguard_transfer(db, 30, 7, 99)
+    notes = []
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: notes.append(k["kind"]))
+    monkeypatch.setattr(deadguard.transfer_exec, "run_undo_transfer",
+                        lambda conn, key, **k: types.SimpleNamespace(ok=True, dry_run=False, status=200))
+    deadguard.run_undo(db, b"key", 30, now=_NOW)
+    row = db.execute("SELECT state, deadguard_transfer_undone_at FROM gameweeks WHERE id=30").fetchone()
+    assert row["state"] == "USER_ACTED" and row["deadguard_transfer_undone_at"] is not None
+    assert "executed" in notes
+
+
+def test_run_undo_not_ok_alerts(db, monkeypatch):
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=60), state="DEADGUARD_EXECUTED")
+    repository.set_deadguard_transfer(db, 30, 7, 99)
+    notes = []
+    monkeypatch.setattr(deadguard.telegram, "notify", lambda conn, **k: notes.append(k["kind"]))
+    monkeypatch.setattr(deadguard.transfer_exec, "run_undo_transfer",
+                        lambda conn, key, **k: types.SimpleNamespace(ok=False, dry_run=False, status=500))
+    deadguard.run_undo(db, b"key", 30, now=_NOW)
+    assert "alert" in notes
+    assert db.execute(
+        "SELECT deadguard_transfer_undone_at FROM gameweeks WHERE id=30").fetchone()["deadguard_transfer_undone_at"] is None

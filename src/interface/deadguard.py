@@ -238,6 +238,46 @@ def _notify(conn, kind, summary):
         log.exception("deadguard notify failed")
 
 
+def run_undo(conn, key, gw, *, live=True, confirm_fn=None, now=None):
+    target = repository.get_deadguard_transfer(conn, gw)
+    if target is None:
+        _notify(conn, "info", "Nothing to undo — deadguard made no transfer this gameweek.")
+        return None
+    row = conn.execute("SELECT deadline_utc, deadguard_transfer_undone_at FROM gameweeks WHERE id=?",
+                       (gw,)).fetchone()
+    if row["deadguard_transfer_undone_at"]:
+        _notify(conn, "info", "Already undone.")
+        return None
+    now = now or datetime.now(timezone.utc)
+    if row["deadline_utc"] and now >= datetime.fromisoformat(row["deadline_utc"]):
+        _notify(conn, "info", "Too late to undo — the deadline has passed.")
+        return None
+    try:
+        result = transfer_exec.run_undo_transfer(conn, key, out_id=target["out_id"], in_id=target["in_id"],
+                                                 live=live, confirm_fn=confirm_fn)
+    except SessionExpired:
+        froze = override.maybe_auto_freeze(conn)
+        _notify(conn, "alert", "Undo: FPL session expired — re-run init-fpl.")
+        if froze:
+            _notify(conn, "alert", "Auto-execution FROZEN — 2 consecutive auth failures. "
+                                   "Re-run init-fpl, then unfreeze.")
+        return None
+    except Exception as e:
+        log.exception("deadguard undo failed")
+        _notify(conn, "alert", f"Undo failed: {type(e).__name__} — the squad may have changed.")
+        return None
+    if getattr(result, "ok", False) and not getattr(result, "dry_run", False):
+        repository.mark_deadguard_transfer_undone(conn, gw)
+        repository.touch_user_action(conn, gw)
+        repository.log_activity(conn, decision_type="deadguard", mode="deadguard",
+                                action_taken=f"undo transfer: restored {target['out_id']}, removed {target['in_id']}",
+                                inputs=target, executed=True)
+        _notify(conn, "executed", "Reverted deadguard's transfer — sold player restored, free transfer back.")
+    elif not getattr(result, "dry_run", False):
+        _notify(conn, "alert", "Undo did not complete — the squad may have changed.")
+    return result
+
+
 def run_deadguard_job(key, *, conn=None, now=None, cfg=None):
     cfg = cfg or load_config()
     if not config.deadguard_enabled(cfg):
