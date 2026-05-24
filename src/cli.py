@@ -306,6 +306,55 @@ def _execute_transfer_cli(conn=None, salt_path=None, verify_path=None, live=Fals
         conn.close()
 
 
+def _undo_transfer_cli(conn=None, salt_path=None, verify_path=None, live=False,
+                       session=None, confirm_fn=None):
+    from .auth import master
+    from .auth.session import SessionError
+    from .execution import executor as executor_mod
+    from .interface import deadguard
+    from .decisions.transfers import _next_gw
+    mkw = {}
+    if salt_path is not None:
+        mkw["salt_path"] = salt_path
+    if verify_path is not None:
+        mkw["verify_path"] = verify_path
+    if not master.is_initialized(**mkw):
+        print("Master password not set — run `fpl-autopilot init-master-password` first.")
+        return
+    key = master.get_master_key(**mkw)
+    if confirm_fn is None:
+        def confirm_fn(diff):
+            print(f"Planned undo: {diff}")
+            return input("Type 'yes' to submit to your live FPL team: ").strip().lower() == "yes"
+    owns_conn = conn is None
+    conn = conn or connect(cfg_db_path())
+    init_db(conn)
+    try:
+        gw = _next_gw(conn)
+        if gw is None:
+            print("No upcoming gameweek.")
+            return
+        try:
+            result = deadguard.run_undo(conn, key, gw, live=live, confirm_fn=confirm_fn,
+                                        **({"session": session} if session is not None else {}))
+        except (executor_mod.ExecutorError, SessionError) as exc:
+            print(f"Could not undo: {exc}")
+            return
+        if result is None:
+            print("Nothing to undo (no deadguard transfer, already undone, or deadline passed).")
+        elif result.dry_run:
+            print("DRY-RUN — would POST:")
+            print(f"  {result.request['method']} {result.request['url']}")
+            print(f"  body: {result.request['body']}")
+        elif result.ok:
+            print(f"Undone. HTTP {result.status}.")
+        else:
+            print(f"Undo failed (HTTP {result.status}); nothing changed.")
+    finally:
+        if owns_conn:
+            conn.close()
+
+
 def _route_gameweek_cli(conn=None, salt_path=None, verify_path=None, live=False, mode=None,
                         session=None, ranker=None, suggester=None, confirm_fn=None):
     from .auth import master
@@ -387,6 +436,8 @@ def main(argv=None):
     p_route = sub.add_parser("route-gameweek", help="route captain + transfer per mode/confidence (dry-run unless --live)")
     p_route.add_argument("--live", action="store_true", help="execute the auto-routed decisions (requires typed confirmation)")
     p_route.add_argument("--mode", choices=["auto", "manual", "hybrid"], default=None, help="override config mode for this run")
+    p_undo = sub.add_parser("undo-transfer", help="revert deadguard's transfer before the deadline (dry-run unless --live)")
+    p_undo.add_argument("--live", action="store_true", help="actually submit the reverse transfer (requires typed confirmation)")
     p_freeze = sub.add_parser("freeze", help="halt all autonomous FPL execution (auto + deadguard)")
     p_freeze.add_argument("--reason", default="frozen from CLI")
     sub.add_parser("unfreeze", help="resume autonomous FPL execution")
@@ -412,6 +463,8 @@ def main(argv=None):
         _execute_transfer_cli(live=args.live, rank=args.rank)
     elif args.command == "route-gameweek":
         _route_gameweek_cli(live=args.live, mode=args.mode)
+    elif args.command == "undo-transfer":
+        _undo_transfer_cli(live=args.live)
     elif args.command == "freeze":
         _freeze_cli(reason=args.reason)
     elif args.command == "unfreeze":

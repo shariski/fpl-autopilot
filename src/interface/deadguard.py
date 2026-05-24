@@ -248,7 +248,7 @@ def _notify(conn, kind, summary):
         log.exception("deadguard notify failed")
 
 
-def run_undo(conn, key, gw, *, live=True, confirm_fn=None, now=None):
+def run_undo(conn, key, gw, *, live=True, confirm_fn=None, now=None, session=None):
     target = repository.get_deadguard_transfer(conn, gw)
     if target is None:
         _notify(conn, "info", "Nothing to undo — deadguard made no transfer this gameweek.")
@@ -264,7 +264,7 @@ def run_undo(conn, key, gw, *, live=True, confirm_fn=None, now=None):
         return None
     try:
         result = transfer_exec.run_undo_transfer(conn, key, out_id=target["out_id"], in_id=target["in_id"],
-                                                 live=live, confirm_fn=confirm_fn)
+                                                 live=live, confirm_fn=confirm_fn, session=session)
     except SessionExpired:
         froze = override.maybe_auto_freeze(conn)
         _notify(conn, "alert", "Undo: FPL session expired — re-run init-fpl.")
