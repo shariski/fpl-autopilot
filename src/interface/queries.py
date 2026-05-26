@@ -153,15 +153,12 @@ def get_captain_picks(conn):
 
 def get_captain_reasoning(conn, gw):
     """Cheap lookup used by the Telegram path. Returns the cached AI prose for
-    the captain pane at `gw`, or None on miss."""
+    the captain pane at `gw`, or None on miss (or when the engine has no picks).
+    """
     from src.decisions import captain as captain_engine
-    from src.ai import reasoning as ai_reasoning, cache as ai_cache
+    from src.ai import reasoning as ai_reasoning
     decision = captain_engine.get_captain_picks(conn)
     if not decision["picks"]:
         return None
-    payload = ai_reasoning._build_captain_payload(decision)
-    if payload is None:
-        return None
-    rec_hash = ai_cache.recommendation_hash(payload)
-    hit = ai_cache.get(conn, gw=gw, pane_type="captain", rec_hash=rec_hash)
-    return hit["prose"] if hit is not None else None
+    prose, source = ai_reasoning.render_captain_reasoning(conn, gw, decision)
+    return prose if source == "ai" else None
