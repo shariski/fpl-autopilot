@@ -75,7 +75,7 @@ def notify_plan(conn, plan, *, mode, session=None):
     swap the summary; falls back to entry['summary'] otherwise."""
     if not is_configured():
         return
-    captain_prose  = _captain_ai_prose(conn)
+    captain_prose = _captain_ai_prose(conn)
     transfer_prose = _transfer_ai_prose(conn)
     for entry in plan:
         kind = "executed" if entry["executed"] else "info"

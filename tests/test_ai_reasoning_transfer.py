@@ -76,6 +76,23 @@ def test_fixtures_for_handles_blank_gameweek():
     assert all(f["opponent"] != "LIV" for f in fixtures)
 
 
+def test_fixtures_for_handles_double_gameweek():
+    """A team with two fixtures in the same GW (DGW) produces two list entries —
+    no horizon cap (regression test for the original cap that silently dropped DGW entries)."""
+    conn = _db(); _seed_fixtures(conn)
+    # The seed creates AVL (team 4) with fixtures in GW38 (id=4), GW39 (id=5), GW40 (id=3) AND GW40 (id=6).
+    # That's a DGW for AVL in GW40 — two distinct fixture rows where AVL is involved.
+    # Watkins is on team 4, so _fixtures_for(player_id=20, next_gw=38, horizon=3) should return
+    # 4 entries (not 3), with the GW40 DGW surfaced as two list entries.
+    fixtures = reasoning._fixtures_for(conn, player_id=20, next_gw=38, horizon=3)
+    assert len(fixtures) == 4, (
+        f"DGW must surface as multiple list entries; got {len(fixtures)} fixtures: {fixtures}")
+    # GW40 DGW entries should be the last two (ORDER BY gw, id) — both involve AVL,
+    # one against MCI (fixture id=3, AVL away) and one against LIV (fixture id=6, AVL away).
+    gw40_opponents = [f["opponent"] for f in fixtures[-2:]]
+    assert set(gw40_opponents) == {"MCI", "LIV"}, gw40_opponents
+
+
 def test_build_transfer_payload_shape():
     conn = _db(); _seed_fixtures(conn)
     payload = reasoning._build_transfer_payload(conn, TRANSFER_DECISION_FIXTURE)
