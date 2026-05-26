@@ -183,17 +183,31 @@ After these (or straight to) → **Phase 3 (AI Layer)** — LLM reasoning, mini-
 
 ## Tech debt / cleanup (small, non-blocking — flagged in 2.5 reviews)
 - `src/decisions/bench.py` imports the private `transfers._next_gw` (captain.py does the same) — extract
-  to a public Data-Layer helper (e.g. `repository.next_gw`) and update both call sites.
+  to a public Data-Layer helper (e.g. `repository.next_gw`) and update both call sites. Note: `scheduler._next_gw_id`
+  (added 2026-05-26) uses the FPL-canonical `is_next=1` semantic — more accurate than `MIN(id) WHERE finished=0`.
+  When extracting, prefer the `is_next=1` form with the MIN-unfinished fallback.
 - The executors (`run_lineup`, `run_transfer`) hardcode `mode="manual"` in their internal `log_activity`,
   so a deadguard/auto executor-level log row is mislabeled (the *decision* IS logged correctly with
   `mode="deadguard"`/router mode by the orchestrator's own summary entry). Thread a `mode` param through both.
+- **From the 2026-05-26 final opus review of `feat/authed-read-model-wiring`:**
+  - `run_transfer`'s refusal returns `ExecResult(dry_run=True, ok=False, request.note="refused...")`. Matches the
+    pre-existing user-abort convention but is semantically misleading. Consider adding an explicit `ExecResult.refused: bool`
+    field (or status enum) in a follow-up. No current consumer makes a `dry_run`-dependent decision that misclassifies, so non-blocking.
+  - Deadguard `_pick_flagged_transfer` gate uses `isinstance(free_transfers, int)`. `isinstance(True, int)` is True
+    (bool subclasses int), so a `bool` slipping through would bypass the gate. Unreachable from current data flow
+    (sqlite3 INTEGER → Python int; no bool coercion anywhere). Tighten to `type(x) is int and not isinstance(x, bool)`
+    if a config-driven override is ever added.
+  - **Asymmetry on `free_transfers is None`:** `run_transfer` proceeds with a warning (user has agency); deadguard
+    refuses (autonomous safety net per B8). Intentional but worth documenting in `docs/api-contract.md`.
+  - `_refresh_authed_my_team` in scheduler logs `log.warning("authed my-team snapshot failed: %s", exc)`. Operator
+    diagnostics are thin (no traceback). Consider `exc_info=True` gated by a debug flag.
 
 ## Machine setup (Mac mini)
 ```bash
 git clone git@github.com:shariski/fpl-autopilot.git    # or git pull
 cd fpl-autopilot
 python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # python3.14 also works (this machine)
-.venv/bin/pytest -q          # expect 404 passed
+.venv/bin/pytest -q          # expect 432 passed (was 404 before authed-read-model-wiring)
 cd frontend && npm install && npm test   # frontend (vitest): expect 50 passed  (npm install needed once)
 ```
 Local-only (re-create if you want live runs): `data/.salt` + `data/.verify` (run
