@@ -6,6 +6,8 @@ inject `StubProvider`; production injects `OllamaProvider` (added in task 4).
 """
 from typing import Protocol
 
+import requests
+
 
 class LLMProvider(Protocol):
     def generate(self, prompt: str, *, max_tokens: int = 200,
@@ -23,9 +25,6 @@ class StubProvider:
     def generate(self, prompt: str, *, max_tokens: int = 200,
                  temperature: float = 0.2) -> str:
         return self.fixed_response
-
-
-import requests
 
 
 class OllamaError(RuntimeError):
