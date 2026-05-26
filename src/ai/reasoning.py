@@ -92,6 +92,10 @@ def generate_captain_prose(conn, gw: int, captain_decision: dict, *,
         logger.exception("ai.captain.provider_error",
                          extra={"gw": gw, "model_id": model_id})
         return False
+    if not prose:
+        logger.warning("ai.captain.empty_prose",
+                       extra={"gw": gw, "model_id": model_id})
+        return False
     payload_text = json.dumps(payload, sort_keys=True)
     ok, ungrounded = grounding.is_grounded(prose, payload_text)
     if not ok:
