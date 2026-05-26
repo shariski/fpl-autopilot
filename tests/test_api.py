@@ -328,3 +328,43 @@ def test_api_chips_returns_unchanged_shape_when_no_recommendation(client):
         assert "recommendation" in body  # key exists; value None
         # No reasoning_source key at the top level either
         assert "reasoning_source" not in body
+
+
+def test_api_status_banner_uses_cached_deadguard_prose(client_conn):
+    """When ai_reasoning_cache has a deadguard_summary row for the next gw,
+    the DEADGUARD_EXECUTED banner uses that prose as its text."""
+    from src.ai import cache as ai_cache
+    client, conn = client_conn
+    nxt = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
+    if nxt is None or nxt["gw"] is None:
+        return  # fixture has no upcoming gw; skip
+    gw = nxt["gw"]
+    conn.execute("UPDATE gameweeks SET state='DEADGUARD_EXECUTED' WHERE id=?", (gw,))
+    conn.commit()
+    ai_cache.put(conn, gw=gw, pane_type="deadguard_summary", rec_hash="abc123",
+                 prose="Deadguard set Haaland captain and ran a transfer.",
+                 model_id="qwen2.5:7b-instruct-q4_K_M")
+
+    resp = client.get("/api/status")
+    assert resp.status_code == 200
+    body = resp.json()
+    # Find the DEADGUARD banner — it'll contain "Undo" since the hint is always appended
+    matching = [b for b in body.get("banners", [])
+                if "Deadguard set Haaland captain and ran a transfer." in b.get("text", "")]
+    assert matching, f"Expected AI prose in a banner; got banners: {body.get('banners')}"
+
+
+def test_api_status_banner_uses_template_when_no_deadguard_ai_cache(client_conn):
+    """When no AI prose is cached, the banner uses the existing template text."""
+    client, conn = client_conn
+    nxt = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
+    if nxt is None or nxt["gw"] is None:
+        return
+    gw = nxt["gw"]
+    conn.execute("UPDATE gameweeks SET state='DEADGUARD_EXECUTED' WHERE id=?", (gw,))
+    conn.commit()
+
+    resp = client.get("/api/status")
+    body = resp.json()
+    assert any("Deadguard set your team this gameweek" in b.get("text", "")
+               for b in body.get("banners", []))

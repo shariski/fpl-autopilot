@@ -9,6 +9,15 @@ def _next_gw(conn):
     return r["gw"] if r and r["gw"] is not None else None
 
 
+def _read_deadguard_ai_prose(conn, gw):
+    """Read the most recent cached deadguard_summary prose for this gw, or None."""
+    row = conn.execute(
+        "SELECT prose FROM ai_reasoning_cache "
+        "WHERE gw=? AND pane_type='deadguard_summary' "
+        "ORDER BY generated_at DESC LIMIT 1", (gw,)).fetchone()
+    return row["prose"] if row is not None else None
+
+
 def _status_banners(conn, nxt, frozen_status, cfg, now):
     banners = []
     if frozen_status is not None:
@@ -19,9 +28,10 @@ def _status_banners(conn, nxt, frozen_status, cfg, now):
     state = nxt["state"]
     deadline = datetime.fromisoformat(nxt["deadline_utc"]) if nxt["deadline_utc"] else None
     if state == "DEADGUARD_EXECUTED":
+        ai_prose = _read_deadguard_ai_prose(conn, nxt["id"])
+        intro = ai_prose if ai_prose else "Deadguard set your team this gameweek."
         banners.append({"level": "info",
-                        "text": "Deadguard set your team this gameweek. "
-                                "Undo a transfer via Telegram or `undo-transfer` before the deadline."})
+                        "text": f"{intro} Undo a transfer via Telegram or `undo-transfer` before the deadline."})
     elif (state == "PENDING" and frozen_status is None and config.deadguard_enabled(cfg)
           and deadline is not None):
         mins = (deadline - now).total_seconds() / 60
