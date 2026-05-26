@@ -12,6 +12,14 @@ System architecture, stack reasoning, data model, and scheduling. Read this befo
 └──────────────────┬──────────────────────────┘
                    ↓
 ┌─────────────────────────────────────────────┐
+│  AI Reasoning (Phase 3, optional)           │
+│   Provider (Ollama / Claude)                │
+│   Prompt builder + few-shot                 │
+│   Number-grounding check                    │
+│   ai_reasoning_cache                        │
+└──────────────────┬──────────────────────────┘
+                   ↓
+┌─────────────────────────────────────────────┐
 │  Decision Layer                             │
 │   Captain ranker                            │
 │   Transfer engine                           │
@@ -44,6 +52,8 @@ Rules:
 - The Decision layer must never query the cache directly.
 
 These are not just style preferences. They make it possible to add Phase 3's LLM agent without untangling cross-cutting concerns.
+
+The AI Reasoning sub-layer is optional (disabled by `ai.enabled: false`). When enabled, it sits **strictly downstream** of Decision and **strictly upstream** of Interface. Interface → AI Reasoning → Decision → Analytics → Data. The Decision Layer is unaware of the AI sub-layer; degrading to the Phase-2 behaviour requires only the `ai.enabled: false` flag. Cross-cutting design: `docs/superpowers/specs/2026-05-26-phase3-ai-architecture-design.md`.
 
 ## Stack rationale
 
@@ -234,6 +244,18 @@ Drives "read DB first, fetch only when stale" in the Data Layer.
 |---|---|---|
 | resource | TEXT PRIMARY KEY | "bootstrap-static" / "fixtures" / "my_team" |
 | last_fetched_utc | TIMESTAMP | NOT NULL |
+
+### `ai_reasoning_cache` (Phase 3, S-A.1)
+
+| Column | Type | Notes |
+|---|---|---|
+| gw | INTEGER | |
+| pane_type | TEXT | 'captain' / 'transfer' / 'chip' / 'deadguard_summary' |
+| recommendation_hash | TEXT | sha256(canonical-JSON of payload)[:32] |
+| prose | TEXT | LLM-generated paragraph |
+| model_id | TEXT | e.g. 'qwen2.5:7b-instruct-q4_K_M' |
+| generated_at | TIMESTAMP | |
+| (PK) | (gw, pane_type, recommendation_hash) | |
 
 ### `understat_players`
 

@@ -432,3 +432,30 @@ fpl-autopilot log --gw 12                  # all decisions for GW 12
 fpl-autopilot config list                  # show current config
 fpl-autopilot config <key> <value>         # set a config value
 ```
+
+---
+
+## Optional: AI prose for captain pick (Phase 3, S-A.1)
+
+The captain pane on the dashboard and the Telegram H-24 preview body can show
+LLM-generated prose grounded in the deterministic engine's existing numbers.
+
+**Prerequisite:** an Ollama daemon running on localhost with the
+`qwen2.5:7b-instruct-q4_K_M` model installed:
+
+    brew install ollama          # or your platform's equivalent
+    ollama serve                  # in a background shell
+    ollama pull qwen2.5:7b-instruct-q4_K_M
+
+**Enabled by default.** The scheduler pre-warms the cache after each
+`refresh_and_recompute`; the dashboard and Telegram read cached prose.
+
+**To disable** (and revert to the deterministic engine's template strings), set:
+
+    # config.yaml
+    ai:
+      enabled: false
+
+When disabled (or when Ollama is unreachable), the dashboard renders the
+template string with a small `classic` badge, and the Telegram body uses the
+template string. No banner, no broken page.
