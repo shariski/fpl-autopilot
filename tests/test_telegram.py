@@ -396,3 +396,96 @@ def test_notify_plan_uses_classic_summary_when_no_transfer_ai_cache(monkeypatch,
     telegram.notify_plan(conn, plan, mode="manual", session=_FakeSession())
     assert sent
     assert "template transfer summary" in sent[0]["text"]
+
+
+def test_notify_plan_swaps_chip_summary_when_ai_cache_populated(monkeypatch, tmp_path):
+    """If cached AI chip prose exists for the next gw, notify_plan uses it for the chip entry."""
+    from src.data.db import connect, init_db
+    from src.interface import telegram
+    from src.ai import cache as ai_cache, reasoning as ai_reasoning
+    from src.decisions import chips
+
+    conn = connect(":memory:")
+    init_db(conn)
+    _seed_chip_db(conn)
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
+
+    decision = chips.recommend_chip(conn)
+    assert decision["recommendation"] is not None, "seed must produce a chip recommendation"
+    payload = ai_reasoning._build_chip_payload(conn, decision)
+    rec_hash = ai_cache.recommendation_hash(payload)
+    nxt = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()["gw"]
+    ai_cache.put(conn, gw=nxt, pane_type="chip", rec_hash=rec_hash,
+                 prose="AI prose for chip.", model_id="m")
+
+    sent = []
+    class _FakeSession:
+        def post(self, url, json=None, timeout=None):
+            sent.append(json)
+            class R:
+                status_code = 200
+                def json(self): return {"ok": True}
+            return R()
+
+    plan = [{"decision": "chip", "summary": "template chip summary", "executed": False}]
+    telegram.notify_plan(conn, plan, mode="manual", session=_FakeSession())
+    assert sent
+    assert "AI prose for chip." in sent[0]["text"]
+    assert "template chip summary" not in sent[0]["text"]
+
+
+def test_notify_plan_uses_classic_summary_when_no_chip_ai_cache(monkeypatch, tmp_path):
+    from src.data.db import connect, init_db
+    from src.interface import telegram
+
+    conn = connect(":memory:")
+    init_db(conn)
+    _seed_chip_db(conn)
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
+
+    sent = []
+    class _FakeSession:
+        def post(self, url, json=None, timeout=None):
+            sent.append(json)
+            class R:
+                status_code = 200
+                def json(self): return {"ok": True}
+            return R()
+
+    plan = [{"decision": "chip", "summary": "template chip summary", "executed": False}]
+    telegram.notify_plan(conn, plan, mode="manual", session=_FakeSession())
+    assert sent
+    assert "template chip summary" in sent[0]["text"]
+
+
+def _seed_chip_db(conn):
+    """Minimal seed so chips.recommend_chip returns a non-None recommendation.
+    Targets the Triple Captain trigger: premium player (price>=9.5), DGW for their team,
+    FDR_attack<=2 for that GW, DGW-xP>=12."""
+    import json as _json
+    conn.execute("INSERT INTO gameweeks(id, name, deadline_utc, is_current, is_next, "
+                 "finished, state) VALUES (38, 'GW38', '2026-06-02T18:30Z', 0, 1, 0, 'PENDING')")
+    conn.execute("INSERT INTO gameweeks(id, name, deadline_utc, is_current, is_next, "
+                 "finished, state) VALUES (39, 'GW39', '2026-06-09T18:30Z', 0, 0, 0, 'PENDING')")
+    conn.execute("INSERT INTO teams(id, name, short_name) VALUES (1, 'Man City', 'MCI'), "
+                 "(2, 'Brentford', 'BRE'), (3, 'Bournemouth', 'BOU')")
+    conn.execute("INSERT INTO players(id, web_name, position, team_id, price, status, ownership, form) "
+                 "VALUES (10, 'Haaland', 'FWD', 1, 14.0, 'a', 50.0, 5.0)")
+    # MCI DGW in GW39: vs BRE + vs BOU
+    conn.execute("INSERT INTO fixtures(id, gw, home_team_id, away_team_id, kickoff_utc, finished) "
+                 "VALUES (1, 39, 1, 2, '2026-06-09T19:00Z', 0), "
+                 "(2, 39, 3, 1, '2026-06-09T17:00Z', 0)")
+    conn.execute("INSERT INTO fdr(team_id, gw, fdr_attack, fdr_defense, computed_at) VALUES "
+                 "(1, 39, 2, 2, '2026-05-19T00:00Z')")
+    conn.execute("INSERT INTO my_team(gw, picks_json, chips_used_json) VALUES (38, ?, ?)",
+                 (_json.dumps([{"element": 10, "position": 1, "multiplier": 1,
+                                "is_captain": False, "is_vice_captain": False}]),
+                  _json.dumps([])))
+    conn.execute("INSERT INTO understat_players(understat_id, fpl_player_id, season, player_name, "
+                 "team_title, games, minutes, goals, assists, xg, xa, npg, npxg, xg_per_90, xa_per_90, updated_at) "
+                 "VALUES ('h1', 10, '2025', 'Haaland', 'Man City', 30, 2700, 25, 5, 25.0, 5.0, 24, 23.0, 0.83, 0.17, '2026-05-19T00:00Z')")
+    conn.commit()

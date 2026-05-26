@@ -71,12 +71,13 @@ def notify(conn, *, kind, decision_type, mode, summary, session=None):
 
 
 def notify_plan(conn, plan, *, mode, session=None):
-    """Best-effort: notify per plan entry. When captain/transfer AI prose is cached for the next gw,
-    swap the summary; falls back to entry['summary'] otherwise."""
+    """Best-effort: notify per plan entry. When captain/transfer/chip AI prose is cached for the
+    next gw, swap the summary; falls back to entry['summary'] otherwise."""
     if not is_configured():
         return
     captain_prose = _captain_ai_prose(conn)
     transfer_prose = _transfer_ai_prose(conn)
+    chip_prose = _chip_ai_prose(conn)
     for entry in plan:
         kind = "executed" if entry["executed"] else "info"
         summary = entry["summary"]
@@ -84,6 +85,8 @@ def notify_plan(conn, plan, *, mode, session=None):
             summary = captain_prose
         if entry["decision"] == "transfer" and transfer_prose is not None:
             summary = transfer_prose
+        if entry["decision"] == "chip" and chip_prose is not None:
+            summary = chip_prose
         notify(conn, kind=kind, decision_type=entry["decision"], mode=mode,
                summary=summary, session=session)
 
@@ -113,6 +116,20 @@ def _transfer_ai_prose(conn):
         if nxt is None or nxt["gw"] is None:
             return None
         return queries.get_transfer_reasoning(conn, gw=nxt["gw"])
+    except Exception:
+        return None
+
+
+def _chip_ai_prose(conn):
+    """Return cached AI prose for the chip pane at the next gw, or None.
+    Best-effort: any exception is swallowed."""
+    try:
+        from src.interface import queries
+        nxt = conn.execute(
+            "SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
+        if nxt is None or nxt["gw"] is None:
+            return None
+        return queries.get_chip_reasoning(conn, gw=nxt["gw"])
     except Exception:
         return None
 
