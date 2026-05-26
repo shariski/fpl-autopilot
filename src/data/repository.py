@@ -97,6 +97,33 @@ def snapshot_my_team(conn, gw, picks):
     conn.commit()
 
 
+def snapshot_my_team_authed(conn, gw, payload):
+    """Write an authed /api/my-team payload to my_team. Includes free_transfers (transfers.limit).
+
+    Stored under gw=next_gw (the upcoming GW that this team is FOR), so that readers doing
+    ORDER BY gw DESC LIMIT 1 prefer the authed row over the public-picks row from the prior GW.
+
+    Raises KeyError on schema drift (missing transfers / missing limit) per B6.
+    """
+    picks = payload["picks"]
+    transfers = payload["transfers"]  # raises KeyError if absent — B6
+    free_transfers = transfers["limit"]  # raises KeyError if absent — B6
+    bank = transfers.get("bank", 0) / 10.0
+    team_value = transfers.get("value", 0) / 10.0
+    chips = payload.get("chips")
+    chips_json = json.dumps(chips) if chips is not None else None
+    conn.execute(
+        """INSERT INTO my_team (gw, picks_json, bank, team_value, free_transfers,
+                                chips_used_json, snapshot_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(gw) DO UPDATE SET picks_json=excluded.picks_json, bank=excluded.bank,
+             team_value=excluded.team_value, free_transfers=excluded.free_transfers,
+             chips_used_json=excluded.chips_used_json, snapshot_at=excluded.snapshot_at""",
+        (gw, json.dumps(picks), bank, team_value, free_transfers, chips_json, _now()),
+    )
+    conn.commit()
+
+
 def upsert_fdr(conn, rows):
     now = _now()
     conn.executemany(
