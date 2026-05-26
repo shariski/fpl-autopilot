@@ -168,17 +168,12 @@ Calvert-Lewin) → **live `execute-lineup` HTTP 200** (Haaland C, Thiaw VC) → 
 `3ac4f98`); retried live → **200**. `MY_TEAM_URL` was already correct (lineup POST 200).
 
 **Findings / backlog (for Phase 3):**
-- **Dashboard read-model is public + one-GW-behind.** `get_squad` sources the squad from the *public*
-  `/entry/{id}/event/{gw}/picks/` snapshot (last finished GW, here GW37) — so it can't show the live upcoming
-  team or a pending GW38 transfer (those are auth-only via `/api/my-team/`). The dashboard showed João Pedro +
-  re-suggested the transfer already made. Wire the authed `/my-team` (live picks + real `free_transfers`) into
-  the read model. **Good Phase-3 first item.**
+- ~~**Dashboard read-model is public + one-GW-behind.**~~ **RESOLVED 2026-05-26 in `feat/authed-read-model-wiring`** — scheduler (`refresh_and_recompute(key=...)`) and the new `refresh-my-team` CLI now write an authed `/my-team` row at `gw=next_gw`. All readers (`get_squad`, `_latest_squad`, captain, chips) already `ORDER BY gw DESC LIMIT 1` so the authed row wins automatically; public-picks row stays as fallback. No schema change. See `docs/superpowers/specs/2026-05-26-authed-read-model-wiring-design.md`.
 - **No standalone `recompute` CLI** — a bare `refresh` fetches data but leaves `fdr`/`xp` stale (only the
   scheduler's `refresh_and_recompute` recomputes). Add a `recompute` command (or have `refresh` recompute).
 - **`serve` doesn't serve the SPA** — it's the API only; the dashboard needs `cd frontend && npm run dev`
   (Vite proxies `/api`). `client.ts` intends same-origin in prod, but no static mount exists in `api.py`. Wire it.
-- **`free_transfers` still unknown to the executor** — `run_transfer` can't see your FT count (auth-only field
-  not wired), so a transfer with no FT left would silently be a −4 hit. Surface it from `/my-team`.
+- ~~**`free_transfers` still unknown to the executor.**~~ **RESOLVED 2026-05-26 in same slice** — `run_transfer` now preflights on `free_transfers` (refuses a live `-4` hit unless `--allow-hit`); deadguard's `_pick_flagged_transfer` refuses on `FT=0` or unknown per B8. Audit trail in `activity_log.inputs.free_transfers`.
 
 After these (or straight to) → **Phase 3 (AI Layer)** — LLM reasoning, mini-league context, personalization, conversational interface.
 
@@ -188,17 +183,31 @@ After these (or straight to) → **Phase 3 (AI Layer)** — LLM reasoning, mini-
 
 ## Tech debt / cleanup (small, non-blocking — flagged in 2.5 reviews)
 - `src/decisions/bench.py` imports the private `transfers._next_gw` (captain.py does the same) — extract
-  to a public Data-Layer helper (e.g. `repository.next_gw`) and update both call sites.
+  to a public Data-Layer helper (e.g. `repository.next_gw`) and update both call sites. Note: `scheduler._next_gw_id`
+  (added 2026-05-26) uses the FPL-canonical `is_next=1` semantic — more accurate than `MIN(id) WHERE finished=0`.
+  When extracting, prefer the `is_next=1` form with the MIN-unfinished fallback.
 - The executors (`run_lineup`, `run_transfer`) hardcode `mode="manual"` in their internal `log_activity`,
   so a deadguard/auto executor-level log row is mislabeled (the *decision* IS logged correctly with
   `mode="deadguard"`/router mode by the orchestrator's own summary entry). Thread a `mode` param through both.
+- **From the 2026-05-26 final opus review of `feat/authed-read-model-wiring`:**
+  - `run_transfer`'s refusal returns `ExecResult(dry_run=True, ok=False, request.note="refused...")`. Matches the
+    pre-existing user-abort convention but is semantically misleading. Consider adding an explicit `ExecResult.refused: bool`
+    field (or status enum) in a follow-up. No current consumer makes a `dry_run`-dependent decision that misclassifies, so non-blocking.
+  - Deadguard `_pick_flagged_transfer` gate uses `isinstance(free_transfers, int)`. `isinstance(True, int)` is True
+    (bool subclasses int), so a `bool` slipping through would bypass the gate. Unreachable from current data flow
+    (sqlite3 INTEGER → Python int; no bool coercion anywhere). Tighten to `type(x) is int and not isinstance(x, bool)`
+    if a config-driven override is ever added.
+  - **Asymmetry on `free_transfers is None`:** `run_transfer` proceeds with a warning (user has agency); deadguard
+    refuses (autonomous safety net per B8). Intentional but worth documenting in `docs/api-contract.md`.
+  - `_refresh_authed_my_team` in scheduler logs `log.warning("authed my-team snapshot failed: %s", exc)`. Operator
+    diagnostics are thin (no traceback). Consider `exc_info=True` gated by a debug flag.
 
 ## Machine setup (Mac mini)
 ```bash
 git clone git@github.com:shariski/fpl-autopilot.git    # or git pull
 cd fpl-autopilot
 python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # python3.14 also works (this machine)
-.venv/bin/pytest -q          # expect 404 passed
+.venv/bin/pytest -q          # expect 432 passed (was 404 before authed-read-model-wiring)
 cd frontend && npm install && npm test   # frontend (vitest): expect 50 passed  (npm install needed once)
 ```
 Local-only (re-create if you want live runs): `data/.salt` + `data/.verify` (run

@@ -1,3 +1,4 @@
+import pytest
 from src import cli
 from src.data.db import connect, init_db
 from src.data.models import BootstrapStatic, EntryPicks, Fixture
@@ -110,3 +111,57 @@ def test_refresh_source_filter_fpl_only_skips_understat(load):
     assert uc.called is False
     assert conn.execute("SELECT COUNT(*) c FROM understat_players").fetchone()["c"] == 0
     conn.close()
+
+
+def test_refresh_my_team_writes_authed_row(db, monkeypatch, capsys):
+    """refresh_my_team unlocks the master key, calls authed snapshot, prints summary."""
+    from src.auth import master, session as auth_session
+    from src.execution import executor
+    from src import config as cfg_mod
+
+    monkeypatch.setattr(master, "load_key", lambda pw: b"key")
+    monkeypatch.setattr("getpass.getpass", lambda *a, **k: "pw")
+    monkeypatch.setattr(auth_session, "ensure_session", lambda conn, key: object())
+    monkeypatch.setattr(cfg_mod, "team_id", lambda: 12345)
+    monkeypatch.setattr(executor, "fetch_my_team_authed",
+                        lambda sess, entry: {"picks": [{"element": 1, "position": 1,
+                                                        "is_captain": True, "is_vice_captain": False,
+                                                        "selling_price": 50, "purchase_price": 50, "multiplier": 2}],
+                                             "transfers": {"bank": 0, "value": 1000, "limit": 1},
+                                             "chips": []})
+
+    # Seed next_gw
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.commit()
+
+    cli.refresh_my_team(conn=db)
+    row = db.execute("SELECT free_transfers FROM my_team WHERE gw=38").fetchone()
+    assert row is not None and row["free_transfers"] == 1
+
+    out = capsys.readouterr().out
+    assert "GW38" in out and "FT=1" in out
+
+
+def test_refresh_my_team_surfaces_session_expired(db, monkeypatch, capsys):
+    """If ensure_session raises, the command surfaces the error and exits non-zero."""
+    from src.auth import master, session as auth_session
+
+    monkeypatch.setattr(master, "load_key", lambda pw: b"key")
+    monkeypatch.setattr("getpass.getpass", lambda *a, **k: "pw")
+
+    class SessionExpired(Exception):
+        pass
+
+    monkeypatch.setattr(auth_session, "ensure_session",
+                        lambda *a, **k: (_ for _ in ()).throw(SessionExpired("token bad")))
+
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.commit()
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.refresh_my_team(conn=db)
+    assert exc_info.value.code != 0
+    err = capsys.readouterr().err
+    assert "session" in err.lower() or "token" in err.lower()

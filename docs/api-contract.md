@@ -55,7 +55,7 @@ All other fields _(live)_ except `mode` (currently always `manual` until Phase 2
   "gw": 37,
   "bank": 2.3,
   "team_value": 99.7,
-  "free_transfers": null,                 // (forthcoming, auth-only — Phase 2)
+  "free_transfers": 2,                    // (Phase 2 live, auth-only; null if public-picks snapshot only)
   "players": [
     {
       "id": 8260,
@@ -74,6 +74,8 @@ All other fields _(live)_ except `mode` (currently always `manual` until Phase 2
 }
 ```
 Exactly 15 players. `id, web_name, position, team_short, price, status, is_captain, is_vice_captain, multiplier` _(live)_.
+
+**`free_transfers`** _(Phase 2, live when authed)_: non-null when an authenticated `/my-team` snapshot has been taken (the daemon does this hourly; or run `fpl-autopilot refresh-my-team` manually). When only the public-picks data exists, this field is `null`.
 
 ## GET /api/captain — captain picks _(forthcoming — captain ranker)_
 

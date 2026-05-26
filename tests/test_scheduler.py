@@ -378,3 +378,151 @@ def test_serve_defaults_to_localhost():
     import inspect
     import src.cli as cli
     assert inspect.signature(cli.serve).parameters["host"].default == "127.0.0.1"
+
+
+# ---------------------------------------------------------------------------
+# Task 3 (authed-read-model-wiring): refresh_and_recompute(key=...) tests
+# ---------------------------------------------------------------------------
+
+def test_refresh_and_recompute_runs_authed_snapshot_when_key_provided(monkeypatch):
+    """When key is provided, after public refresh + recompute, the authed path runs."""
+    import src.cli as cli
+    from src.data import repository
+    from src import config as cfg_mod
+    from src.auth import session as auth_session
+    from src.execution import executor
+
+    monkeypatch.setattr(cli, "refresh", lambda **kw: None)
+    monkeypatch.setattr(scheduler.fdr, "compute_and_store", lambda conn: None)
+    monkeypatch.setattr(scheduler.xp, "compute_and_store", lambda conn: None)
+    monkeypatch.setattr(scheduler, "_ping_healthcheck", lambda: None)
+    monkeypatch.setattr(cfg_mod, "team_id", lambda: 12345)
+
+    fake_session = object()
+    monkeypatch.setattr(auth_session, "ensure_session", lambda conn, key: fake_session)
+
+    captured_payload = {"picks": [], "transfers": {"bank": 0, "value": 1000, "limit": 1}, "chips": []}
+    monkeypatch.setattr(executor, "fetch_my_team_authed",
+                        lambda sess, entry: captured_payload if sess is fake_session and entry == 12345 else None)
+
+    snapshots = []
+    monkeypatch.setattr(repository, "snapshot_my_team_authed",
+                        lambda conn, gw, payload: snapshots.append((gw, payload)))
+
+    conn = connect(":memory:")
+    init_db(conn)
+    # Seed a gameweek so next_gw resolves
+    conn.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+                 "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    conn.commit()
+
+    scheduler.refresh_and_recompute(cfg={"storage": {"db_path": ":memory:"}}, conn=conn, key=b"unused-key")
+    assert snapshots == [(38, captured_payload)]
+    conn.close()
+
+
+def test_refresh_and_recompute_skips_authed_when_key_none(monkeypatch):
+    """key=None (the existing public-only path) does NOT touch ensure_session or authed snapshot."""
+    import src.cli as cli
+    from src.data import repository
+    from src.auth import session as auth_session
+
+    monkeypatch.setattr(cli, "refresh", lambda **kw: None)
+    monkeypatch.setattr(scheduler.fdr, "compute_and_store", lambda conn: None)
+    monkeypatch.setattr(scheduler.xp, "compute_and_store", lambda conn: None)
+    monkeypatch.setattr(scheduler, "_ping_healthcheck", lambda: None)
+
+    called = []
+    monkeypatch.setattr(auth_session, "ensure_session", lambda *a, **k: called.append("session") or object())
+    monkeypatch.setattr(repository, "snapshot_my_team_authed",
+                        lambda *a, **k: called.append("snapshot"))
+
+    conn = connect(":memory:")
+    init_db(conn)
+    scheduler.refresh_and_recompute(cfg={"storage": {"db_path": ":memory:"}}, conn=conn)  # no key
+    assert called == []
+    conn.close()
+
+
+def test_refresh_and_recompute_swallows_authed_failure(monkeypatch):
+    """If the authed step raises, the public refresh + recompute still complete; no exception escapes."""
+    import src.cli as cli
+    from src.auth import session as auth_session
+    from src.execution import executor
+    from src import config as cfg_mod
+
+    monkeypatch.setattr(cli, "refresh", lambda **kw: None)
+    monkeypatch.setattr(scheduler.fdr, "compute_and_store", lambda conn: None)
+    monkeypatch.setattr(scheduler.xp, "compute_and_store", lambda conn: None)
+    monkeypatch.setattr(scheduler, "_ping_healthcheck", lambda: None)
+    monkeypatch.setattr(cfg_mod, "team_id", lambda: 12345)
+    monkeypatch.setattr(auth_session, "ensure_session", lambda *a, **k: object())
+
+    def _boom(sess, entry):
+        raise executor.ExecutorError("HTTP 503")
+    monkeypatch.setattr(executor, "fetch_my_team_authed", _boom)
+
+    conn = connect(":memory:")
+    init_db(conn)
+    conn.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+                 "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    conn.commit()
+
+    # MUST NOT raise
+    scheduler.refresh_and_recompute(cfg={"storage": {"db_path": ":memory:"}}, conn=conn, key=b"unused")
+    conn.close()
+
+
+def test_refresh_and_recompute_uses_next_gw_not_current(monkeypatch):
+    """The authed snapshot is stored under is_next gameweek's id, never the current/finished one."""
+    import src.cli as cli
+    from src.data import repository
+    from src.auth import session as auth_session
+    from src.execution import executor
+    from src import config as cfg_mod
+
+    monkeypatch.setattr(cli, "refresh", lambda **kw: None)
+    monkeypatch.setattr(scheduler.fdr, "compute_and_store", lambda conn: None)
+    monkeypatch.setattr(scheduler.xp, "compute_and_store", lambda conn: None)
+    monkeypatch.setattr(scheduler, "_ping_healthcheck", lambda: None)
+    monkeypatch.setattr(cfg_mod, "team_id", lambda: 12345)
+    monkeypatch.setattr(auth_session, "ensure_session", lambda *a, **k: object())
+    monkeypatch.setattr(executor, "fetch_my_team_authed",
+                        lambda sess, entry: {"picks": [], "transfers": {"bank": 0, "value": 1000, "limit": 1}, "chips": []})
+
+    captured = []
+    monkeypatch.setattr(repository, "snapshot_my_team_authed",
+                        lambda conn, gw, payload: captured.append(gw))
+
+    conn = connect(":memory:")
+    init_db(conn)
+    conn.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) VALUES (37, '2026-05-23T17:30:00Z', 1, 0, 0)")
+    conn.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) VALUES (38, '2026-05-30T17:30:00Z', 0, 1, 0)")
+    conn.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) VALUES (39, '2026-06-06T17:30:00Z', 0, 0, 1)")
+    conn.commit()
+
+    scheduler.refresh_and_recompute(cfg={"storage": {"db_path": ":memory:"}}, conn=conn, key=b"unused")
+    assert captured == [39]  # is_next wins
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (feat/authed-read-model-wiring): build_scheduler threads key into jobs
+# ---------------------------------------------------------------------------
+
+def test_build_scheduler_passes_key_to_refresh_jobs():
+    """Both refresh jobs should receive key as a kwarg so the authed branch runs unattended."""
+    sched = scheduler.build_scheduler(key=b"my-key")
+    jobs = {j.id: j for j in sched.get_jobs()}
+    for jid in ("weekly_refresh", "hourly_refresh"):
+        # APScheduler stores kwargs on the job; this is the canonical place to read them
+        assert jobs[jid].kwargs.get("key") == b"my-key", f"{jid} did not receive key kwarg"
+
+
+def test_build_scheduler_no_key_means_no_key_kwarg():
+    """When build_scheduler is called without a key, jobs run the public-only path."""
+    sched = scheduler.build_scheduler()  # default key=None
+    jobs = {j.id: j for j in sched.get_jobs()}
+    for jid in ("weekly_refresh", "hourly_refresh"):
+        # Either no kwarg at all, or key=None — both are fine
+        assert jobs[jid].kwargs.get("key") is None

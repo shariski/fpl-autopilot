@@ -225,15 +225,20 @@ def _player_status(conn, player_id):
     return row["status"] if row else None
 
 
-def _pick_flagged_transfer(conn, cfg):
+def _pick_flagged_transfer(conn, cfg, *, suggester=None):
     """1-based rank of the first transfer suggestion that replaces a FLAGGED squad player with a
     free, high-EP upgrade, or None. Guards (all required): OUT status not in ('a','d'); hit_cost>=0
-    (free); ep_delta_5gw >= min_ep; confidence >= floor."""
+    (free); ep_delta_5gw >= min_ep; confidence >= floor. Additionally B8: refuses when
+    free_transfers is 0 or unknown (None) — deadguard never takes a hit.
+    """
     if not config.deadguard_transfer_if_flagged(cfg):
         return None
     min_ep = config.deadguard_min_ep_delta(cfg)
     floor = config.deadguard_confidence_floor(cfg)
-    sugg = transfers.get_transfer_suggestions(conn)
+    sugg = (suggester or transfers.get_transfer_suggestions)(conn)
+    free_transfers = sugg.get("free_transfers")
+    if not isinstance(free_transfers, int) or free_transfers < 1:
+        return None  # B8: refuse on FT=0 and unknown (None); safer default
     for i, s in enumerate(sugg["suggestions"], start=1):
         if (_player_status(conn, s["out"]["player_id"]) not in ("a", "d")
                 and s["hit_cost"] >= 0 and s["ep_delta_5gw"] >= min_ep and s["confidence"] >= floor):

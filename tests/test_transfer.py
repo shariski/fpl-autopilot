@@ -161,3 +161,158 @@ def test_run_undo_transfer_out_player_unknown_raises(db):
     with pytest.raises(executor_mod.ExecutorError):
         transfer_mod.run_undo_transfer(db, b"key", out_id=7, in_id=99, live=True,
                                        confirm_fn=lambda d: True, session=sess)
+
+
+# ---------------------------------------------------------------------------
+# Task 7 — preflight: refuse silent -4 hits
+# ---------------------------------------------------------------------------
+
+def test_run_transfer_refuses_live_when_free_transfers_zero_and_no_allow_hit(db, monkeypatch):
+    """Live + free_transfers=0 + allow_hit=False -> refused, no POST, logged."""
+    from src.execution import transfer
+
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.execute("INSERT INTO my_team (gw, picks_json, bank, free_transfers, snapshot_at) "
+               "VALUES (38, '[]', 0.0, 0, 't')")
+    db.commit()
+
+    posted = []
+    class _Sess:
+        def get(self, url, timeout=None):
+            return type("R", (), {"status_code": 200, "json": lambda s: {"picks": [{"element": 1, "selling_price": 50}]}})()
+        def post(self, *a, **kw):
+            posted.append(1)
+            return type("R", (), {"status_code": 200})()
+
+    def _suggester(conn):
+        return {"suggestions": [{"out": {"player_id": 1, "web_name": "A", "price": 5.0, "status": "a"},
+                                  "in":  {"player_id": 2, "web_name": "B", "price": 5.0, "status": "a"},
+                                  "ep_delta_5gw": 1.0, "hit_cost": 0, "confidence": 80}],
+                "empty_reason": None, "free_transfers": 0}
+
+    res = transfer.run_transfer(db, key=b"unused", live=True, confirm_fn=lambda d: True,
+                                session=_Sess(), suggester=_suggester)
+    assert posted == []  # never reached the POST
+    assert res.ok is False
+    row = db.execute("SELECT action_taken FROM activity_log").fetchone()
+    assert "refused" in row["action_taken"].lower()
+
+
+def test_run_transfer_allows_when_allow_hit_true(db, monkeypatch):
+    """Same setup but allow_hit=True -> proceeds to live POST."""
+    from src.execution import transfer
+
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.execute("INSERT INTO my_team (gw, picks_json, bank, free_transfers, snapshot_at) "
+               "VALUES (38, '[]', 0.0, 0, 't')")
+    db.commit()
+
+    posted = []
+    class _Sess:
+        def get(self, url, timeout=None):
+            return type("R", (), {"status_code": 200, "json": lambda s: {"picks": [{"element": 1, "selling_price": 50}]}})()
+        def post(self, *a, **kw):
+            posted.append(1)
+            return type("R", (), {"status_code": 200})()
+
+    def _suggester(conn):
+        return {"suggestions": [{"out": {"player_id": 1, "web_name": "A", "price": 5.0, "status": "a"},
+                                  "in":  {"player_id": 2, "web_name": "B", "price": 5.0, "status": "a"},
+                                  "ep_delta_5gw": 1.0, "hit_cost": 0, "confidence": 80}],
+                "empty_reason": None, "free_transfers": 0}
+
+    res = transfer.run_transfer(db, key=b"unused", live=True, confirm_fn=lambda d: True,
+                                session=_Sess(), suggester=_suggester, allow_hit=True)
+    assert posted == [1]
+    assert res.ok is True
+
+
+def test_run_transfer_dry_run_never_blocked_by_preflight(db):
+    """Even with free_transfers=0, dry-run runs to completion (observational)."""
+    from src.execution import transfer
+
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.execute("INSERT INTO my_team (gw, picks_json, bank, free_transfers, snapshot_at) "
+               "VALUES (38, '[]', 0.0, 0, 't')")
+    db.commit()
+
+    class _Sess:
+        def get(self, url, timeout=None):
+            return type("R", (), {"status_code": 200, "json": lambda s: {"picks": [{"element": 1, "selling_price": 50}]}})()
+        def post(self, *a, **kw):
+            raise AssertionError("dry-run must not POST")
+
+    def _suggester(conn):
+        return {"suggestions": [{"out": {"player_id": 1, "web_name": "A", "price": 5.0, "status": "a"},
+                                  "in":  {"player_id": 2, "web_name": "B", "price": 5.0, "status": "a"},
+                                  "ep_delta_5gw": 1.0, "hit_cost": 0, "confidence": 80}],
+                "empty_reason": None, "free_transfers": 0}
+
+    res = transfer.run_transfer(db, key=b"unused", live=False, session=_Sess(), suggester=_suggester)
+    assert res.dry_run is True  # reached the executor's dry-run branch normally
+
+
+def test_run_transfer_proceeds_when_ft_positive(db):
+    """free_transfers=1 -> proceeds without needing allow_hit."""
+    from src.execution import transfer
+
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.execute("INSERT INTO my_team (gw, picks_json, bank, free_transfers, snapshot_at) "
+               "VALUES (38, '[]', 0.0, 1, 't')")
+    db.commit()
+
+    posted = []
+    class _Sess:
+        def get(self, url, timeout=None):
+            return type("R", (), {"status_code": 200, "json": lambda s: {"picks": [{"element": 1, "selling_price": 50}]}})()
+        def post(self, *a, **kw):
+            posted.append(1)
+            return type("R", (), {"status_code": 200})()
+
+    def _suggester(conn):
+        return {"suggestions": [{"out": {"player_id": 1, "web_name": "A", "price": 5.0, "status": "a"},
+                                  "in":  {"player_id": 2, "web_name": "B", "price": 5.0, "status": "a"},
+                                  "ep_delta_5gw": 1.0, "hit_cost": 0, "confidence": 80}],
+                "empty_reason": None, "free_transfers": 1}
+
+    res = transfer.run_transfer(db, key=b"unused", live=True, confirm_fn=lambda d: True,
+                                session=_Sess(), suggester=_suggester)
+    assert posted == [1]
+    assert res.ok is True
+
+
+def test_run_transfer_proceeds_when_ft_unknown(db):
+    """free_transfers=None (no authed snapshot yet) -> proceeds with warning logged."""
+    from src.execution import transfer
+
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.execute("INSERT INTO my_team (gw, picks_json, bank, free_transfers, snapshot_at) "
+               "VALUES (37, '[]', 0.0, NULL, 't')")
+    db.commit()
+
+    posted = []
+    class _Sess:
+        def get(self, url, timeout=None):
+            return type("R", (), {"status_code": 200, "json": lambda s: {"picks": [{"element": 1, "selling_price": 50}]}})()
+        def post(self, *a, **kw):
+            posted.append(1)
+            return type("R", (), {"status_code": 200})()
+
+    def _suggester(conn):
+        return {"suggestions": [{"out": {"player_id": 1, "web_name": "A", "price": 5.0, "status": "a"},
+                                  "in":  {"player_id": 2, "web_name": "B", "price": 5.0, "status": "a"},
+                                  "ep_delta_5gw": 1.0, "hit_cost": 0, "confidence": 80}],
+                "empty_reason": None, "free_transfers": None}
+
+    res = transfer.run_transfer(db, key=b"unused", live=True, confirm_fn=lambda d: True,
+                                session=_Sess(), suggester=_suggester)
+    assert posted == [1]
+    assert res.ok is True
+    row = db.execute("SELECT inputs_json FROM activity_log ORDER BY id DESC LIMIT 1").fetchone()
+    import json as _json
+    assert _json.loads(row["inputs_json"]).get("free_transfers") is None

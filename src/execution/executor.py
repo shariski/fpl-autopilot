@@ -50,6 +50,19 @@ def fetch_current_picks(session, entry_id):
     return resp.json().get("picks", [])
 
 
+def fetch_my_team_authed(session, entry_id):
+    """GET /api/my-team/{entry}/ — returns the full authed payload (picks + transfers + chips).
+
+    Unlike fetch_current_picks (which returns just .picks), this returns the whole dict so the
+    caller can extract transfers.limit (free_transfers), bank, team value, and chips. Auth-only;
+    requires a healthy session.
+    """
+    resp = session.get(MY_TEAM_URL.format(entry=entry_id), timeout=TIMEOUT)
+    if resp.status_code != 200:
+        raise ExecutorError(f"could not read authed my-team (HTTP {resp.status_code})")
+    return resp.json()
+
+
 def _post_json(session, url, payload, *, dry_run):
     request = {"method": "POST", "url": url, "body": payload}
     if dry_run:

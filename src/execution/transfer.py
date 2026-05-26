@@ -5,7 +5,8 @@ from src.execution import executor
 from src.data import repository
 
 
-def run_transfer(conn, key, *, rank=1, live=False, confirm_fn=None, session=None, suggester=None):
+def run_transfer(conn, key, *, rank=1, live=False, confirm_fn=None, session=None, suggester=None,
+                 allow_hit=False):
     session = session or auth_session.ensure_session(conn, key)
     entry = config.team_id()
     sugg = (suggester or transfers.get_transfer_suggestions)(conn)
@@ -15,6 +16,7 @@ def run_transfer(conn, key, *, rank=1, live=False, confirm_fn=None, session=None
     if not (1 <= rank <= len(suggestions)):
         raise executor.ExecutorError(f"rank {rank} out of range (1..{len(suggestions)})")
     chosen = suggestions[rank - 1]
+    free_transfers = sugg.get("free_transfers")
     element_out = chosen["out"]["player_id"]
     element_in = chosen["in"]["player_id"]
     purchase_price = round(chosen["in"]["price"] * 10)
@@ -29,8 +31,20 @@ def run_transfer(conn, key, *, rank=1, live=False, confirm_fn=None, session=None
     diff = (f"OUT {chosen['out']['web_name']} -> IN {chosen['in']['web_name']} "
             f"(EP +{chosen['ep_delta_5gw']})")
     inputs = {"chosen": chosen,
-              "alternatives": [s for i, s in enumerate(suggestions) if i != rank - 1]}
+              "alternatives": [s for i, s in enumerate(suggestions) if i != rank - 1],
+              "free_transfers": free_transfers}
     url = executor.TRANSFERS_URL.format(entry=entry)
+
+    # Preflight: refuse live -4 hits unless explicitly opted in. Dry-run is observational, never blocked.
+    if live and free_transfers == 0 and not allow_hit:
+        repository.log_activity(conn, decision_type="transfer", mode="manual",
+                                action_taken="refused: would cost -4 hit (free_transfers=0)",
+                                inputs=inputs, executed=False,
+                                exec_outcome={"diff": diff, "free_transfers": 0})
+        return executor.ExecResult(dry_run=True,
+                                   request={"method": "POST", "url": url, "body": payload,
+                                            "note": "refused: would cost -4 hit"},
+                                   status=None, ok=False)
 
     if live and (confirm_fn is None or not confirm_fn(diff)):
         repository.log_activity(conn, decision_type="transfer", mode="manual",

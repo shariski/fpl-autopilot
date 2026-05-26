@@ -1,3 +1,5 @@
+import pytest
+import json
 from src.data.models import BootstrapStatic, EntryPicks, Fixture
 from src.data import repository
 
@@ -175,3 +177,61 @@ def test_mark_session_ok_resets_relogin_failures(db):
     repository.increment_relogin_failures(db)
     repository.mark_session_ok(db)                                # existing helper resets to 0
     assert repository.get_relogin_failures(db) == 0
+
+
+def test_snapshot_my_team_authed_extracts_all_fields(db):
+    payload = {
+        "picks": [{"element": e, "position": e, "is_captain": e == 1,
+                   "is_vice_captain": e == 2, "selling_price": 50,
+                   "purchase_price": 50, "multiplier": 1} for e in range(1, 16)],
+        "transfers": {"bank": 23, "value": 1004, "limit": 2, "cost": 4, "status": "cost", "made": 0},
+        "chips": [{"name": "wildcard", "status_for_entry": "available"},
+                  {"name": "bboost", "status_for_entry": "played", "played_by_entry": [38]}],
+    }
+    repository.snapshot_my_team_authed(db, 38, payload)
+    row = db.execute(
+        "SELECT picks_json, bank, team_value, free_transfers, chips_used_json FROM my_team WHERE gw=38"
+    ).fetchone()
+    assert row is not None
+    picks = json.loads(row["picks_json"])
+    assert len(picks) == 15 and picks[0]["element"] == 1
+    assert row["bank"] == 2.3       # /10 to convert tenths to whole units (existing convention)
+    assert row["team_value"] == 100.4
+    assert row["free_transfers"] == 2
+    # chips_used_json should be the raw chips list (caller decides format downstream)
+    assert json.loads(row["chips_used_json"]) == payload["chips"]
+
+
+def test_snapshot_my_team_authed_idempotent(db):
+    payload = {
+        "picks": [{"element": 1, "position": 1, "is_captain": True, "is_vice_captain": False,
+                   "selling_price": 50, "purchase_price": 50, "multiplier": 2}],
+        "transfers": {"bank": 0, "value": 1000, "limit": 1, "cost": 0, "status": "cost", "made": 0},
+        "chips": [],
+    }
+    repository.snapshot_my_team_authed(db, 5, payload)
+    repository.snapshot_my_team_authed(db, 5, payload)
+    rows = db.execute("SELECT COUNT(*) c FROM my_team WHERE gw=5").fetchone()
+    assert rows["c"] == 1  # INSERT OR REPLACE
+
+
+def test_snapshot_my_team_authed_raises_on_missing_transfers(db):
+    payload = {"picks": [], "chips": []}  # transfers key absent
+    with pytest.raises(KeyError):
+        repository.snapshot_my_team_authed(db, 7, payload)
+
+
+def test_snapshot_my_team_authed_raises_on_missing_limit(db):
+    payload = {"picks": [], "transfers": {"bank": 0, "value": 1000}, "chips": []}  # no limit
+    with pytest.raises(KeyError):
+        repository.snapshot_my_team_authed(db, 7, payload)
+
+
+def test_snapshot_my_team_authed_chips_null_when_absent(db):
+    payload = {
+        "picks": [],
+        "transfers": {"bank": 0, "value": 1000, "limit": 1},
+    }  # chips key absent — allowed, stored as NULL
+    repository.snapshot_my_team_authed(db, 9, payload)
+    row = db.execute("SELECT chips_used_json FROM my_team WHERE gw=9").fetchone()
+    assert row["chips_used_json"] is None
