@@ -19,8 +19,12 @@ def _ping_healthcheck():
         log.warning("healthcheck ping failed")
 
 
-def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=None):
-    """The Phase-1 scheduled job: refresh data (cache-aware) then recompute FDR + xP."""
+def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=None, key=None):
+    """Public refresh + analytics recompute + healthcheck. With key, also authed my-team snapshot.
+
+    Public path always runs. Authed step is best-effort: failures are logged but do not crash the
+    public refresh — the older authed row (or only the public row) stays as fallback.
+    """
     from .cli import refresh  # lazy import: avoids a cycle (cli.serve imports this module)
     cfg = cfg or load_config()
     owns = conn is None
@@ -31,9 +35,40 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
         fdr.compute_and_store(conn)
         xp.compute_and_store(conn)
         _ping_healthcheck()
+        if key is not None:
+            _refresh_authed_my_team(conn, key)
     finally:
         if owns:
             conn.close()
+
+
+def _refresh_authed_my_team(conn, key):
+    """Best-effort: fetch /api/my-team and snapshot it. Never raises."""
+    from .auth import session as auth_session
+    from .execution import executor
+    from .data import repository
+    from . import config as cfg_mod
+    try:
+        next_gw = _next_gw_id(conn)
+        if next_gw is None:
+            return
+        session = auth_session.ensure_session(conn, key)
+        payload = executor.fetch_my_team_authed(session, cfg_mod.team_id())
+        repository.snapshot_my_team_authed(conn, next_gw, payload)
+    except Exception as exc:  # noqa: BLE001 — best-effort by design
+        log.warning("authed my-team snapshot failed: %s", exc)
+
+
+def _next_gw_id(conn):
+    row = conn.execute(
+        "SELECT id FROM gameweeks WHERE is_next=1 LIMIT 1"
+    ).fetchone()
+    if row is not None:
+        return row["id"]
+    row = conn.execute(
+        "SELECT MIN(id) AS id FROM gameweeks WHERE finished=0"
+    ).fetchone()
+    return row["id"] if row else None
 
 
 def _maybe_load_key():
