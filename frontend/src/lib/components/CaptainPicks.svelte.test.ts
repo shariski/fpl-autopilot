@@ -57,4 +57,19 @@ describe('CaptainPicks AI/classic badge', () => {
 		render(CaptainPicks, { props: { captain } });
 		expect(screen.getByText('template reason')).toBeInTheDocument();
 	});
+
+	it('does not show badge on picks other than the top', () => {
+		const captain: Captain = {
+			picks: [
+				{ player_id: 10, web_name: 'Haaland', xp: 7.2, fixture: 'MCI v BRE (H)',
+				  reason: 'top reason', reasoning: 'AI top', reasoning_source: 'ai' },
+				{ player_id: 6, web_name: 'Salah', xp: 5.4, fixture: 'LIV v EVE (A)',
+				  reason: 'second reason', reasoning: 'AI second', reasoning_source: 'ai' },
+			],
+			vice_player_id: 6,
+		};
+		render(CaptainPicks, { props: { captain } });
+		// Only ONE 'AI' badge should be rendered, not two
+		expect(screen.getAllByText('AI')).toHaveLength(1);
+	});
 });

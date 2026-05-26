@@ -18,9 +18,9 @@
 					</div>
 					<p class="reason">
 						{#if i === 0 && p.reasoning_source === 'ai'}
-							<span class="badge badge-ai">AI</span>
+							<span class="badge badge-ai" aria-label="AI-generated reasoning">AI</span>
 						{:else if i === 0 && p.reasoning_source === 'classic'}
-							<span class="badge badge-classic">classic</span>
+							<span class="badge badge-classic" aria-label="Template-based reasoning">classic</span>
 						{/if}
 						{p.reasoning ?? p.reason}
 					</p>
