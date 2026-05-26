@@ -27,14 +27,21 @@ def _build_captain_payload(captain_decision: dict) -> dict | None:
         return None
     top = picks[0]
     vice = picks[1] if len(picks) > 1 else None
-    gap = round(top["xp"] - vice["xp"], 1) if vice is not None else None
+    # Round xp values to 1dp so the payload is internally self-consistent
+    # (matches the few-shot exemplar style). With unrounded xp + a pre-rounded
+    # gap, the model recomputes the gap from the precise xps and produces a
+    # number not in the payload — fails grounding. Rounding both keeps the
+    # math consistent (captain_xp - vice_xp == gap).
+    captain_xp = round(top["xp"], 1)
+    vice_xp = round(vice["xp"], 1) if vice is not None else None
+    gap = round(captain_xp - vice_xp, 1) if vice_xp is not None else None
     return {
         "captain": {
             "web_name": top["web_name"],
-            "xp": top["xp"],
+            "xp": captain_xp,
             "fixture": top["fixture"],
         },
-        "vice": ({"web_name": vice["web_name"], "xp": vice["xp"]}
+        "vice": ({"web_name": vice["web_name"], "xp": vice_xp}
                  if vice is not None else None),
         "alternative_gap": gap,
         "confidence": captain_decision.get("confidence"),

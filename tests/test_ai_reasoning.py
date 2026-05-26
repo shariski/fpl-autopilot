@@ -45,6 +45,31 @@ def test_build_captain_payload_returns_none_on_empty_picks():
     assert reasoning._build_captain_payload(decision) is None
 
 
+def test_build_captain_payload_rounds_xp_for_grounding_consistency():
+    """High-precision xp values from the deterministic engine must be rounded
+    to 1dp in the payload — otherwise the model recomputes the gap from the
+    unrounded xps and produces a number not in the input (fails grounding).
+    Real-world repro: Haaland xp=5.76, Thiaw xp=5.03 with stored gap=0.7;
+    the model wrote '5.76 - 5.03 = 0.73 xP gap' and grounding rejected '0.73'."""
+    decision = {
+        "picks": [
+            {"player_id": 10, "web_name": "Haaland", "xp": 5.76,
+             "fixture": "MCI v AVL (H)", "reason": "..."},
+            {"player_id": 7, "web_name": "Thiaw", "xp": 5.03,
+             "fixture": "MCI v AVL (H)", "reason": "..."},
+        ],
+        "vice_player_id": 7,
+        "confidence": 60,
+    }
+    payload = reasoning._build_captain_payload(decision)
+    assert payload["captain"]["xp"] == 5.8
+    assert payload["vice"]["xp"] == 5.0
+    # Gap computed from rounded values, so payload math is self-consistent:
+    # captain.xp - vice.xp == alternative_gap. The model has no incentive to
+    # recompute.
+    assert payload["alternative_gap"] == 0.8
+
+
 def test_build_captain_prompt_includes_payload_and_examples():
     payload = reasoning._build_captain_payload(CAPTAIN_DECISION_FIXTURE)
     prompt = reasoning._build_captain_prompt(payload)
