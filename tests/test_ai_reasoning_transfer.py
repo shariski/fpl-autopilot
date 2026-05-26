@@ -1,5 +1,3 @@
-import json
-
 from src.data.db import connect, init_db
 from src.ai import reasoning
 
@@ -85,7 +83,7 @@ def test_build_transfer_payload_shape():
     assert payload["out"]["web_name"] == "Watkins"
     assert payload["out"]["status"] == "d"
     assert payload["out"]["price"] == 9.0
-    assert len(payload["out"]["fixtures_3gw"]) == 3
+    assert len(payload["out"]["fixtures_3gw"]) == 4
     assert payload["in"]["web_name"] == "Haaland"
     assert payload["in"]["status"] == "a"
     assert payload["ep_delta_5gw"] == 3.5

@@ -156,8 +156,6 @@ def _fixtures_for(conn, player_id: int, next_gw: int, horizon: int) -> list[dict
     ).fetchall()
     out = []
     for r in rows:
-        if len(out) >= horizon:
-            break
         is_home = r["home_team_id"] == team_id
         opp = r["away_short"] if is_home else r["home_short"]
         fdr_a = r["fdr_attack"] if r["fdr_attack"] is not None else 3
