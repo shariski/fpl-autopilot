@@ -28,6 +28,11 @@ def _default_transfer_decision_fn(conn):
     return transfers.get_transfer_suggestions(conn)
 
 
+def _default_chip_decision_fn(conn):
+    from src.decisions import chips
+    return chips.recommend_chip(conn)
+
+
 def generate_ai_reasoning_job(
     conn,
     *,
@@ -36,6 +41,7 @@ def generate_ai_reasoning_job(
     model_id: str,
     captain_decision_fn: Callable | None = None,
     transfer_decision_fn: Callable | None = None,
+    chip_decision_fn: Callable | None = None,
 ) -> dict:
     """Walk `panes`, generate prose per pane, cache on success.
     Returns {pane_type: 'ok'|'failed'|'skipped'}."""
@@ -45,6 +51,7 @@ def generate_ai_reasoning_job(
     result: dict[str, str] = {}
     captain_fn = captain_decision_fn or _default_captain_decision_fn
     transfer_fn = transfer_decision_fn or _default_transfer_decision_fn
+    chip_fn = chip_decision_fn or _default_chip_decision_fn
     for pane in panes:
         if pane == "captain":
             decision = captain_fn(conn)
@@ -56,6 +63,12 @@ def generate_ai_reasoning_job(
             decision = transfer_fn(conn)
             ok = reasoning.generate_transfer_prose(
                 conn, gw=gw, transfer_decision=decision,
+                provider=provider, model_id=model_id)
+            result[pane] = "ok" if ok else "failed"
+        elif pane == "chip":
+            decision = chip_fn(conn)
+            ok = reasoning.generate_chip_prose(
+                conn, gw=gw, chip_decision=decision,
                 provider=provider, model_id=model_id)
             result[pane] = "ok" if ok else "failed"
         else:

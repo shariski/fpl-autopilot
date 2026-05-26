@@ -44,7 +44,7 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
                     timeout_seconds=config.ai_timeout_seconds(cfg),
                 )
                 ai_jobs.generate_ai_reasoning_job(
-                    conn, panes=["captain", "transfer"], provider=provider,
+                    conn, panes=["captain", "transfer", "chip"], provider=provider,
                     model_id=config.ai_ollama_model(cfg))
             except Exception:
                 log.exception("ai.generate_job_failed")

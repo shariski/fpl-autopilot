@@ -129,3 +129,46 @@ def test_generate_ai_reasoning_job_handles_both_captain_and_transfer():
         captain_decision_fn=lambda c: CAPTAIN_DECISION,
         transfer_decision_fn=lambda c: _TRANSFER_DECISION)
     assert result == {"captain": "ok", "transfer": "ok"}
+
+
+_CHIP_DECISION = {
+    "recommendation": {
+        "chip": "triple_captain",
+        "reason": "GW39 DGW: Haaland DGW-xP 14.8 (>= 12.0), FDR 2.",
+    },
+}
+
+
+def test_generate_ai_reasoning_job_caches_chip_prose():
+    conn = _db()
+    stub = prv.StubProvider("Triple Captain on Haaland in GW39 — DGW-xP 14.8 above 12.0, FDR 2.")
+    result = jobs.generate_ai_reasoning_job(
+        conn, panes=["chip"], provider=stub, model_id="m",
+        chip_decision_fn=lambda c: _CHIP_DECISION)
+    assert result == {"chip": "ok"}
+
+
+def test_generate_ai_reasoning_job_handles_all_three_panes():
+    conn = _db()
+    _seed_transfer_minimum(conn)
+
+    class _ThreeResponseStub:
+        def __init__(self):
+            self.responses = iter([
+                # Captain: 7.2, 1.8, 82 must appear in CAPTAIN_DECISION's payload
+                "captain Haaland at 7.2 xP — gap 1.8 vs Salah, confidence 82.",
+                # Transfer: 2, 4, 3.5, 78 must appear in _TRANSFER_DECISION's payload
+                "Sell Watkins (d), buy Haaland — fdr 2 vs fdr 4. Free transfer adds 3.5 EP at 78.",
+                # Chip: 39, 14.8, 12.0, 2 must appear in _CHIP_DECISION's payload
+                "Triple Captain on Haaland in GW39 — DGW-xP 14.8 above 12.0, FDR 2.",
+            ])
+        def generate(self, prompt, **kw):
+            return next(self.responses)
+
+    result = jobs.generate_ai_reasoning_job(
+        conn, panes=["captain", "transfer", "chip"],
+        provider=_ThreeResponseStub(), model_id="m",
+        captain_decision_fn=lambda c: CAPTAIN_DECISION,
+        transfer_decision_fn=lambda c: _TRANSFER_DECISION,
+        chip_decision_fn=lambda c: _CHIP_DECISION)
+    assert result == {"captain": "ok", "transfer": "ok", "chip": "ok"}
