@@ -23,6 +23,11 @@ def _default_captain_decision_fn(conn):
     return captain.get_captain_picks(conn)
 
 
+def _default_transfer_decision_fn(conn):
+    from src.decisions import transfers
+    return transfers.get_transfer_suggestions(conn)
+
+
 def generate_ai_reasoning_job(
     conn,
     *,
@@ -30,22 +35,27 @@ def generate_ai_reasoning_job(
     provider,
     model_id: str,
     captain_decision_fn: Callable | None = None,
+    transfer_decision_fn: Callable | None = None,
 ) -> dict:
-    """Walk `panes`, generate prose for each, cache on success.
-
-    Returns {pane_type: status_str} where status_str ∈
-    {'ok', 'failed', 'skipped'}. Used by the scheduler for log diagnostics.
-    """
+    """Walk `panes`, generate prose per pane, cache on success.
+    Returns {pane_type: 'ok'|'failed'|'skipped'}."""
     gw = _next_gw(conn)
     if gw is None:
         return {p: "skipped" for p in panes}
     result: dict[str, str] = {}
     captain_fn = captain_decision_fn or _default_captain_decision_fn
+    transfer_fn = transfer_decision_fn or _default_transfer_decision_fn
     for pane in panes:
         if pane == "captain":
             decision = captain_fn(conn)
             ok = reasoning.generate_captain_prose(
                 conn, gw=gw, captain_decision=decision,
+                provider=provider, model_id=model_id)
+            result[pane] = "ok" if ok else "failed"
+        elif pane == "transfer":
+            decision = transfer_fn(conn)
+            ok = reasoning.generate_transfer_prose(
+                conn, gw=gw, transfer_decision=decision,
                 provider=provider, model_id=model_id)
             result[pane] = "ok" if ok else "failed"
         else:

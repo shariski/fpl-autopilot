@@ -592,3 +592,25 @@ def test_build_scheduler_no_key_means_no_key_kwarg():
     for jid in ("weekly_refresh", "hourly_refresh"):
         # Either no kwarg at all, or key=None — both are fine
         assert jobs[jid].kwargs.get("key") is None
+
+
+def test_refresh_and_recompute_invokes_ai_with_both_panes(monkeypatch):
+    """ai.enabled=True calls generate_ai_reasoning_job with panes=['captain', 'transfer']."""
+    from src import scheduler
+    from src.data.db import connect, init_db
+    conn = connect(":memory:")
+    init_db(conn)
+    conn.execute("INSERT INTO gameweeks(id, name, deadline_utc, is_current, is_next, "
+                 "finished, state) VALUES (38, 'GW38', '2026-06-02T18:30Z', 0, 1, 0, 'PENDING')")
+    conn.commit()
+    cfg = {"fpl": {"team_id": 1}, "ai": {"enabled": True}}
+
+    captured_panes = []
+    monkeypatch.setattr("src.cli.refresh", lambda **kw: None)
+    monkeypatch.setattr("src.analytics.fdr.compute_and_store", lambda c: None)
+    monkeypatch.setattr("src.analytics.xp.compute_and_store", lambda c: None)
+    monkeypatch.setattr("src.ai.jobs.generate_ai_reasoning_job",
+                        lambda c, **kw: captured_panes.append(kw["panes"]) or {})
+
+    scheduler.refresh_and_recompute(cfg=cfg, conn=conn)
+    assert captured_panes == [["captain", "transfer"]]
