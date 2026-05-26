@@ -1,0 +1,23 @@
+[
+  {
+    "input": {
+      "captain": "Haaland", "vice": "Salah", "bench_changed": false,
+      "transfer": null, "gw": 38
+    },
+    "output": "Deadguard set Haaland as captain and Salah as vice for GW38. Bench order was already correct, and no transfer was needed."
+  },
+  {
+    "input": {
+      "captain": "Saka", "vice": "Palmer", "bench_changed": true,
+      "transfer": null, "gw": 32
+    },
+    "output": "Deadguard set Saka as captain and Palmer as vice for GW32, and reordered the bench so the highest-xP cover players are at the front."
+  },
+  {
+    "input": {
+      "captain": "Haaland", "vice": "Salah", "bench_changed": true,
+      "transfer": {"out_name": "Watkins", "in_name": "Calvert-Lewin"}, "gw": 38
+    },
+    "output": "Deadguard set Haaland as captain and Salah as vice for GW38, reordered the bench, and transferred out Watkins for Calvert-Lewin to replace the flagged player."
+  }
+]
