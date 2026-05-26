@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from .deps import get_db
 from . import queries
-from src.decisions import transfers as transfers_engine, chips as chips_engine
+from src.decisions import chips as chips_engine
 from src.data import repository
 
 app = FastAPI(title="FPL Autopilot API")
@@ -41,7 +41,7 @@ def captain(conn=Depends(get_db)):
 
 @app.get("/api/transfers")
 def transfers(conn=Depends(get_db)):
-    return transfers_engine.get_transfer_suggestions(conn)
+    return queries.get_transfer_suggestions(conn)
 
 
 @app.get("/api/chips")

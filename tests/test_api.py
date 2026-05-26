@@ -247,3 +247,40 @@ def test_api_captain_carries_reasoning_ai_on_cache_hit(client_conn):
     top = body["picks"][0]
     assert top["reasoning_source"] == "ai"
     assert top["reasoning"] == "AI prose here."
+
+
+def test_api_transfers_carries_reasoning_classic_on_cache_miss(client):
+    """With no AI cache: every suggestion has reasoning='' + 'classic'."""
+    resp = client.get("/api/transfers")
+    assert resp.status_code == 200
+    body = resp.json()
+    if not body["suggestions"]:
+        return    # fixture has no transfer-worthy state — skip
+    for s in body["suggestions"]:
+        assert s["reasoning_source"] == "classic"
+        assert s["reasoning"] == ""
+
+
+def test_api_transfers_carries_reasoning_ai_on_cache_hit(client_conn):
+    """Pre-warm the cache for the next GW's transfer payload -> top suggestion has 'ai'."""
+    client, conn = client_conn
+    from src.ai import cache as ai_cache, reasoning as ai_reasoning
+    from src.decisions import transfers
+    decision = transfers.get_transfer_suggestions(conn)
+    if not decision["suggestions"]:
+        return    # fixture has no transfer-worthy state — skip
+    payload = ai_reasoning._build_transfer_payload(conn, decision)
+    if payload is None:
+        return
+    rec_hash = ai_cache.recommendation_hash(payload)
+    nxt = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()["gw"]
+    ai_cache.put(conn, gw=nxt, pane_type="transfer", rec_hash=rec_hash,
+                 prose="Transfer AI prose.", model_id="qwen2.5:7b-instruct-q4_K_M")
+
+    resp = client.get("/api/transfers")
+    body = resp.json()
+    assert body["suggestions"][0]["reasoning_source"] == "ai"
+    assert body["suggestions"][0]["reasoning"] == "Transfer AI prose."
+    for s in body["suggestions"][1:]:
+        assert s["reasoning_source"] == "classic"
+        assert s["reasoning"] == ""

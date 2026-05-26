@@ -162,3 +162,33 @@ def get_captain_reasoning(conn, gw):
         return None
     prose, source = ai_reasoning.render_captain_reasoning(conn, gw, decision)
     return prose if source == "ai" else None
+
+
+def get_transfer_suggestions(conn):
+    """Wraps transfers.get_transfer_suggestions and enriches the TOP suggestion with
+    (reasoning, reasoning_source). Other suggestions get reasoning='' + reasoning_source='classic'."""
+    from src.decisions import transfers as transfers_engine
+    from src.ai import reasoning as ai_reasoning
+    decision = transfers_engine.get_transfer_suggestions(conn)
+    if not decision["suggestions"]:
+        return decision
+    gw = _next_gw(conn)
+    if gw is None:
+        return decision
+    prose, source = ai_reasoning.render_transfer_reasoning(conn, gw, decision)
+    enriched = list(decision["suggestions"])
+    enriched[0] = {**enriched[0], "reasoning": prose, "reasoning_source": source}
+    for i in range(1, len(enriched)):
+        enriched[i] = {**enriched[i], "reasoning": "", "reasoning_source": "classic"}
+    return {**decision, "suggestions": enriched}
+
+
+def get_transfer_reasoning(conn, gw):
+    """Cheap lookup for the Telegram path. Returns cached AI prose, or None on miss."""
+    from src.decisions import transfers as transfers_engine
+    from src.ai import reasoning as ai_reasoning
+    decision = transfers_engine.get_transfer_suggestions(conn)
+    if not decision["suggestions"]:
+        return None
+    prose, source = ai_reasoning.render_transfer_reasoning(conn, gw, decision)
+    return prose if source == "ai" else None
