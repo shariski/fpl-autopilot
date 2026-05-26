@@ -1,0 +1,20 @@
+[
+  {
+    "input": {
+      "captain": {"web_name": "Haaland", "xp": 7.2, "fixture": "MCI v BRE (H)"},
+      "vice": {"web_name": "Salah", "xp": 5.4},
+      "alternative_gap": 1.8,
+      "confidence": 82
+    },
+    "output": "Haaland is the captain this week at 7.2 xP, MCI v BRE (H). He clears the vice Salah by 1.8 xP, and confidence is 82, so this is a clean call."
+  },
+  {
+    "input": {
+      "captain": {"web_name": "Saka", "xp": 5.6, "fixture": "ARS v LIV (A)"},
+      "vice": {"web_name": "Palmer", "xp": 5.3},
+      "alternative_gap": 0.3,
+      "confidence": 68
+    },
+    "output": "Saka leads at 5.6 xP, ARS v LIV (A), but only by 0.3 over the vice Palmer. Confidence is 68, so this is a close call you may want to override."
+  }
+]

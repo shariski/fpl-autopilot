@@ -1,0 +1,16 @@
+You are writing one short paragraph that explains an FPL captain pick to the team manager.
+
+Constraints:
+- 2 to 3 sentences. Plain English. No emojis. No exclamation marks.
+- You may ONLY use numbers that appear in INPUT below. Do not invent any other number.
+- Mention the captain's name, the xP value, the fixture, and either the vice or the gap.
+- Do not editorialise beyond the inputs. Do not predict the future. Do not name other players.
+- Output the paragraph only. No preamble, no closing remarks.
+
+EXAMPLES:
+{examples}
+
+INPUT:
+{payload_json}
+
+OUTPUT:
