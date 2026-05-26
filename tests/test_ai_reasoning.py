@@ -55,3 +55,41 @@ def test_build_captain_prompt_includes_payload_and_examples():
     # substitution actually happened — neither placeholder remains in the rendered prompt
     assert "{examples}" not in prompt
     assert "{payload_json}" not in prompt
+
+
+from src.data.db import connect, init_db
+from src.ai import cache as ai_cache
+
+
+def _db():
+    conn = connect(":memory:")
+    init_db(conn)
+    return conn
+
+
+def test_render_captain_reasoning_returns_classic_on_cache_miss():
+    conn = _db()
+    prose, source = reasoning.render_captain_reasoning(conn, gw=38,
+                                                       captain_decision=CAPTAIN_DECISION_FIXTURE)
+    assert source == "classic"
+    assert prose == CAPTAIN_DECISION_FIXTURE["picks"][0]["reason"]
+
+
+def test_render_captain_reasoning_returns_ai_on_cache_hit():
+    conn = _db()
+    payload = reasoning._build_captain_payload(CAPTAIN_DECISION_FIXTURE)
+    rec_hash = ai_cache.recommendation_hash(payload)
+    ai_cache.put(conn, gw=38, pane_type="captain", rec_hash=rec_hash,
+                 prose="LLM prose here.", model_id="qwen2.5:7b-instruct-q4_K_M")
+    prose, source = reasoning.render_captain_reasoning(conn, gw=38,
+                                                       captain_decision=CAPTAIN_DECISION_FIXTURE)
+    assert source == "ai"
+    assert prose == "LLM prose here."
+
+
+def test_render_captain_reasoning_returns_classic_on_empty_picks():
+    conn = _db()
+    decision = {"picks": [], "vice_player_id": None, "confidence": None}
+    prose, source = reasoning.render_captain_reasoning(conn, gw=38, captain_decision=decision)
+    assert source == "classic"
+    assert prose == ""

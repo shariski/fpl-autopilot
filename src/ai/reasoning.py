@@ -51,3 +51,19 @@ def _build_captain_prompt(payload: dict) -> str:
     )
     payload_json = json.dumps(payload, sort_keys=True, indent=2)
     return template.replace("{examples}", examples_block).replace("{payload_json}", payload_json)
+
+
+def render_captain_reasoning(conn, gw: int, captain_decision: dict) -> tuple[str, str]:
+    """Read path. Returns (prose, source) where source ∈ {'ai', 'classic'}.
+
+    Never calls a provider — only reads from the cache. Falls back to the
+    deterministic engine's existing `reason` string when nothing is cached.
+    """
+    payload = _build_captain_payload(captain_decision)
+    if payload is None:
+        return ("", "classic")
+    rec_hash = cache.recommendation_hash(payload)
+    hit = cache.get(conn, gw, "captain", rec_hash)
+    if hit is not None:
+        return (hit["prose"], "ai")
+    return (captain_decision["picks"][0]["reason"], "classic")
