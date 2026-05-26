@@ -335,21 +335,21 @@ def test_pick_flagged_transfer_none_when_out_available(db, monkeypatch):
 
 def test_pick_flagged_transfer_none_on_hit(db, monkeypatch):
     _seed_player_status(db, 7, "i")
-    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "hit_cost": -4}], "empty_reason": None}
+    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "hit_cost": -4}], "empty_reason": None, "free_transfers": 1}
     monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: sugg)
     assert deadguard._pick_flagged_transfer(db, _CFG) is None
 
 
 def test_pick_flagged_transfer_none_below_threshold(db, monkeypatch):
     _seed_player_status(db, 7, "i")
-    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "ep_delta_5gw": 2.0}], "empty_reason": None}
+    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "ep_delta_5gw": 2.0}], "empty_reason": None, "free_transfers": 1}
     monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: sugg)
     assert deadguard._pick_flagged_transfer(db, _CFG) is None
 
 
 def test_pick_flagged_transfer_none_low_confidence(db, monkeypatch):
     _seed_player_status(db, 7, "i")
-    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "confidence": 50}], "empty_reason": None}
+    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "confidence": 50}], "empty_reason": None, "free_transfers": 1}
     monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: sugg)
     assert deadguard._pick_flagged_transfer(db, _CFG) is None
 
@@ -447,7 +447,7 @@ def test_trigger_summary_log_failure_still_notifies(db, monkeypatch):
 def test_pick_flagged_transfer_none_on_any_negative_hit(db, monkeypatch):
     _seed_player_status(db, 7, "i")
     for hc in (-1, -4, -8):
-        sugg = {"suggestions": [{**_SUGG["suggestions"][0], "hit_cost": hc}], "empty_reason": None}
+        sugg = {"suggestions": [{**_SUGG["suggestions"][0], "hit_cost": hc}], "empty_reason": None, "free_transfers": 1}
         monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn, s=sugg: s)
         assert deadguard._pick_flagged_transfer(db, _CFG) is None
 
