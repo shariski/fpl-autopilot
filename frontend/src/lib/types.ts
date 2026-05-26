@@ -78,6 +78,8 @@ export interface Transfers {
 export interface ChipRecommendation {
 	chip: Chip;
 	reason: string;
+	reasoning?: string;
+	reasoning_source?: 'ai' | 'classic';
 }
 export interface Chips {
 	recommendation: ChipRecommendation | null;

@@ -83,7 +83,7 @@ export const fullMock: Dashboard = {
 		empty_reason: null
 	},
 	chips: {
-		recommendation: { chip: 'bench_boost', reason: 'DGW: all 15 have fixtures; combined bench xP 5.2 (> threshold 4).' }
+		recommendation: { chip: 'bench_boost', reason: 'DGW: all 15 have fixtures; combined bench xP 5.2 (> threshold 4).', reasoning: 'Triple Captain on Haaland in GW39 — DGW-xP 14.8 above the 12.0 threshold, FDR 2.', reasoning_source: 'ai' as const }
 	},
 	planner: { horizon, rows },
 	activity: {
