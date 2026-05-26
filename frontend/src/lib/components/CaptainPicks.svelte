@@ -16,7 +16,14 @@
 						<span class="fix">{p.fixture}</span>
 						<span class="xp tnum">{p.xp.toFixed(1)}</span>
 					</div>
-					<p class="reason">{p.reason}</p>
+					<p class="reason">
+						{#if i === 0 && p.reasoning_source === 'ai'}
+							<span class="badge badge-ai">AI</span>
+						{:else if i === 0 && p.reasoning_source === 'classic'}
+							<span class="badge badge-classic">classic</span>
+						{/if}
+						{p.reasoning ?? p.reason}
+					</p>
 				</div>
 			</li>
 		{/each}
@@ -33,4 +40,7 @@
 	.fix { color: var(--text-dim); font-size: 0.74rem; }
 	.xp { margin-left: auto; color: var(--accent); }
 	.reason { margin: 4px 0 0; font-size: 0.8rem; color: var(--text-dim); }
+	.badge { font-size: 0.7em; padding: 0.1em 0.4em; border-radius: 0.3em; margin-left: 0.4em; }
+	.badge-ai { background: #2563eb; color: white; }
+	.badge-classic { background: #e5e7eb; color: #4b5563; }
 </style>

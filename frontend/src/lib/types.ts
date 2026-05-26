@@ -48,6 +48,8 @@ export interface CaptainPick {
 	xp: number;
 	fixture: string;
 	reason: string;
+	reasoning?: string;
+	reasoning_source?: 'ai' | 'classic';
 }
 export interface Captain {
 	picks: CaptainPick[]; // top 5, ranked; [] until built

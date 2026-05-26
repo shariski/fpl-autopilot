@@ -66,7 +66,7 @@ export const fullMock: Dashboard = {
 	squad: { gw: 37, bank: 2.3, team_value: 99.7, free_transfers: 1, players },
 	captain: {
 		picks: [
-			{ player_id: 10, web_name: 'Haaland', xp: 7.2, fixture: 'MCI v BOU (H)', reason: 'Highest xP (7.2). Next best Salah 6.1 — gap 1.1. Home vs FDR-3 defense.' },
+			{ player_id: 10, web_name: 'Haaland', xp: 7.2, fixture: 'MCI v BOU (H)', reason: 'Highest xP (7.2). Next best Salah 6.1 — gap 1.1. Home vs FDR-3 defense.', reasoning: 'Haaland is the captain this week at 7.2 xP, MCI v BOU (H).', reasoning_source: 'ai' as const },
 			{ player_id: 6, web_name: 'Salah', xp: 6.1, fixture: 'WHU v LIV (A)', reason: 'Second highest xP. Strong away record; FDR-2 attack matchup.' },
 			{ player_id: 7, web_name: 'Saka', xp: 5.4, fixture: 'ARS v BOU (H)', reason: 'Home vs FDR-2 attack. On set pieces.' },
 			{ player_id: 8, web_name: 'Palmer', xp: 5.0, fixture: 'CHE v EVE (H)', reason: 'Penalties + home vs FDR-2.' },
