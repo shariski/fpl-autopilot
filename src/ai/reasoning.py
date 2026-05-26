@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from src.ai import cache, grounding
+from src.ai.provider import OllamaError
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ def generate_captain_prose(conn, gw: int, captain_decision: dict, *,
     prompt = _build_captain_prompt(payload)
     try:
         prose = provider.generate(prompt, max_tokens=max_tokens, temperature=temperature)
-    except Exception:
+    except OllamaError:
         logger.exception("ai.captain.provider_error",
                          extra={"gw": gw, "model_id": model_id})
         return False
