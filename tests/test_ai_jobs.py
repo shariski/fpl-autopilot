@@ -1,4 +1,3 @@
-import logging
 from src.data.db import connect, init_db
 from src.ai import jobs, provider as prv, cache as ai_cache, reasoning
 
