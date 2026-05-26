@@ -337,3 +337,84 @@ def generate_chip_prose(conn, gw: int, chip_decision: dict, *,
         return False
     cache.put(conn, gw, "chip", rec_hash, prose, model_id)
     return True
+
+
+def _build_deadguard_payload(conn, outcome: dict) -> dict | None:
+    """Closed-shape payload describing what the deadguard did.
+
+    `outcome` is composed by deadguard._run_trigger and looks like:
+        {"captain_name": str, "vice_name": str | None, "bench_changed": bool,
+         "transfer": {"out_name": str, "in_name": str} | None, "gw": int}
+
+    Returns None if outcome is missing the captain name (defensive — without a
+    captain there's no meaningful summary)."""
+    if not outcome or not outcome.get("captain_name"):
+        return None
+    return {
+        "captain": outcome["captain_name"],
+        "vice": outcome.get("vice_name"),
+        "bench_changed": bool(outcome.get("bench_changed", False)),
+        "transfer": outcome.get("transfer"),
+        "gw": outcome["gw"],
+    }
+
+
+def _build_deadguard_prompt(payload: dict) -> str:
+    """Render deadguard.txt with {examples} + {payload_json} substituted."""
+    template = (_PROMPTS_DIR / "deadguard.txt").read_text()
+    examples = json.loads((_PROMPTS_DIR / "deadguard_examples.json").read_text())
+    examples_block = "\n\n".join(
+        f"INPUT:\n{json.dumps(ex['input'], sort_keys=True, indent=2)}\n"
+        f"OUTPUT:\n{ex['output']}"
+        for ex in examples
+    )
+    payload_json = json.dumps(payload, sort_keys=True, indent=2)
+    return template.replace("{examples}", examples_block).replace("{payload_json}", payload_json)
+
+
+def render_deadguard_summary(conn, gw: int, outcome: dict) -> tuple[str, str]:
+    """Read path. Returns (prose, source).
+    Cache hit -> (cached_prose, 'ai'); miss -> ('', 'classic').
+    Note: classic returns empty (no engine fallback prose) because the deadguard
+    module composes its own template at the _notify call site."""
+    payload = _build_deadguard_payload(conn, outcome)
+    if payload is None:
+        return ("", "classic")
+    rec_hash = cache.recommendation_hash(payload)
+    hit = cache.get(conn, gw, "deadguard_summary", rec_hash)
+    return (hit["prose"], "ai") if hit is not None else ("", "classic")
+
+
+def generate_deadguard_summary(conn, gw: int, outcome: dict, *,
+                               provider, model_id: str,
+                               max_tokens: int = 200, temperature: float = 0.2) -> bool:
+    """Write path. Returns True on grounded success (cache hit counts as success).
+    Provider errors caught; empty/ungrounded prose not cached."""
+    payload = _build_deadguard_payload(conn, outcome)
+    if payload is None:
+        logger.info("ai.deadguard.skipped_empty", extra={"gw": gw})
+        return False
+    rec_hash = cache.recommendation_hash(payload)
+    if cache.get(conn, gw, "deadguard_summary", rec_hash) is not None:
+        return True
+    prompt = _build_deadguard_prompt(payload)
+    try:
+        prose = provider.generate(prompt, max_tokens=max_tokens, temperature=temperature)
+    except OllamaError:
+        logger.exception("ai.deadguard.provider_error",
+                         extra={"gw": gw, "model_id": model_id})
+        return False
+    if not prose:
+        logger.warning("ai.deadguard.empty_prose",
+                       extra={"gw": gw, "model_id": model_id})
+        return False
+    payload_text = json.dumps(payload, sort_keys=True)
+    ok, ungrounded = grounding.is_grounded(prose, payload_text)
+    if not ok:
+        logger.warning("ai.deadguard.grounding_failed",
+                       extra={"gw": gw, "rec_hash": rec_hash,
+                              "ungrounded": sorted(ungrounded),
+                              "model_id": model_id, "prose_chars": len(prose)})
+        return False
+    cache.put(conn, gw, "deadguard_summary", rec_hash, prose, model_id)
+    return True
