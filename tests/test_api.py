@@ -215,3 +215,35 @@ def test_keep_endpoint_sets_user_acted(client_conn):
     assert r.status_code == 200
     state = conn.execute("SELECT state FROM gameweeks WHERE is_next=1").fetchone()["state"]
     assert state == "USER_ACTED"
+
+
+def test_api_captain_carries_reasoning_classic_on_cache_miss(client):
+    """Default: no AI cache -> reasoning_source='classic' + the engine's reason string."""
+    body = client.get("/api/captain").json()
+    if not body["picks"]:
+        pytest.skip("no captain picks in seeded DB")
+    top = body["picks"][0]
+    assert top["reasoning_source"] == "classic"
+    assert top["reasoning"] == top["reason"]
+
+
+def test_api_captain_carries_reasoning_ai_on_cache_hit(client_conn):
+    """Pre-warm the cache for the next GW's payload -> reasoning_source='ai'."""
+    from src.ai import cache as ai_cache, reasoning as ai_reasoning
+    from src.decisions import captain as captain_engine
+
+    cli, conn = client_conn
+    decision = captain_engine.get_captain_picks(conn)
+    if not decision["picks"]:
+        pytest.skip("no captain picks in seeded DB")
+
+    gw = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()["gw"]
+    payload = ai_reasoning._build_captain_payload(decision)
+    rec_hash = ai_cache.recommendation_hash(payload)
+    ai_cache.put(conn, gw=gw, pane_type="captain", rec_hash=rec_hash,
+                 prose="AI prose here.", model_id="stub")
+
+    body = cli.get("/api/captain").json()
+    top = body["picks"][0]
+    assert top["reasoning_source"] == "ai"
+    assert top["reasoning"] == "AI prose here."

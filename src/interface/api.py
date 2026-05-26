@@ -36,7 +36,7 @@ def activity(conn=Depends(get_db)):
 
 @app.get("/api/captain")
 def captain(conn=Depends(get_db)):
-    return captain_engine.get_captain_picks(conn)
+    return queries.get_captain_picks(conn)
 
 
 @app.get("/api/transfers")

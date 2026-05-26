@@ -128,3 +128,40 @@ def get_activity(conn, limit=20):
         "SELECT ts_utc, gw, mode, decision_type, action_taken, executed "
         "FROM activity_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return {"entries": [dict(r) for r in rows]}
+
+
+def get_captain_picks(conn):
+    """Wraps src.decisions.captain.get_captain_picks and enriches picks[0]
+    with (reasoning, reasoning_source). Other picks keep the engine's reason
+    string under both keys (no AI prose for vice/alts in S-A.1)."""
+    from src.decisions import captain as captain_engine
+    from src.ai import reasoning as ai_reasoning
+    decision = captain_engine.get_captain_picks(conn)
+    if not decision["picks"]:
+        return decision
+    gw = _next_gw(conn)
+    if gw is None:
+        return decision
+    prose, source = ai_reasoning.render_captain_reasoning(conn, gw, decision)
+    enriched = list(decision["picks"])
+    enriched[0] = {**enriched[0], "reasoning": prose, "reasoning_source": source}
+    for i in range(1, len(enriched)):
+        enriched[i] = {**enriched[i], "reasoning": enriched[i]["reason"],
+                       "reasoning_source": "classic"}
+    return {**decision, "picks": enriched}
+
+
+def get_captain_reasoning(conn, gw):
+    """Cheap lookup used by the Telegram path. Returns the cached AI prose for
+    the captain pane at `gw`, or None on miss."""
+    from src.decisions import captain as captain_engine
+    from src.ai import reasoning as ai_reasoning, cache as ai_cache
+    decision = captain_engine.get_captain_picks(conn)
+    if not decision["picks"]:
+        return None
+    payload = ai_reasoning._build_captain_payload(decision)
+    if payload is None:
+        return None
+    rec_hash = ai_cache.recommendation_hash(payload)
+    hit = ai_cache.get(conn, gw=gw, pane_type="captain", rec_hash=rec_hash)
+    return hit["prose"] if hit is not None else None
