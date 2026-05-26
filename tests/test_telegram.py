@@ -305,3 +305,94 @@ def test_notify_plan_uses_classic_summary_when_no_ai_cache(monkeypatch, tmp_path
     tg.notify_plan(conn, plan, mode="manual", session=_LocalFakeSession())
     assert sent
     assert "template summary" in sent[0]["text"]
+
+
+def _seed_transfer_db(conn):
+    """Minimal seed so transfers.get_transfer_suggestions returns >=1 row.
+    Squad starts with Watkins; Haaland is a buy candidate (higher xp_5gw)."""
+    import json as _json
+    conn.execute("INSERT INTO gameweeks(id, name, deadline_utc, is_current, is_next, "
+                 "finished, state) VALUES (38, 'GW38', '2026-06-02T18:30Z', 0, 1, 0, 'PENDING')")
+    conn.execute("INSERT INTO teams(id, name, short_name) VALUES (1, 'Man City', 'MCI'), "
+                 "(2, 'Brentford', 'BRE'), (3, 'Aston Villa', 'AVL')")
+    conn.execute("INSERT INTO players(id, web_name, position, team_id, price, status) "
+                 "VALUES (10, 'Haaland', 'FWD', 1, 14.0, 'a'), "
+                 "(20, 'Watkins', 'FWD', 3, 9.0, 'a'), "
+                 "(30, 'Isak', 'FWD', 2, 9.3, 'a')")
+    conn.execute("INSERT INTO my_team(gw, picks_json, bank) VALUES (38, ?, 0.5)",
+                 (_json.dumps([{"element": 20, "position": 11, "multiplier": 1,
+                                "is_captain": False, "is_vice_captain": False}]),))
+    conn.execute("INSERT INTO fixtures(id, gw, home_team_id, away_team_id, kickoff_utc, finished) "
+                 "VALUES (1, 38, 1, 2, '2026-06-02T19:00Z', 0), (2, 38, 3, 2, '2026-06-02T19:00Z', 0)")
+    conn.execute("INSERT INTO fdr(team_id, gw, fdr_attack, fdr_defense, computed_at) VALUES "
+                 "(1, 38, 2, 2, '2026-05-19T00:00Z'), (3, 38, 4, 4, '2026-05-19T00:00Z')")
+    # Haaland (buy) >> median > Watkins (sell); Isak anchors the median above 3.0
+    conn.execute("INSERT INTO xp(player_id, gw, model_version, xp, xminutes, computed_at) VALUES "
+                 "(10, 38, 'v1', 8.0, 90, '2026-05-19T00:00Z'), "
+                 "(20, 38, 'v1', 3.0, 90, '2026-05-19T00:00Z'), "
+                 "(30, 38, 'v1', 5.0, 90, '2026-05-19T00:00Z')")
+    conn.commit()
+
+
+def test_notify_plan_swaps_transfer_summary_when_ai_cache_populated(monkeypatch, tmp_path):
+    """If cached AI transfer prose exists for the next gw, notify_plan uses it for the transfer entry."""
+    from src.data.db import connect, init_db
+    from src.interface import telegram
+    from src.ai import cache as ai_cache, reasoning as ai_reasoning
+    from src.decisions import transfers
+
+    conn = connect(":memory:")
+    init_db(conn)
+    _seed_transfer_db(conn)
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
+
+    decision = transfers.get_transfer_suggestions(conn)
+    assert decision["suggestions"], "seed must produce >= 1 transfer suggestion"
+    payload = ai_reasoning._build_transfer_payload(conn, decision)
+    rec_hash = ai_cache.recommendation_hash(payload)
+    nxt = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()["gw"]
+    ai_cache.put(conn, gw=nxt, pane_type="transfer", rec_hash=rec_hash,
+                 prose="AI prose for transfer.", model_id="m")
+
+    sent = []
+    class _FakeSession:
+        def post(self, url, json=None, timeout=None):
+            sent.append(json)
+            class R:
+                status_code = 200
+                def json(self): return {"ok": True}
+            return R()
+
+    plan = [{"decision": "transfer", "summary": "template transfer summary", "executed": True}]
+    telegram.notify_plan(conn, plan, mode="manual", session=_FakeSession())
+    assert sent, "telegram.send_message should have been called"
+    assert "AI prose for transfer." in sent[0]["text"]
+    assert "template transfer summary" not in sent[0]["text"]
+
+
+def test_notify_plan_uses_classic_summary_when_no_transfer_ai_cache(monkeypatch, tmp_path):
+    from src.data.db import connect, init_db
+    from src.interface import telegram
+
+    conn = connect(":memory:")
+    init_db(conn)
+    _seed_transfer_db(conn)
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
+
+    sent = []
+    class _FakeSession:
+        def post(self, url, json=None, timeout=None):
+            sent.append(json)
+            class R:
+                status_code = 200
+                def json(self): return {"ok": True}
+            return R()
+
+    plan = [{"decision": "transfer", "summary": "template transfer summary", "executed": True}]
+    telegram.notify_plan(conn, plan, mode="manual", session=_FakeSession())
+    assert sent
+    assert "template transfer summary" in sent[0]["text"]

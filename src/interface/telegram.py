@@ -71,19 +71,19 @@ def notify(conn, *, kind, decision_type, mode, summary, session=None):
 
 
 def notify_plan(conn, plan, *, mode, session=None):
-    """Best-effort: notify per plan entry (executed -> confirmation, else pending info).
-    Early-returns when unconfigured so callers with minimal plan dicts never touch
-    summary/executed keys (keeps the existing scheduler/router tests untouched).
-    When a captain entry has cached AI prose for the next gw, the AI prose replaces
-    the entry's summary (S-A.1)."""
+    """Best-effort: notify per plan entry. When captain/transfer AI prose is cached for the next gw,
+    swap the summary; falls back to entry['summary'] otherwise."""
     if not is_configured():
         return
-    captain_prose = _captain_ai_prose(conn)
+    captain_prose  = _captain_ai_prose(conn)
+    transfer_prose = _transfer_ai_prose(conn)
     for entry in plan:
         kind = "executed" if entry["executed"] else "info"
         summary = entry["summary"]
         if entry["decision"] == "captain" and captain_prose is not None:
             summary = captain_prose
+        if entry["decision"] == "transfer" and transfer_prose is not None:
+            summary = transfer_prose
         notify(conn, kind=kind, decision_type=entry["decision"], mode=mode,
                summary=summary, session=session)
 
@@ -99,6 +99,20 @@ def _captain_ai_prose(conn):
         if nxt is None or nxt["gw"] is None:
             return None
         return queries.get_captain_reasoning(conn, gw=nxt["gw"])
+    except Exception:
+        return None
+
+
+def _transfer_ai_prose(conn):
+    """Return cached AI prose for the transfer pane at the next gw, or None.
+    Best-effort: any exception is swallowed."""
+    try:
+        from src.interface import queries
+        nxt = conn.execute(
+            "SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
+        if nxt is None or nxt["gw"] is None:
+            return None
+        return queries.get_transfer_reasoning(conn, gw=nxt["gw"])
     except Exception:
         return None
 
