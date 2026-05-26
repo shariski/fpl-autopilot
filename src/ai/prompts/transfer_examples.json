@@ -1,0 +1,37 @@
+[
+  {
+    "input": {
+      "out": {"web_name": "Salah", "price": 13.1, "status": "a",
+              "fixtures_3gw": [
+                {"opponent": "BRE", "home": false, "fdr_attack": 4},
+                {"opponent": "EVE", "home": true,  "fdr_attack": 2},
+                {"opponent": "ARS", "home": false, "fdr_attack": 5}
+              ]},
+      "in": {"web_name": "Saka", "price": 10.4, "status": "a",
+             "fixtures_3gw": [
+               {"opponent": "BHA", "home": true,  "fdr_attack": 2},
+               {"opponent": "WHU", "home": true,  "fdr_attack": 3},
+               {"opponent": "FUL", "home": false, "fdr_attack": 3}
+             ]},
+      "ep_delta_5gw": 3.4, "hit_cost": 0, "confidence": 78, "free_transfers": 1
+    },
+    "output": "Sell Salah, buy Saka — Saka has 2 home fixtures including BHA at fdr 2, while Salah faces ARS away at fdr 5 in the same window. The free transfer adds 3.4 EP over 5 GWs at confidence 78."
+  },
+  {
+    "input": {
+      "out": {"web_name": "Watkins", "price": 9.0, "status": "d",
+              "fixtures_3gw": [
+                {"opponent": "LIV", "home": false, "fdr_attack": 5},
+                {"opponent": "MCI", "home": false, "fdr_attack": 5}
+              ]},
+      "in": {"web_name": "Isak", "price": 9.3, "status": "a",
+             "fixtures_3gw": [
+               {"opponent": "WOL", "home": true,  "fdr_attack": 2},
+               {"opponent": "CRY", "home": false, "fdr_attack": 3},
+               {"opponent": "BHA", "home": true,  "fdr_attack": 2}
+             ]},
+      "ep_delta_5gw": 2.1, "hit_cost": 0, "confidence": 70, "free_transfers": 1
+    },
+    "output": "Sell Watkins, buy Isak — Watkins carries a doubt and faces LIV and MCI away at fdr 5, while Isak has 2 home fixtures at fdr 2. The free transfer adds 2.1 EP over 5 GWs at confidence 70."
+  }
+]
