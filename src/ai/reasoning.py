@@ -67,3 +67,37 @@ def render_captain_reasoning(conn, gw: int, captain_decision: dict) -> tuple[str
     if hit is not None:
         return (hit["prose"], "ai")
     return (captain_decision["picks"][0]["reason"], "classic")
+
+
+def generate_captain_prose(conn, gw: int, captain_decision: dict, *,
+                           provider, model_id: str,
+                           max_tokens: int = 200, temperature: float = 0.2) -> bool:
+    """Write path. Returns True on grounded success (cache hit counts as success).
+
+    Called by the scheduler. Provider errors are caught and logged — never
+    bubble. Ungrounded prose is not cached; the grounding violation is logged.
+    """
+    payload = _build_captain_payload(captain_decision)
+    if payload is None:
+        logger.info("ai.captain.skipped_empty_picks", extra={"gw": gw})
+        return False
+    rec_hash = cache.recommendation_hash(payload)
+    if cache.get(conn, gw, "captain", rec_hash) is not None:
+        return True
+    prompt = _build_captain_prompt(payload)
+    try:
+        prose = provider.generate(prompt, max_tokens=max_tokens, temperature=temperature)
+    except Exception:
+        logger.exception("ai.captain.provider_error",
+                         extra={"gw": gw, "model_id": model_id})
+        return False
+    payload_text = json.dumps(payload, sort_keys=True)
+    ok, ungrounded = grounding.is_grounded(prose, payload_text)
+    if not ok:
+        logger.warning("ai.captain.grounding_failed",
+                       extra={"gw": gw, "rec_hash": rec_hash,
+                              "ungrounded": sorted(ungrounded),
+                              "model_id": model_id, "prose_chars": len(prose)})
+        return False
+    cache.put(conn, gw, "captain", rec_hash, prose, model_id)
+    return True

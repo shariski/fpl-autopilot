@@ -93,3 +93,78 @@ def test_render_captain_reasoning_returns_classic_on_empty_picks():
     prose, source = reasoning.render_captain_reasoning(conn, gw=38, captain_decision=decision)
     assert source == "classic"
     assert prose == ""
+
+
+from src.ai import provider as prv
+
+
+def test_generate_captain_prose_caches_grounded_prose():
+    conn = _db()
+    stub = prv.StubProvider("Haaland captain at 7.2 xP, gap 1.8, confidence 82.")
+    ok = reasoning.generate_captain_prose(
+        conn, gw=38, captain_decision=CAPTAIN_DECISION_FIXTURE,
+        provider=stub, model_id="qwen2.5:7b-instruct-q4_K_M")
+    assert ok is True
+    payload = reasoning._build_captain_payload(CAPTAIN_DECISION_FIXTURE)
+    rec_hash = ai_cache.recommendation_hash(payload)
+    hit = ai_cache.get(conn, gw=38, pane_type="captain", rec_hash=rec_hash)
+    assert hit is not None
+    assert hit["prose"] == "Haaland captain at 7.2 xP, gap 1.8, confidence 82."
+
+
+def test_generate_captain_prose_rejects_ungrounded_prose():
+    conn = _db()
+    stub = prv.StubProvider("Haaland captain at 7.2 xP — confidence 99.")  # 99 not in payload
+    ok = reasoning.generate_captain_prose(
+        conn, gw=38, captain_decision=CAPTAIN_DECISION_FIXTURE,
+        provider=stub, model_id="m")
+    assert ok is False
+    payload = reasoning._build_captain_payload(CAPTAIN_DECISION_FIXTURE)
+    rec_hash = ai_cache.recommendation_hash(payload)
+    assert ai_cache.get(conn, gw=38, pane_type="captain", rec_hash=rec_hash) is None
+
+
+def test_generate_captain_prose_skips_provider_on_cache_hit():
+    conn = _db()
+    payload = reasoning._build_captain_payload(CAPTAIN_DECISION_FIXTURE)
+    rec_hash = ai_cache.recommendation_hash(payload)
+    ai_cache.put(conn, gw=38, pane_type="captain", rec_hash=rec_hash,
+                 prose="already cached.", model_id="m")
+
+    class _BoomProvider:
+        def generate(self, prompt, **kw):
+            raise AssertionError("provider must not be called on cache hit")
+
+    ok = reasoning.generate_captain_prose(
+        conn, gw=38, captain_decision=CAPTAIN_DECISION_FIXTURE,
+        provider=_BoomProvider(), model_id="m")
+    assert ok is True
+
+
+def test_generate_captain_prose_skips_on_empty_picks():
+    conn = _db()
+    decision = {"picks": [], "vice_player_id": None, "confidence": None}
+
+    class _BoomProvider:
+        def generate(self, prompt, **kw):
+            raise AssertionError("provider must not be called with empty picks")
+
+    ok = reasoning.generate_captain_prose(
+        conn, gw=38, captain_decision=decision,
+        provider=_BoomProvider(), model_id="m")
+    assert ok is False
+
+
+def test_generate_captain_prose_swallows_provider_errors():
+    """Provider exceptions don't bubble — they're logged + the row isn't cached."""
+    conn = _db()
+
+    class _ErrProvider:
+        def generate(self, prompt, **kw):
+            from src.ai.provider import OllamaError
+            raise OllamaError("ollama is down")
+
+    ok = reasoning.generate_captain_prose(
+        conn, gw=38, captain_decision=CAPTAIN_DECISION_FIXTURE,
+        provider=_ErrProvider(), model_id="m")
+    assert ok is False
