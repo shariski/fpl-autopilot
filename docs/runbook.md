@@ -549,6 +549,7 @@ fpl-autopilot log --mode deadguard         # filter by mode
 fpl-autopilot log --decision-type transfer # filter by type
 fpl-autopilot freeze                       # emergency stop
 fpl-autopilot unfreeze                     # resume
+fpl-autopilot refresh-my-team              # one-shot authed /api/my-team snapshot; prompts for master password
 
 # Inspecting DB directly
 sqlite3 data/fpl_autopilot.db

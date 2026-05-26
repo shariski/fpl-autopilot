@@ -151,3 +151,43 @@ def test_build_lineup_payload_none_unchanged():
     payload = executor.build_lineup_payload(_full_picks(), 1, 2)
     pos = {p["element"]: p["position"] for p in payload["picks"]}
     assert pos[13] == 13 and pos[14] == 14 and pos[15] == 15
+
+
+def test_fetch_my_team_authed_returns_full_payload():
+    """Returns the full JSON dict, not just picks (unlike fetch_current_picks)."""
+    payload = {
+        "picks": [{"element": 1, "position": 1, "selling_price": 50,
+                   "purchase_price": 50, "is_captain": True, "is_vice_captain": False,
+                   "multiplier": 2}],
+        "transfers": {"bank": 5, "value": 1003, "limit": 1, "cost": 4, "status": "cost", "made": 0},
+        "chips": [{"name": "wildcard", "status_for_entry": "available"}],
+    }
+
+    class _Resp:
+        status_code = 200
+        def json(self): return payload
+
+    class _Sess:
+        def __init__(self): self.url = None
+        def get(self, url, timeout=None):
+            self.url = url
+            return _Resp()
+
+    sess = _Sess()
+    result = executor.fetch_my_team_authed(sess, 12345)
+    assert result == payload
+    assert sess.url == "https://fantasy.premierleague.com/api/my-team/12345/"
+
+
+def test_fetch_my_team_authed_raises_on_non_200():
+    """Non-200 raises ExecutorError with the status code, matching fetch_current_picks shape."""
+    class _Resp:
+        status_code = 401
+        def json(self): return {}
+
+    class _Sess:
+        def get(self, url, timeout=None): return _Resp()
+
+    with pytest.raises(executor.ExecutorError) as exc_info:
+        executor.fetch_my_team_authed(_Sess(), 12345)
+    assert "401" in str(exc_info.value)

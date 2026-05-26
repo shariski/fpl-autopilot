@@ -119,13 +119,19 @@ def _next_gw(conn):
 
 
 def _latest_squad(conn):
-    """Latest my_team snapshot -> (element_ids, bank), or None when there is no snapshot."""
-    row = conn.execute("SELECT picks_json, bank FROM my_team ORDER BY gw DESC LIMIT 1").fetchone()
+    """Latest my_team snapshot -> (element_ids, bank, free_transfers), or None when no snapshot.
+
+    free_transfers is int when an authed row exists, None when only a public-picks row is present.
+    """
+    row = conn.execute(
+        "SELECT picks_json, bank, free_transfers FROM my_team ORDER BY gw DESC LIMIT 1"
+    ).fetchone()
     if row is None:
         return None
     ids = [pick["element"] for pick in json.loads(row["picks_json"])]
     bank = row["bank"] if row["bank"] is not None else 0.0
-    return ids, bank
+    ft = row["free_transfers"]  # int | None
+    return ids, bank, ft
 
 
 def get_transfer_suggestions(conn):
@@ -137,8 +143,8 @@ def get_transfer_suggestions(conn):
     next_gw = _next_gw(conn)
     squad = _latest_squad(conn)
     if next_gw is None or squad is None:
-        return {"suggestions": [], "empty_reason": EMPTY_REASON}
-    squad_ids, bank = squad
+        return {"suggestions": [], "empty_reason": EMPTY_REASON, "free_transfers": None}
+    squad_ids, bank, free_transfers = squad
 
     xp_rows = conn.execute(
         "SELECT player_id, gw, xp FROM xp WHERE model_version='v1' AND gw BETWEEN ? AND ?",
@@ -166,4 +172,6 @@ def get_transfer_suggestions(conn):
             {"out": {k: pr["out"][k] for k in ("player_id", "web_name", "price")},
              "in":  {k: pr["in"][k] for k in ("player_id", "web_name", "price")},
              "ep_delta_5gw": pr["ep_delta_5gw"], "hit_cost": pr["hit_cost"], "confidence": conf})
-    return {"suggestions": suggestions, "empty_reason": None if suggestions else EMPTY_REASON}
+    return {"suggestions": suggestions,
+            "empty_reason": None if suggestions else EMPTY_REASON,
+            "free_transfers": free_transfers}

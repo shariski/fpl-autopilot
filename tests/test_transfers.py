@@ -262,3 +262,45 @@ def test_get_transfer_suggestions_empty_reason(db):
     out = transfers.get_transfer_suggestions(db)
     assert out["suggestions"] == []
     assert out["empty_reason"] == "No transfers worth making this GW."
+
+
+# ── Task 6 (new): _latest_squad 3-tuple + free_transfers propagation ──────────
+
+def test_latest_squad_returns_free_transfers(db, load):
+    """When the latest my_team row has free_transfers, _latest_squad returns it."""
+    from src.decisions import transfers
+    # Seed gameweeks
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.execute("INSERT INTO my_team (gw, picks_json, bank, free_transfers, snapshot_at) "
+               "VALUES (38, '[{\"element\": 1}, {\"element\": 2}]', 0.5, 2, 't')")
+    db.commit()
+    ids, bank, ft = transfers._latest_squad(db)
+    assert ids == [1, 2]
+    assert bank == 0.5
+    assert ft == 2
+
+
+def test_latest_squad_returns_none_free_transfers_when_null(db):
+    """Public-only row has NULL free_transfers; _latest_squad returns None for that field."""
+    from src.decisions import transfers
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.execute("INSERT INTO my_team (gw, picks_json, bank, free_transfers, snapshot_at) "
+               "VALUES (37, '[{\"element\": 1}]', 0.0, NULL, 't')")
+    db.commit()
+    ids, bank, ft = transfers._latest_squad(db)
+    assert ft is None
+
+
+def test_get_transfer_suggestions_includes_free_transfers(db, load):
+    """The top-level dict from get_transfer_suggestions carries free_transfers through."""
+    from src.decisions import transfers
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.execute("INSERT INTO my_team (gw, picks_json, bank, free_transfers, snapshot_at) "
+               "VALUES (38, '[]', 0.0, 3, 't')")
+    db.commit()
+    result = transfers.get_transfer_suggestions(db)
+    assert "free_transfers" in result
+    assert result["free_transfers"] == 3

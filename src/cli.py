@@ -395,6 +395,57 @@ def _route_gameweek_cli(conn=None, salt_path=None, verify_path=None, live=False,
         conn.close()
 
 
+def refresh_my_team(*, conn=None, cfg=None):
+    """Fetch /api/my-team (authed) once and snapshot it. Prompts for master password.
+
+    Use this when not running the daemon but you want the dashboard / executor to see the
+    upcoming-GW squad and real free_transfers.
+    """
+    import getpass
+    import sys
+    from .auth import master, session as auth_session
+    from .execution import executor
+    from .data import repository
+    from .scheduler import _next_gw_id
+
+    cfg = cfg or load_config()
+    owns_conn = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    if owns_conn:
+        init_db(conn)
+
+    try:
+        key = master.load_key(getpass.getpass("Master password: "))
+    except Exception as exc:
+        print(f"could not unlock master key: {exc}", file=sys.stderr)
+        if owns_conn:
+            conn.close()
+        raise SystemExit(2)
+
+    next_gw = _next_gw_id(conn)
+    if next_gw is None:
+        print("no upcoming gameweek — run `refresh` first", file=sys.stderr)
+        if owns_conn:
+            conn.close()
+        raise SystemExit(1)
+
+    try:
+        sess = auth_session.ensure_session(conn, key)
+        payload = executor.fetch_my_team_authed(sess, cfg_team_id(cfg))
+    except Exception as exc:
+        print(f"authed my-team fetch failed (session/network): {exc}", file=sys.stderr)
+        if owns_conn:
+            conn.close()
+        raise SystemExit(1)
+
+    repository.snapshot_my_team_authed(conn, next_gw, payload)
+    ft = payload.get("transfers", {}).get("limit")
+    print(f"my_team OK (authed, GW{next_gw}, FT={ft})")
+
+    if owns_conn:
+        conn.close()
+
+
 def serve(host="127.0.0.1", port=None, scheduler=True):
     import os
     import uvicorn
@@ -437,6 +488,7 @@ def main(argv=None):
     p_route.add_argument("--mode", choices=["auto", "manual", "hybrid"], default=None, help="override config mode for this run")
     p_undo = sub.add_parser("undo-transfer", help="revert deadguard's transfer before the deadline (dry-run unless --live)")
     p_undo.add_argument("--live", action="store_true", help="actually submit the reverse transfer (requires typed confirmation)")
+    sub.add_parser("refresh-my-team", help="fetch /api/my-team (authed) and snapshot it (prompts for master password)")
     p_freeze = sub.add_parser("freeze", help="halt all autonomous FPL execution (auto + deadguard)")
     p_freeze.add_argument("--reason", default="frozen from CLI")
     sub.add_parser("unfreeze", help="resume autonomous FPL execution")
@@ -464,6 +516,8 @@ def main(argv=None):
         _route_gameweek_cli(live=args.live, mode=args.mode)
     elif args.command == "undo-transfer":
         _undo_transfer_cli(live=args.live)
+    elif args.command == "refresh-my-team":
+        refresh_my_team()
     elif args.command == "freeze":
         _freeze_cli(reason=args.reason)
     elif args.command == "unfreeze":

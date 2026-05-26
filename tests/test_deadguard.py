@@ -313,7 +313,7 @@ def test_job_no_deadline_returns_none(db, monkeypatch):
 # ---------------------------------------------------------------------------
 _SUGG = {"suggestions": [{
     "out": {"player_id": 7, "web_name": "Out"}, "in": {"player_id": 99, "web_name": "In"},
-    "ep_delta_5gw": 5.0, "hit_cost": 0, "confidence": 80}], "empty_reason": None}
+    "ep_delta_5gw": 5.0, "hit_cost": 0, "confidence": 80}], "empty_reason": None, "free_transfers": 1}
 
 
 def _seed_player_status(db, pid, status):
@@ -335,21 +335,21 @@ def test_pick_flagged_transfer_none_when_out_available(db, monkeypatch):
 
 def test_pick_flagged_transfer_none_on_hit(db, monkeypatch):
     _seed_player_status(db, 7, "i")
-    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "hit_cost": -4}], "empty_reason": None}
+    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "hit_cost": -4}], "empty_reason": None, "free_transfers": 1}
     monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: sugg)
     assert deadguard._pick_flagged_transfer(db, _CFG) is None
 
 
 def test_pick_flagged_transfer_none_below_threshold(db, monkeypatch):
     _seed_player_status(db, 7, "i")
-    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "ep_delta_5gw": 2.0}], "empty_reason": None}
+    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "ep_delta_5gw": 2.0}], "empty_reason": None, "free_transfers": 1}
     monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: sugg)
     assert deadguard._pick_flagged_transfer(db, _CFG) is None
 
 
 def test_pick_flagged_transfer_none_low_confidence(db, monkeypatch):
     _seed_player_status(db, 7, "i")
-    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "confidence": 50}], "empty_reason": None}
+    sugg = {"suggestions": [{**_SUGG["suggestions"][0], "confidence": 50}], "empty_reason": None, "free_transfers": 1}
     monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn: sugg)
     assert deadguard._pick_flagged_transfer(db, _CFG) is None
 
@@ -447,7 +447,7 @@ def test_trigger_summary_log_failure_still_notifies(db, monkeypatch):
 def test_pick_flagged_transfer_none_on_any_negative_hit(db, monkeypatch):
     _seed_player_status(db, 7, "i")
     for hc in (-1, -4, -8):
-        sugg = {"suggestions": [{**_SUGG["suggestions"][0], "hit_cost": hc}], "empty_reason": None}
+        sugg = {"suggestions": [{**_SUGG["suggestions"][0], "hit_cost": hc}], "empty_reason": None, "free_transfers": 1}
         monkeypatch.setattr(deadguard.transfers, "get_transfer_suggestions", lambda conn, s=sugg: s)
         assert deadguard._pick_flagged_transfer(db, _CFG) is None
 
@@ -792,3 +792,69 @@ def test_trigger_no_transfer_no_undo_record(db, monkeypatch):
     deadguard.run_deadguard_job(b"key", conn=db, now=_NOW, cfg=_CFG)
     assert repository.get_deadguard_transfer(db, 30) is None
     assert all(b != [[{"text": "↩️ Undo", "callback_data": "z:30"}]] for b in sent)
+
+
+# ---------------------------------------------------------------------------
+# Task 8: _pick_flagged_transfer refuses when FT=0 / unknown
+# ---------------------------------------------------------------------------
+_FT_CFG = {"deadguard": {"scope": {"transfer_if_flagged": True, "min_ep_delta_for_transfer": 3.0, "confidence_floor": 75}}}
+
+
+def test_pick_flagged_transfer_refuses_when_ft_zero(db):
+    """B8: deadguard never takes a hit. Even a strong suggestion is dropped if FT=0."""
+    from src.interface import deadguard
+
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.execute("INSERT INTO players (id, web_name, position, team_id, price, status) "
+               "VALUES (1, 'Flagged', 3, 1, 5.0, 'i')")
+    db.commit()
+
+    def _suggester(conn):
+        return {"suggestions": [{"out": {"player_id": 1, "web_name": "Flagged", "price": 5.0, "status": "i"},
+                                  "in":  {"player_id": 2, "web_name": "Star",    "price": 5.0, "status": "a"},
+                                  "ep_delta_5gw": 4.0, "hit_cost": 0, "confidence": 85}],
+                "empty_reason": None, "free_transfers": 0}
+
+    result = deadguard._pick_flagged_transfer(db, _FT_CFG, suggester=_suggester)
+    assert result is None  # would have been rank=1 but for FT=0
+
+
+def test_pick_flagged_transfer_refuses_when_ft_unknown(db):
+    """free_transfers=None (no authed snapshot) -> deadguard refuses (safer than guessing)."""
+    from src.interface import deadguard
+
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.execute("INSERT INTO players (id, web_name, position, team_id, price, status) "
+               "VALUES (1, 'Flagged', 3, 1, 5.0, 'i')")
+    db.commit()
+
+    def _suggester(conn):
+        return {"suggestions": [{"out": {"player_id": 1, "web_name": "Flagged", "price": 5.0, "status": "i"},
+                                  "in":  {"player_id": 2, "web_name": "Star",    "price": 5.0, "status": "a"},
+                                  "ep_delta_5gw": 4.0, "hit_cost": 0, "confidence": 85}],
+                "empty_reason": None, "free_transfers": None}
+
+    result = deadguard._pick_flagged_transfer(db, _FT_CFG, suggester=_suggester)
+    assert result is None
+
+
+def test_pick_flagged_transfer_still_returns_rank_when_ft_positive(db):
+    """Happy path preserved: returns int rank 1 when FT >= 1 and suggestion passes the existing gates."""
+    from src.interface import deadguard
+
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (38, '2026-05-30T17:30:00Z', 0, 0, 1)")
+    db.execute("INSERT INTO players (id, web_name, position, team_id, price, status) "
+               "VALUES (1, 'Flagged', 3, 1, 5.0, 'i')")
+    db.commit()
+
+    def _suggester(conn):
+        return {"suggestions": [{"out": {"player_id": 1, "web_name": "Flagged", "price": 5.0, "status": "i"},
+                                  "in":  {"player_id": 2, "web_name": "Star",    "price": 5.0, "status": "a"},
+                                  "ep_delta_5gw": 4.0, "hit_cost": 0, "confidence": 85}],
+                "empty_reason": None, "free_transfers": 1}
+
+    result = deadguard._pick_flagged_transfer(db, _FT_CFG, suggester=_suggester)
+    assert result == 1  # int rank, not a dict

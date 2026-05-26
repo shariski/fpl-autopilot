@@ -88,6 +88,7 @@ The threshold for "obvious upgrade" in deadguard mode is stricter than in normal
 - **Chip activation of any kind.** Wildcards, Free Hits, Bench Boosts, Triple Captains. These are strategic decisions and require user presence.
 - **Multiple transfers.** Maximum one transfer per deadguard activation.
 - **Wildcard-level squad rebuilds.** A deadguard activation cannot rebuild more than a single position.
+- **Transfer when `free_transfers == 0` or unknown.** `_pick_flagged_transfer` refuses when the authed `/my-team` snapshot shows FT=0 or when no snapshot exists (FT=None). B8: the deadguard never takes a hit.
 
 ## Decision flow during deadguard
 
