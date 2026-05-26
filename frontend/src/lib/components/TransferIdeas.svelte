@@ -12,7 +12,7 @@
 	/>
 {:else}
 	<ul class="xfers">
-		{#each transfers.suggestions as s (s.out.player_id + '-' + s.in.player_id)}
+		{#each transfers.suggestions as s, i (s.out.player_id + '-' + s.in.player_id)}
 			<li class="xfer">
 				<div class="move">
 					<span class="out">{s.out.web_name}</span>
@@ -26,6 +26,16 @@
 					</span>
 					<span class="conf">{s.confidence}%</span>
 				</div>
+				{#if i === 0 && s.reasoning}
+					<div class="why">
+						<em>{s.reasoning}</em>
+						{#if s.reasoning_source === 'ai'}
+							<span class="badge badge-ai" aria-label="AI-generated reasoning">AI</span>
+						{:else}
+							<span class="badge badge-classic" aria-label="Template-based reasoning">classic</span>
+						{/if}
+					</div>
+				{/if}
 			</li>
 		{/each}
 	</ul>
@@ -44,4 +54,9 @@
 	.hit { color: var(--danger); }
 	.hit.free { color: var(--text-dim); }
 	.conf { color: var(--text-dim); }
+	.why { margin-top: 6px; font-size: 0.82rem; color: var(--text-dim); line-height: 1.4; }
+	.why em { font-style: italic; }
+	.badge { font-size: 0.7em; padding: 0.1em 0.4em; border-radius: 0.3em; margin-left: 0.4em; }
+	.badge-ai { background: #2563eb; color: white; }
+	.badge-classic { background: #e5e7eb; color: #4b5563; }
 </style>

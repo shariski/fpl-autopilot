@@ -76,9 +76,9 @@ export const fullMock: Dashboard = {
 	},
 	transfers: {
 		suggestions: [
-			{ out: { player_id: 5, web_name: 'Hall', price: 5.4 }, in: { player_id: 101, web_name: 'Aina', price: 5.0 }, ep_delta_5gw: 2.6, hit_cost: 0, confidence: 74 },
-			{ out: { player_id: 14, web_name: 'Rogers', price: 5.7 }, in: { player_id: 102, web_name: 'Gordon', price: 7.5 }, ep_delta_5gw: 4.1, hit_cost: -4, confidence: 69 },
-			{ out: { player_id: 13, web_name: 'Lacroix', price: 4.6 }, in: { player_id: 103, web_name: 'Andersen', price: 4.6 }, ep_delta_5gw: 1.4, hit_cost: 0, confidence: 61 }
+			{ out: { player_id: 5, web_name: 'Hall', price: 5.4 }, in: { player_id: 101, web_name: 'Aina', price: 5.0 }, ep_delta_5gw: 2.6, hit_cost: 0, confidence: 74, reasoning: 'Sell Hall, buy Aina — Aina has 2 home fixtures at fdr 2 in the next 3 GWs while Hall faces MCI away at fdr 5.', reasoning_source: 'ai' as const },
+			{ out: { player_id: 14, web_name: 'Rogers', price: 5.7 }, in: { player_id: 102, web_name: 'Gordon', price: 7.5 }, ep_delta_5gw: 4.1, hit_cost: -4, confidence: 69, reasoning: '', reasoning_source: 'classic' as const },
+			{ out: { player_id: 13, web_name: 'Lacroix', price: 4.6 }, in: { player_id: 103, web_name: 'Andersen', price: 4.6 }, ep_delta_5gw: 1.4, hit_cost: 0, confidence: 61, reasoning: '', reasoning_source: 'classic' as const }
 		],
 		empty_reason: null
 	},

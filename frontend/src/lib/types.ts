@@ -67,6 +67,8 @@ export interface TransferSuggestion {
 	ep_delta_5gw: number;
 	hit_cost: number; // 0, -4, -8 ...
 	confidence: number;
+	reasoning?: string;
+	reasoning_source?: 'ai' | 'classic';
 }
 export interface Transfers {
 	suggestions: TransferSuggestion[]; // [] if none worth it
