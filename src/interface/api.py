@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from .deps import get_db
 from . import queries
-from src.decisions import captain as captain_engine, transfers as transfers_engine, chips as chips_engine
+from src.decisions import transfers as transfers_engine, chips as chips_engine
 from src.data import repository
 
 app = FastAPI(title="FPL Autopilot API")
