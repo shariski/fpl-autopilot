@@ -113,3 +113,100 @@ def generate_captain_prose(conn, gw: int, captain_decision: dict, *,
         return False
     cache.put(conn, gw, "captain", rec_hash, prose, model_id)
     return True
+
+
+def _next_gw(conn) -> int | None:
+    """Return next unfinished gameweek id, or None."""
+    row = conn.execute(
+        "SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
+    return row["gw"] if row and row["gw"] is not None else None
+
+
+def _status_for(conn, player_id: int) -> str:
+    """Player status flag (a/d/i/s/u). Defaults to 'a' when player is missing."""
+    row = conn.execute(
+        "SELECT status FROM players WHERE id=?", (player_id,)).fetchone()
+    return row["status"] if row is not None else "a"
+
+
+def _fixtures_for(conn, player_id: int, next_gw: int, horizon: int) -> list[dict]:
+    """Up to `horizon` fixtures for the player's team starting at next_gw.
+
+    Each item: {opponent: short_name, home: bool, fdr_attack: int}.
+    BGW (no fixture for a given gw) is silently skipped.
+    DGW (multiple fixtures for the same gw) is surfaced as multiple list entries.
+    """
+    team_row = conn.execute(
+        "SELECT team_id FROM players WHERE id=?", (player_id,)).fetchone()
+    if team_row is None:
+        return []
+    team_id = team_row["team_id"]
+    rows = conn.execute(
+        """SELECT f.gw, f.home_team_id, f.away_team_id,
+                  th.short_name AS home_short, ta.short_name AS away_short,
+                  fdr.fdr_attack AS fdr_attack
+           FROM fixtures f
+           JOIN teams th ON th.id = f.home_team_id
+           JOIN teams ta ON ta.id = f.away_team_id
+           LEFT JOIN fdr ON fdr.team_id = ? AND fdr.gw = f.gw
+           WHERE f.gw BETWEEN ? AND ?
+             AND (f.home_team_id = ? OR f.away_team_id = ?)
+           ORDER BY f.gw, f.id""",
+        (team_id, next_gw, next_gw + horizon - 1, team_id, team_id),
+    ).fetchall()
+    out = []
+    for r in rows:
+        if len(out) >= horizon:
+            break
+        is_home = r["home_team_id"] == team_id
+        opp = r["away_short"] if is_home else r["home_short"]
+        fdr_a = r["fdr_attack"] if r["fdr_attack"] is not None else 3
+        out.append({"opponent": opp, "home": is_home, "fdr_attack": fdr_a})
+    return out
+
+
+def _build_transfer_payload(conn, transfer_decision: dict) -> dict | None:
+    """Closed-shape payload for the TOP transfer suggestion, with rich fixture context.
+
+    Returns None when:
+    - no suggestions (LLM has nothing to render)
+    - no next gw (post-season state)
+    """
+    suggestions = transfer_decision.get("suggestions", [])
+    if not suggestions:
+        return None
+    next_gw = _next_gw(conn)
+    if next_gw is None:
+        return None
+    top = suggestions[0]
+    return {
+        "out": {
+            "web_name": top["out"]["web_name"],
+            "price": top["out"]["price"],
+            "status": _status_for(conn, top["out"]["player_id"]),
+            "fixtures_3gw": _fixtures_for(conn, top["out"]["player_id"], next_gw, horizon=3),
+        },
+        "in": {
+            "web_name": top["in"]["web_name"],
+            "price": top["in"]["price"],
+            "status": _status_for(conn, top["in"]["player_id"]),
+            "fixtures_3gw": _fixtures_for(conn, top["in"]["player_id"], next_gw, horizon=3),
+        },
+        "ep_delta_5gw": round(top["ep_delta_5gw"], 1),
+        "hit_cost": top["hit_cost"],
+        "confidence": top["confidence"],
+        "free_transfers": transfer_decision.get("free_transfers"),
+    }
+
+
+def _build_transfer_prompt(payload: dict) -> str:
+    """Render transfer.txt with {examples} + {payload_json} substituted."""
+    template = (_PROMPTS_DIR / "transfer.txt").read_text()
+    examples = json.loads((_PROMPTS_DIR / "transfer_examples.json").read_text())
+    examples_block = "\n\n".join(
+        f"INPUT:\n{json.dumps(ex['input'], sort_keys=True, indent=2)}\n"
+        f"OUTPUT:\n{ex['output']}"
+        for ex in examples
+    )
+    payload_json = json.dumps(payload, sort_keys=True, indent=2)
+    return template.replace("{examples}", examples_block).replace("{payload_json}", payload_json)
