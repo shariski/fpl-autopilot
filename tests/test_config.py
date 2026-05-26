@@ -70,3 +70,24 @@ def test_deadguard_reeval_accessors():
     assert config.deadguard_reeval_enabled({}) is True                      # explicit {} must not fall back
     assert config.deadguard_reeval_lockout_minutes({"deadguard": {"reeval_lockout_minutes": 20}}) == 20
     assert config.deadguard_reeval_lockout_minutes({}) == 15                # default
+
+
+def test_ai_defaults_when_missing():
+    from src import config
+    cfg = {}
+    assert config.ai_enabled(cfg) is True
+    assert config.ai_provider(cfg) == "ollama"
+    assert config.ai_ollama_host(cfg) == "http://localhost:11434"
+    assert config.ai_ollama_model(cfg) == "qwen2.5:7b-instruct-q4_K_M"
+    assert config.ai_timeout_seconds(cfg) == 15
+    assert config.ai_consecutive_failure_backoff(cfg) == 3
+    assert config.ai_temperature(cfg) == 0.2
+    assert config.ai_max_tokens_per_pane(cfg) == 200
+
+
+def test_ai_overrides_from_yaml():
+    from src import config
+    cfg = {"ai": {"enabled": False, "ollama": {"model": "llama3.1:8b"}, "timeout_seconds": 30}}
+    assert config.ai_enabled(cfg) is False
+    assert config.ai_ollama_model(cfg) == "llama3.1:8b"
+    assert config.ai_timeout_seconds(cfg) == 30

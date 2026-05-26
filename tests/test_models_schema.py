@@ -38,3 +38,11 @@ def test_schema_drift_type_change_fails_loudly(load):
     data["elements"][0]["now_cost"] = "not-a-number"  # int field, non-coercible -> must raise
     with pytest.raises(ValidationError):
         BootstrapStatic.model_validate(data)
+
+
+def test_ai_reasoning_cache_table_exists(tmp_path):
+    from src.data.db import connect, init_db
+    conn = connect(str(tmp_path / "t.db"))
+    init_db(conn)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(ai_reasoning_cache)")}
+    assert cols == {"gw", "pane_type", "recommendation_hash", "prose", "model_id", "generated_at"}

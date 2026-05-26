@@ -91,3 +91,44 @@ def deadguard_min_ep_delta(cfg=None):
 
 def deadguard_confidence_floor(cfg=None):
     return _deadguard_scope(cfg).get("confidence_floor", 75)
+
+
+def _ai(cfg):
+    cfg = cfg if cfg is not None else load_config()
+    return cfg.get("ai", {})
+
+
+def _ai_ollama(cfg):
+    return _ai(cfg).get("ollama", {})
+
+
+def ai_enabled(cfg=None):
+    return bool(_ai(cfg).get("enabled", True))
+
+
+def ai_provider(cfg=None):
+    return _ai(cfg).get("provider", "ollama")
+
+
+def ai_ollama_host(cfg=None):
+    return _ai_ollama(cfg).get("host", "http://localhost:11434")
+
+
+def ai_ollama_model(cfg=None):
+    return _ai_ollama(cfg).get("model", "qwen2.5:7b-instruct-q4_K_M")
+
+
+def ai_timeout_seconds(cfg=None):
+    return _ai(cfg).get("timeout_seconds", 15)
+
+
+def ai_consecutive_failure_backoff(cfg=None):
+    return _ai(cfg).get("consecutive_failure_backoff", 3)
+
+
+def ai_temperature(cfg=None):
+    return _ai(cfg).get("temperature", 0.2)
+
+
+def ai_max_tokens_per_pane(cfg=None):
+    return _ai(cfg).get("max_tokens_per_pane", 200)

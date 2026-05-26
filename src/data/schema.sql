@@ -166,3 +166,16 @@ CREATE TABLE IF NOT EXISTS system_state (
   key TEXT PRIMARY KEY,
   value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS ai_reasoning_cache (
+  gw INTEGER NOT NULL,
+  pane_type TEXT NOT NULL,
+  recommendation_hash TEXT NOT NULL,
+  prose TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  generated_at TIMESTAMP NOT NULL,
+  PRIMARY KEY (gw, pane_type, recommendation_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_reasoning_cache_lookup
+  ON ai_reasoning_cache (gw, pane_type, generated_at DESC);
