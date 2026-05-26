@@ -208,3 +208,50 @@ def _build_transfer_prompt(payload: dict) -> str:
     )
     payload_json = json.dumps(payload, sort_keys=True, indent=2)
     return template.replace("{examples}", examples_block).replace("{payload_json}", payload_json)
+
+
+def render_transfer_reasoning(conn, gw: int, transfer_decision: dict) -> tuple[str, str]:
+    """Read path. Returns (prose, source).
+    Cache hit -> (cached_prose, 'ai'); miss -> ('', 'classic').
+    Empty suggestions or no next_gw -> ('', 'classic')."""
+    payload = _build_transfer_payload(conn, transfer_decision)
+    if payload is None:
+        return ("", "classic")
+    rec_hash = cache.recommendation_hash(payload)
+    hit = cache.get(conn, gw, "transfer", rec_hash)
+    return (hit["prose"], "ai") if hit is not None else ("", "classic")
+
+
+def generate_transfer_prose(conn, gw: int, transfer_decision: dict, *,
+                            provider, model_id: str,
+                            max_tokens: int = 200, temperature: float = 0.2) -> bool:
+    """Write path. Returns True on grounded success (cache hit counts as success).
+    Provider errors caught; empty/ungrounded prose not cached."""
+    payload = _build_transfer_payload(conn, transfer_decision)
+    if payload is None:
+        logger.info("ai.transfer.skipped_empty", extra={"gw": gw})
+        return False
+    rec_hash = cache.recommendation_hash(payload)
+    if cache.get(conn, gw, "transfer", rec_hash) is not None:
+        return True
+    prompt = _build_transfer_prompt(payload)
+    try:
+        prose = provider.generate(prompt, max_tokens=max_tokens, temperature=temperature)
+    except OllamaError:
+        logger.exception("ai.transfer.provider_error",
+                         extra={"gw": gw, "model_id": model_id})
+        return False
+    if not prose:
+        logger.warning("ai.transfer.empty_prose",
+                       extra={"gw": gw, "model_id": model_id})
+        return False
+    payload_text = json.dumps(payload, sort_keys=True)
+    ok, ungrounded = grounding.is_grounded(prose, payload_text)
+    if not ok:
+        logger.warning("ai.transfer.grounding_failed",
+                       extra={"gw": gw, "rec_hash": rec_hash,
+                              "ungrounded": sorted(ungrounded),
+                              "model_id": model_id, "prose_chars": len(prose)})
+        return False
+    cache.put(conn, gw, "transfer", rec_hash, prose, model_id)
+    return True

@@ -113,3 +113,112 @@ def test_build_transfer_prompt_includes_payload_and_examples():
     assert "{examples}" not in prompt
     assert "{payload_json}" not in prompt
     assert "Do not invent" in prompt
+
+
+from src.ai import cache as ai_cache, provider as prv
+
+
+def test_render_transfer_reasoning_returns_classic_on_cache_miss():
+    conn = _db(); _seed_fixtures(conn)
+    prose, source = reasoning.render_transfer_reasoning(
+        conn, gw=38, transfer_decision=TRANSFER_DECISION_FIXTURE)
+    assert source == "classic"
+    assert prose == ""
+
+
+def test_render_transfer_reasoning_returns_ai_on_cache_hit():
+    conn = _db(); _seed_fixtures(conn)
+    payload = reasoning._build_transfer_payload(conn, TRANSFER_DECISION_FIXTURE)
+    rec_hash = ai_cache.recommendation_hash(payload)
+    ai_cache.put(conn, gw=38, pane_type="transfer", rec_hash=rec_hash,
+                 prose="Sell Watkins, buy Haaland — fixtures favour the swap.",
+                 model_id="qwen2.5:7b-instruct-q4_K_M")
+    prose, source = reasoning.render_transfer_reasoning(
+        conn, gw=38, transfer_decision=TRANSFER_DECISION_FIXTURE)
+    assert source == "ai"
+    assert prose == "Sell Watkins, buy Haaland — fixtures favour the swap."
+
+
+def test_render_transfer_reasoning_returns_classic_on_empty_suggestions():
+    conn = _db(); _seed_fixtures(conn)
+    decision = {"suggestions": [], "empty_reason": "none", "free_transfers": 1}
+    prose, source = reasoning.render_transfer_reasoning(conn, gw=38, transfer_decision=decision)
+    assert source == "classic"
+    assert prose == ""
+
+
+def test_generate_transfer_prose_caches_grounded_prose():
+    conn = _db(); _seed_fixtures(conn)
+    # Grounded prose: every numeric token in prose appears in payload JSON.
+    # Payload numbers include: 9.0, 14.0, 3.5 (rounded), 0 (hit), 78, 1, plus fdr values.
+    stub = prv.StubProvider("Sell Watkins, buy Haaland — fdr 2 contrasts with fdr 5 across the listed window. "
+                            "Free transfer adds 3.5 EP at 78.")
+    ok = reasoning.generate_transfer_prose(
+        conn, gw=38, transfer_decision=TRANSFER_DECISION_FIXTURE,
+        provider=stub, model_id="qwen2.5:7b-instruct-q4_K_M")
+    assert ok is True
+    payload = reasoning._build_transfer_payload(conn, TRANSFER_DECISION_FIXTURE)
+    rec_hash = ai_cache.recommendation_hash(payload)
+    assert ai_cache.get(conn, gw=38, pane_type="transfer", rec_hash=rec_hash) is not None
+
+
+def test_generate_transfer_prose_rejects_ungrounded_prose():
+    conn = _db(); _seed_fixtures(conn)
+    stub = prv.StubProvider("Sell Watkins, buy Haaland — EP gain 99.9 at confidence 99.")
+    ok = reasoning.generate_transfer_prose(
+        conn, gw=38, transfer_decision=TRANSFER_DECISION_FIXTURE,
+        provider=stub, model_id="m")
+    assert ok is False
+
+
+def test_generate_transfer_prose_rejects_empty_prose():
+    conn = _db(); _seed_fixtures(conn)
+    stub = prv.StubProvider("")
+    ok = reasoning.generate_transfer_prose(
+        conn, gw=38, transfer_decision=TRANSFER_DECISION_FIXTURE,
+        provider=stub, model_id="m")
+    assert ok is False
+
+
+def test_generate_transfer_prose_skips_provider_on_cache_hit():
+    conn = _db(); _seed_fixtures(conn)
+    payload = reasoning._build_transfer_payload(conn, TRANSFER_DECISION_FIXTURE)
+    rec_hash = ai_cache.recommendation_hash(payload)
+    ai_cache.put(conn, gw=38, pane_type="transfer", rec_hash=rec_hash,
+                 prose="cached.", model_id="m")
+
+    class _BoomProvider:
+        def generate(self, prompt, **kw):
+            raise AssertionError("provider must not be called on cache hit")
+
+    ok = reasoning.generate_transfer_prose(
+        conn, gw=38, transfer_decision=TRANSFER_DECISION_FIXTURE,
+        provider=_BoomProvider(), model_id="m")
+    assert ok is True
+
+
+def test_generate_transfer_prose_skips_on_empty_suggestions():
+    conn = _db(); _seed_fixtures(conn)
+    decision = {"suggestions": [], "empty_reason": "none", "free_transfers": 1}
+
+    class _BoomProvider:
+        def generate(self, prompt, **kw):
+            raise AssertionError("provider must not be called with empty suggestions")
+
+    ok = reasoning.generate_transfer_prose(
+        conn, gw=38, transfer_decision=decision, provider=_BoomProvider(), model_id="m")
+    assert ok is False
+
+
+def test_generate_transfer_prose_swallows_provider_errors():
+    conn = _db(); _seed_fixtures(conn)
+
+    class _ErrProvider:
+        def generate(self, prompt, **kw):
+            from src.ai.provider import OllamaError
+            raise OllamaError("ollama down")
+
+    ok = reasoning.generate_transfer_prose(
+        conn, gw=38, transfer_decision=TRANSFER_DECISION_FIXTURE,
+        provider=_ErrProvider(), model_id="m")
+    assert ok is False
