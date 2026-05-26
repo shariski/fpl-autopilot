@@ -120,9 +120,9 @@ def _run_trigger(conn, key, gw, cfg):
         if rank is not None:
             tr = transfer_exec.run_transfer(conn, key, rank=rank, live=True, confirm_fn=lambda d: True)
             if getattr(tr, "ok", False):
+                body = tr.request["body"]["transfers"][0]
                 transfer_note = "transfer applied"
                 transfer_applied = True
-                body = tr.request["body"]["transfers"][0]
                 repository.set_deadguard_transfer(conn, gw, body["element_out"], body["element_in"])
             else:
                 transfer_note = "transfer failed"
