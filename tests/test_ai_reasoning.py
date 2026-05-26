@@ -52,3 +52,6 @@ def test_build_captain_prompt_includes_payload_and_examples():
     assert "Saka" in prompt             # from the second few-shot exemplar
     assert '"web_name": "Haaland"' in prompt or json.dumps(payload, sort_keys=True, indent=2) in prompt
     assert "Do not invent" in prompt
+    # substitution actually happened — neither placeholder remains in the rendered prompt
+    assert "{examples}" not in prompt
+    assert "{payload_json}" not in prompt
