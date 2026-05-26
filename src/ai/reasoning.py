@@ -255,3 +255,85 @@ def generate_transfer_prose(conn, gw: int, transfer_decision: dict, *,
         return False
     cache.put(conn, gw, "transfer", rec_hash, prose, model_id)
     return True
+
+
+def _build_chip_payload(conn, chip_decision: dict) -> dict | None:
+    """Closed-shape payload for the chip recommendation.
+
+    Returns None when:
+    - no recommendation (LLM has nothing to render)
+    - no next gw (post-season state)
+    """
+    rec = chip_decision.get("recommendation")
+    if rec is None:
+        return None
+    next_gw = _next_gw(conn)
+    if next_gw is None:
+        return None
+    return {
+        "chip": rec["chip"],
+        "reason": rec["reason"],
+        "next_gw": next_gw,
+    }
+
+
+def _build_chip_prompt(payload: dict) -> str:
+    """Render chip.txt with {examples} + {payload_json} substituted."""
+    template = (_PROMPTS_DIR / "chip.txt").read_text()
+    examples = json.loads((_PROMPTS_DIR / "chip_examples.json").read_text())
+    examples_block = "\n\n".join(
+        f"INPUT:\n{json.dumps(ex['input'], sort_keys=True, indent=2)}\n"
+        f"OUTPUT:\n{ex['output']}"
+        for ex in examples
+    )
+    payload_json = json.dumps(payload, sort_keys=True, indent=2)
+    return template.replace("{examples}", examples_block).replace("{payload_json}", payload_json)
+
+
+def render_chip_reasoning(conn, gw: int, chip_decision: dict) -> tuple[str, str]:
+    """Read path. Returns (prose, source).
+    Cache hit -> (cached_prose, 'ai'); miss -> (engine_reason, 'classic').
+    No recommendation -> ('', 'classic')."""
+    payload = _build_chip_payload(conn, chip_decision)
+    if payload is None:
+        return ("", "classic")
+    rec_hash = cache.recommendation_hash(payload)
+    hit = cache.get(conn, gw, "chip", rec_hash)
+    if hit is not None:
+        return (hit["prose"], "ai")
+    return (chip_decision["recommendation"]["reason"], "classic")
+
+
+def generate_chip_prose(conn, gw: int, chip_decision: dict, *,
+                        provider, model_id: str,
+                        max_tokens: int = 200, temperature: float = 0.2) -> bool:
+    """Write path. Returns True on grounded success (cache hit counts as success).
+    Provider errors caught; empty/ungrounded prose not cached."""
+    payload = _build_chip_payload(conn, chip_decision)
+    if payload is None:
+        logger.info("ai.chip.skipped_empty", extra={"gw": gw})
+        return False
+    rec_hash = cache.recommendation_hash(payload)
+    if cache.get(conn, gw, "chip", rec_hash) is not None:
+        return True
+    prompt = _build_chip_prompt(payload)
+    try:
+        prose = provider.generate(prompt, max_tokens=max_tokens, temperature=temperature)
+    except OllamaError:
+        logger.exception("ai.chip.provider_error",
+                         extra={"gw": gw, "model_id": model_id})
+        return False
+    if not prose:
+        logger.warning("ai.chip.empty_prose",
+                       extra={"gw": gw, "model_id": model_id})
+        return False
+    payload_text = json.dumps(payload, sort_keys=True)
+    ok, ungrounded = grounding.is_grounded(prose, payload_text)
+    if not ok:
+        logger.warning("ai.chip.grounding_failed",
+                       extra={"gw": gw, "rec_hash": rec_hash,
+                              "ungrounded": sorted(ungrounded),
+                              "model_id": model_id, "prose_chars": len(prose)})
+        return False
+    cache.put(conn, gw, "chip", rec_hash, prose, model_id)
+    return True
