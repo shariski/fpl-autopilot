@@ -504,3 +504,25 @@ def test_refresh_and_recompute_uses_next_gw_not_current(monkeypatch):
     scheduler.refresh_and_recompute(cfg={"storage": {"db_path": ":memory:"}}, conn=conn, key=b"unused")
     assert captured == [39]  # is_next wins
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (feat/authed-read-model-wiring): build_scheduler threads key into jobs
+# ---------------------------------------------------------------------------
+
+def test_build_scheduler_passes_key_to_refresh_jobs():
+    """Both refresh jobs should receive key as a kwarg so the authed branch runs unattended."""
+    sched = scheduler.build_scheduler(key=b"my-key")
+    jobs = {j.id: j for j in sched.get_jobs()}
+    for jid in ("weekly_refresh", "hourly_refresh"):
+        # APScheduler stores kwargs on the job; this is the canonical place to read them
+        assert jobs[jid].kwargs.get("key") == b"my-key", f"{jid} did not receive key kwarg"
+
+
+def test_build_scheduler_no_key_means_no_key_kwarg():
+    """When build_scheduler is called without a key, jobs run the public-only path."""
+    sched = scheduler.build_scheduler()  # default key=None
+    jobs = {j.id: j for j in sched.get_jobs()}
+    for jid in ("weekly_refresh", "hourly_refresh"):
+        # Either no kwarg at all, or key=None — both are fine
+        assert jobs[jid].kwargs.get("key") is None

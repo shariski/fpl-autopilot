@@ -85,9 +85,9 @@ def build_scheduler(scheduler=None, key=None):
     from apscheduler.triggers.cron import CronTrigger
     scheduler = scheduler or BackgroundScheduler(timezone="UTC")
     scheduler.add_job(refresh_and_recompute, CronTrigger(day_of_week="tue", hour=3, minute=0),
-                      id="weekly_refresh", replace_existing=True)
+                      id="weekly_refresh", replace_existing=True, kwargs={"key": key})
     scheduler.add_job(refresh_and_recompute, CronTrigger(minute=0),
-                      id="hourly_refresh", replace_existing=True)
+                      id="hourly_refresh", replace_existing=True, kwargs={"key": key})
     if key is not None:
         scheduler.add_job(lambda: auto_execute_job(key), CronTrigger(minute="*/15"),
                           id="auto_execute", replace_existing=True)
