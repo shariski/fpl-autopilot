@@ -858,3 +858,107 @@ def test_pick_flagged_transfer_still_returns_rank_when_ft_positive(db):
 
     result = deadguard._pick_flagged_transfer(db, _FT_CFG, suggester=_suggester)
     assert result == 1  # int rank, not a dict
+
+
+# ---------------------------------------------------------------------------
+# S-A.4 Task 2: _run_trigger AI prose integration
+# ---------------------------------------------------------------------------
+def _wire_trigger_happy_path(db, monkeypatch):
+    """Set up the standard happy-path mocks for _run_trigger (no transfer)."""
+    _configure_tg(monkeypatch)
+    _seed_gw_dl(db, _NOW + timedelta(minutes=20))
+    monkeypatch.setattr(deadguard.captain, "get_captain_picks",
+                        lambda conn: {"picks": [{"player_id": 5, "web_name": "Haaland"}],
+                                      "vice_player_id": 6, "confidence": 80})
+    monkeypatch.setattr(deadguard.lineup, "run_lineup",
+                        lambda conn, key, **k: types.SimpleNamespace(ok=True, dry_run=False, status=200))
+    monkeypatch.setattr(deadguard, "_pick_flagged_transfer", lambda conn, cfg: None)
+
+
+def test_run_trigger_uses_ai_prose_in_notify_when_cache_populated(monkeypatch, db):
+    """When ai.enabled=true and AI generation succeeds, _notify('executed', ...)
+    sends the AI prose instead of the template."""
+    from src.interface import deadguard as dg
+    from src.ai import provider as ai_prv
+
+    _wire_trigger_happy_path(db, monkeypatch)
+
+    # Stub OllamaProvider to return grounded prose (contains "Haaland" from the payload)
+    class _StubProvider:
+        def __init__(self, *a, **kw):
+            pass
+
+        def generate(self, prompt, **kw):
+            return "Deadguard set Haaland as captain for GW30."
+
+    monkeypatch.setattr(ai_prv, "OllamaProvider", _StubProvider)
+
+    sent = []
+    monkeypatch.setattr(dg, "_notify", lambda conn, kind, text: sent.append((kind, text)))
+
+    dg._run_trigger(db, b"key", 30, _CFG)
+
+    executed_calls = [t for k, t in sent if k == "executed"]
+    assert any("Haaland" in t and "Deadguard set" in t for t in executed_calls), \
+        f"Expected AI prose in executed notify, got: {executed_calls}"
+
+
+def test_run_trigger_falls_back_to_template_when_ai_unavailable(monkeypatch, db):
+    """When ai.enabled=true but provider raises OllamaError, _notify uses the template."""
+    from src.interface import deadguard as dg
+    from src.ai import provider as ai_prv
+
+    _wire_trigger_happy_path(db, monkeypatch)
+
+    class _ErrProvider:
+        def __init__(self, *a, **kw):
+            pass
+
+        def generate(self, prompt, **kw):
+            raise ai_prv.OllamaError("ollama down")
+
+    monkeypatch.setattr(ai_prv, "OllamaProvider", _ErrProvider)
+
+    sent = []
+    monkeypatch.setattr(dg, "_notify", lambda conn, kind, text: sent.append((kind, text)))
+
+    dg._run_trigger(db, b"key", 30, _CFG)
+
+    executed_calls = [t for k, t in sent if k == "executed"]
+    assert executed_calls, "Expected at least one 'executed' notify"
+    assert any(t.startswith("Deadguard: captain ") for t in executed_calls), \
+        f"Expected template format, got: {executed_calls}"
+
+
+def test_run_trigger_uses_template_when_ai_disabled(monkeypatch, db):
+    """When ai.enabled=false, OllamaProvider is never instantiated."""
+    from src.interface import deadguard as dg
+    from src import config as _cfg_mod
+    from src.ai import provider as ai_prv
+
+    _wire_trigger_happy_path(db, monkeypatch)
+
+    monkeypatch.setattr(_cfg_mod, "ai_enabled", lambda cfg=None: False)
+
+    boom = []
+
+    class _BoomProvider:
+        def __init__(self, *a, **kw):
+            boom.append("init")
+
+        def generate(self, prompt, **kw):
+            boom.append("generate")
+            return "should not be called"
+
+    monkeypatch.setattr(ai_prv, "OllamaProvider", _BoomProvider)
+
+    sent = []
+    monkeypatch.setattr(dg, "_notify", lambda conn, kind, text: sent.append((kind, text)))
+
+    dg._run_trigger(db, b"key", 30, _CFG)
+
+    executed_calls = [t for k, t in sent if k == "executed"]
+    assert executed_calls, "Expected at least one 'executed' notify"
+    assert any(t.startswith("Deadguard: captain ") for t in executed_calls), \
+        f"Expected template format, got: {executed_calls}"
+    assert boom == [], f"AI provider must NOT be instantiated when ai.enabled=false, got: {boom}"

@@ -137,7 +137,48 @@ def _run_trigger(conn, key, gw, cfg):
                                 inputs={"pick": caps["picks"][0]}, executed=True)
     except Exception:
         log.exception("deadguard summary log failed (lineup and transfer already applied)")
-    _notify(conn, "executed", f"Deadguard: captain {name}, bench optimized, {transfer_note}.")
+    # Build outcome + AI prose (best-effort; never blocks the notification)
+    template_summary = f"Deadguard: captain {name}, bench optimized, {transfer_note}."
+    summary = template_summary
+    try:
+        if config.ai_enabled(cfg):
+            transfer_info = None
+            if transfer_applied:
+                out_row = conn.execute(
+                    "SELECT web_name FROM players WHERE id=?",
+                    (body["element_out"],)).fetchone()
+                in_row = conn.execute(
+                    "SELECT web_name FROM players WHERE id=?",
+                    (body["element_in"],)).fetchone()
+                if out_row is not None and in_row is not None:
+                    transfer_info = {"out_name": out_row["web_name"],
+                                     "in_name": in_row["web_name"]}
+            vice_name = (caps["picks"][1]["web_name"]
+                         if len(caps["picks"]) > 1 else None)
+            outcome = {
+                "captain_name": name,
+                "vice_name": vice_name,
+                "bench_changed": True,
+                "transfer": transfer_info,
+                "gw": gw,
+            }
+            from src.ai import reasoning as ai_reasoning, provider as ai_provider
+            ollama = ai_provider.OllamaProvider(
+                host=config.ai_ollama_host(cfg),
+                model=config.ai_ollama_model(cfg),
+                timeout_seconds=config.ai_timeout_seconds(cfg),
+            )
+            if ai_reasoning.generate_deadguard_summary(
+                    conn, gw=gw, outcome=outcome,
+                    provider=ollama, model_id=config.ai_ollama_model(cfg)):
+                prose, src = ai_reasoning.render_deadguard_summary(conn, gw, outcome)
+                if src == "ai" and prose:
+                    summary = prose
+    except Exception:
+        log.exception("ai.deadguard.generation_failed")
+        summary = template_summary
+
+    _notify(conn, "executed", summary)
     if transfer_applied:
         try:
             telegram.send_message("↩️ Undo the transfer? Free before the deadline.",
