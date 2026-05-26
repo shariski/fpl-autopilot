@@ -192,3 +192,36 @@ def get_transfer_reasoning(conn, gw):
         return None
     prose, source = ai_reasoning.render_transfer_reasoning(conn, gw, decision)
     return prose if source == "ai" else None
+
+
+def get_chip_recommendation(conn):
+    """Wraps chips.recommend_chip and enriches the recommendation (if any) with
+    (reasoning, reasoning_source). When recommendation is None, returns unchanged."""
+    from src.decisions import chips
+    from src.ai import reasoning as ai_reasoning
+    decision = chips.recommend_chip(conn)
+    if decision.get("recommendation") is None:
+        return decision
+    gw = _next_gw(conn)
+    if gw is None:
+        return decision
+    prose, source = ai_reasoning.render_chip_reasoning(conn, gw, decision)
+    return {
+        **decision,
+        "recommendation": {
+            **decision["recommendation"],
+            "reasoning": prose,
+            "reasoning_source": source,
+        },
+    }
+
+
+def get_chip_reasoning(conn, gw):
+    """Telegram-path helper. Returns cached AI prose, or None on miss."""
+    from src.decisions import chips
+    from src.ai import reasoning as ai_reasoning
+    decision = chips.recommend_chip(conn)
+    if decision.get("recommendation") is None:
+        return None
+    prose, source = ai_reasoning.render_chip_reasoning(conn, gw, decision)
+    return prose if source == "ai" else None

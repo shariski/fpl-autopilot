@@ -284,3 +284,47 @@ def test_api_transfers_carries_reasoning_ai_on_cache_hit(client_conn):
     for s in body["suggestions"][1:]:
         assert s["reasoning_source"] == "classic"
         assert s["reasoning"] == ""
+
+
+def test_api_chips_carries_reasoning_classic_on_cache_miss(client):
+    """With no AI cache + a non-null recommendation: classic = engine reason."""
+    resp = client.get("/api/chips")
+    assert resp.status_code == 200
+    body = resp.json()
+    if body.get("recommendation") is None:
+        return    # fixture state has no recommendation — skip
+    rec = body["recommendation"]
+    assert rec["reasoning_source"] == "classic"
+    assert rec["reasoning"] == rec["reason"]
+
+
+def test_api_chips_carries_reasoning_ai_on_cache_hit(client_conn):
+    """Pre-warm cache -> reasoning_source='ai'."""
+    client, conn = client_conn
+    from src.ai import cache as ai_cache, reasoning as ai_reasoning
+    from src.decisions import chips
+    decision = chips.recommend_chip(conn)
+    if decision.get("recommendation") is None:
+        return
+    payload = ai_reasoning._build_chip_payload(conn, decision)
+    if payload is None:
+        return
+    rec_hash = ai_cache.recommendation_hash(payload)
+    nxt = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()["gw"]
+    ai_cache.put(conn, gw=nxt, pane_type="chip", rec_hash=rec_hash,
+                 prose="Chip AI prose.", model_id="qwen2.5:7b-instruct-q4_K_M")
+
+    resp = client.get("/api/chips")
+    body = resp.json()
+    assert body["recommendation"]["reasoning_source"] == "ai"
+    assert body["recommendation"]["reasoning"] == "Chip AI prose."
+
+
+def test_api_chips_returns_unchanged_shape_when_no_recommendation(client):
+    """When the engine returns recommendation=None, no reasoning fields are added."""
+    resp = client.get("/api/chips")
+    body = resp.json()
+    if body.get("recommendation") is None:
+        assert "recommendation" in body  # key exists; value None
+        # No reasoning_source key at the top level either
+        assert "reasoning_source" not in body
