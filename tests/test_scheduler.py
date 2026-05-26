@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone, timedelta
 
 import pytest
@@ -378,3 +379,68 @@ def test_serve_defaults_to_localhost():
     import inspect
     import src.cli as cli
     assert inspect.signature(cli.serve).parameters["host"].default == "127.0.0.1"
+
+
+def test_refresh_and_recompute_invokes_ai_job_when_enabled(monkeypatch):
+    """ai.enabled=True -> generate_ai_reasoning_job is called after recompute."""
+    from src import scheduler
+    from src.data.db import connect, init_db
+    conn = connect(":memory:")
+    init_db(conn)
+    conn.execute("INSERT INTO gameweeks(id, name, deadline_utc, is_current, is_next, "
+                 "finished, state) VALUES (38, 'GW38', '2026-05-20T11:00:00Z', 0, 1, 0, 'PENDING')")
+    conn.commit()
+    cfg = {"fpl": {"team_id": 1}, "ai": {"enabled": True}}
+
+    calls = {"refresh": 0, "fdr": 0, "xp": 0, "ai": 0}
+    monkeypatch.setattr("src.cli.refresh", lambda **kw: calls.__setitem__("refresh", calls["refresh"] + 1))
+    monkeypatch.setattr("src.analytics.fdr.compute_and_store",
+                        lambda c: calls.__setitem__("fdr", calls["fdr"] + 1))
+    monkeypatch.setattr("src.analytics.xp.compute_and_store",
+                        lambda c: calls.__setitem__("xp", calls["xp"] + 1))
+    monkeypatch.setattr("src.ai.jobs.generate_ai_reasoning_job",
+                        lambda *a, **kw: calls.__setitem__("ai", calls["ai"] + 1) or {"captain": "ok"})
+
+    scheduler.refresh_and_recompute(cfg=cfg, conn=conn)
+    assert calls == {"refresh": 1, "fdr": 1, "xp": 1, "ai": 1}
+
+
+def test_refresh_and_recompute_skips_ai_when_disabled(monkeypatch):
+    from src import scheduler
+    from src.data.db import connect, init_db
+    conn = connect(":memory:")
+    init_db(conn)
+    cfg = {"fpl": {"team_id": 1}, "ai": {"enabled": False}}
+
+    called = {"ai": 0}
+    monkeypatch.setattr("src.cli.refresh", lambda **kw: None)
+    monkeypatch.setattr("src.analytics.fdr.compute_and_store", lambda c: None)
+    monkeypatch.setattr("src.analytics.xp.compute_and_store", lambda c: None)
+    monkeypatch.setattr("src.ai.jobs.generate_ai_reasoning_job",
+                        lambda *a, **kw: called.__setitem__("ai", called["ai"] + 1) or {})
+
+    scheduler.refresh_and_recompute(cfg=cfg, conn=conn)
+    assert called["ai"] == 0
+
+
+def test_refresh_and_recompute_swallows_ai_exception(monkeypatch, caplog):
+    """An exception in the AI job is logged but never blocks the recompute cycle."""
+    import logging
+    from src import scheduler
+    from src.data.db import connect, init_db
+    conn = connect(":memory:")
+    init_db(conn)
+    cfg = {"fpl": {"team_id": 1}, "ai": {"enabled": True}}
+
+    monkeypatch.setattr("src.cli.refresh", lambda **kw: None)
+    monkeypatch.setattr("src.analytics.fdr.compute_and_store", lambda c: None)
+    monkeypatch.setattr("src.analytics.xp.compute_and_store", lambda c: None)
+
+    def _boom(*a, **kw):
+        raise RuntimeError("ollama is down")
+    monkeypatch.setattr("src.ai.jobs.generate_ai_reasoning_job", _boom)
+
+    with caplog.at_level(logging.WARNING, logger="src.scheduler"):
+        scheduler.refresh_and_recompute(cfg=cfg, conn=conn)   # must NOT raise
+    assert any("ai" in r.message.lower() or "ai.generate_job_failed" in r.message
+               for r in caplog.records)

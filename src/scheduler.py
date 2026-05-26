@@ -30,6 +30,20 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
         refresh(cfg=cfg, conn=conn, client=client, understat_client=understat_client)
         fdr.compute_and_store(conn)
         xp.compute_and_store(conn)
+        if config.ai_enabled(cfg):
+            try:
+                from src.ai import jobs as ai_jobs
+                from src.ai.provider import OllamaProvider
+                provider = OllamaProvider(
+                    host=config.ai_ollama_host(cfg),
+                    model=config.ai_ollama_model(cfg),
+                    timeout_seconds=config.ai_timeout_seconds(cfg),
+                )
+                ai_jobs.generate_ai_reasoning_job(
+                    conn, panes=["captain"], provider=provider,
+                    model_id=config.ai_ollama_model(cfg))
+            except Exception:
+                log.exception("ai.generate_job_failed")
         _ping_healthcheck()
     finally:
         if owns:
