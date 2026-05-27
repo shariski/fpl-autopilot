@@ -154,7 +154,11 @@ def test_build_scheduler_with_key_adds_autoexec():
 
 
 def test_maybe_load_key_disabled_returns_none(monkeypatch):
-    # unattended.enabled: false AND telegram.interactive: false AND deadguard.enabled: false
+    # All three feature flags off => no master key is loaded.
+    # Patch every accessor _maybe_load_key consults so the test is isolated
+    # from whatever is in the real config.yaml.
+    monkeypatch.setattr(scheduler.config, "unattended_enabled", lambda *a, **k: False)
+    monkeypatch.setattr(scheduler.config, "telegram_interactive_enabled", lambda *a, **k: False)
     monkeypatch.setattr(scheduler.config, "deadguard_enabled", lambda *a, **k: False)
     assert scheduler._maybe_load_key() is None
 
