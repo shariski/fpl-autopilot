@@ -7,7 +7,8 @@ import type {
 	Transfers,
 	Chips,
 	Planner,
-	Activity
+	Activity,
+	AuditReport
 } from '../types';
 import { fullMock } from '../mocks/full';
 import { launchMock } from '../mocks/launch';
@@ -87,4 +88,17 @@ export async function fetchDashboard(fetchFn: Fetch = fetch): Promise<Dashboard>
 /** Mock fixtures for demo / offline / tests. `?mock=full|launch` selects this path. */
 export async function getMockDashboard(scenario: MockScenario = 'full'): Promise<Dashboard> {
 	return scenario === 'launch' ? launchMock : fullMock;
+}
+
+/**
+ * Fetch the most recent persisted audit for the given gw. Returns null on 404 so the page can
+ * render an empty state without throwing.
+ */
+export async function fetchAudit(gw: number, fetchFn: Fetch = fetch): Promise<AuditReport | null> {
+	const res = await fetchFn(`${API_BASE}/api/audit/${gw}`);
+	if (res.status === 404) return null;
+	if (!res.ok) {
+		throw new Error(`/api/audit/${gw} failed: ${res.status}`);
+	}
+	return (await res.json()) as AuditReport;
 }

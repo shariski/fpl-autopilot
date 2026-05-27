@@ -68,3 +68,19 @@ def deadguard_keep(conn=Depends(get_db)):
     if nxt:
         repository.touch_user_action(conn, nxt["id"])
     return queries.get_status(conn)
+
+
+@app.get("/api/audit/{gw}")
+def audit_for_gw(gw: int):
+    """Return the most recent persisted audit whose gw_hi matches `gw`. 404 if none.
+
+    Files are named `audit_{lo}-{hi}_{ts}.json` (per reports.persist). We match on `-{gw}_`
+    and pick the lexicographically-largest filename, which sorts by ISO-formatted timestamp.
+    """
+    from fastapi import HTTPException
+    from src.audit import reports
+    matches = sorted(reports.DEFAULT_DIR.glob(f"audit_*-{gw}_*.json"))
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"no audit found for gw={gw}")
+    report = reports.load(matches[-1])
+    return reports._to_jsonable(report)

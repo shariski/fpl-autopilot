@@ -132,3 +132,45 @@ export interface Dashboard {
 }
 
 export type MockScenario = 'full' | 'launch';
+
+// ---------- Audit (S-G) ----------
+export interface AuditResidual {
+	activity_log_id: number;
+	gw: number;
+	decision_type: string;
+	subject_player_ids: number[];
+	expected_points: number;
+	actual_points: number;
+	residual: number;
+	model_version: string;
+	inputs_summary: Record<string, unknown>;
+}
+
+export interface AuditAggregateStat {
+	n: number;
+	mean_residual: number;
+	stddev: number;
+	ci_95: [number, number];
+}
+
+export interface AuditProposal {
+	parameter: string;
+	current_value: number;
+	proposed_value: number;
+	justification: string;
+	n_observations: number;
+	confidence: 'high' | 'medium' | 'low';
+	bounded_range: [number, number] | null;
+}
+
+export interface AuditReport {
+	gw_range: [number, number];
+	generated_at: string;
+	model_version: string;
+	residuals: AuditResidual[];
+	cluster_counts: Record<string, number>;
+	aggregate_trends: Record<string, AuditAggregateStat>;
+	proposals: AuditProposal[];
+	narrative: string | null;
+	narrative_provider: string | null;
+}
