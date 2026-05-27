@@ -61,7 +61,12 @@ decision). Off by default.
 
 ## Status
 
-Pre-build. See [`docs/plan.md`](docs/plan.md) for the task list and [`docs/risks.md`](docs/risks.md) for known unknowns.
+- **Phase 1 (Insight Engine):** complete — data layer, FDR, xP model v1, captain/transfer/chip decisions, SvelteKit PWA dashboard.
+- **Phase 2 (Decision Automation):** complete — auth (token-capture + refresh), action executor, mode router, Telegram interactive, deadguard with bench/transfer scope and undo, freeze/kill-switch.
+- **Phase 3 (AI Layer):** in progress — captain/transfer/chip reasoning via LLM, retrospective audit narrator.
+- **Deployed:** live on a personal VPS (jumbo). Single container running `fpl-autopilot serve` (FastAPI + embedded scheduler), image built by GitHub Actions and pushed to GHCR, dashboard reachable only via Tailscale (no public internet exposure). See [`docs/superpowers/specs/2026-05-27-vps-deployment-design.md`](docs/superpowers/specs/2026-05-27-vps-deployment-design.md) and [`docs/superpowers/plans/2026-05-27-vps-deployment.md`](docs/superpowers/plans/2026-05-27-vps-deployment.md).
+
+See [`docs/plan.md`](docs/plan.md) for the full task list and [`docs/risks.md`](docs/risks.md) for known unknowns.
 
 ## License
 

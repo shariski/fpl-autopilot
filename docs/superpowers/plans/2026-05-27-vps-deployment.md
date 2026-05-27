@@ -673,10 +673,14 @@ Expected: JSON response — current GW info, squad summary, etc.
 - [ ] **Step 9.1: Start `tailscale serve`**
 
 ```bash
-ssh jumbo 'sudo tailscale serve --bg https / http://localhost:8000'
+ssh -t jumbo 'sudo tailscale serve --bg http://localhost:8000'
 ```
 
 Expected: prints the tailnet URL (e.g. `Available within your tailnet: https://server1.<tailnet>.ts.net/`). Cert auto-provisioning happens silently on first request.
+
+Note: older Tailscale docs show `tailscale serve --bg https / http://localhost:8000`
+(separate scheme + path args). That syntax was removed; current CLI just takes the
+upstream URL and defaults to HTTPS at /. Verified on jumbo May 2026.
 
 - [ ] **Step 9.2: Verify from your Mac (already on the tailnet)**
 

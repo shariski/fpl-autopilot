@@ -598,3 +598,45 @@ What's backed up:
 - `config.yaml` — mode settings, thresholds
 
 Master password is **not** backed up. You backed that up in a password manager during onboarding.
+
+---
+
+## Appendix — Tailscale dashboard access on macOS
+
+**Symptom:** `https://<machine>.<tailnet>.ts.net/` fails to load in a Mac
+browser with "site can't be reached" or `nodename nor servname provided,
+or not known`. iOS / Android / Linux work fine for the same URL.
+
+**Cause:** Tailscale's macOS DNS hook (NetworkExtension-based) silently
+fails to register as the resolver for `*.ts.net` on the system. The
+`tailscale dns status` CLI still reports DNS as enabled because the daemon
+is healthy and the *intent* is correct; macOS just hasn't honoured the
+intent. `scutil --dns` shows the Tailscale entry as "Not Reachable".
+
+Toggling the Tailscale app off/on sometimes fixes it; sometimes doesn't.
+
+**Reliable fix (one-time per Mac):**
+
+```bash
+sudo mkdir -p /etc/resolver
+echo 'nameserver 100.100.100.100' | sudo tee /etc/resolver/ts.net
+dscacheutil -flushcache
+sudo killall -HUP mDNSResponder
+```
+
+This tells `mDNSResponder` to send any `*.ts.net` lookup directly to
+Tailscale's local resolver at `100.100.100.100`, bypassing the
+NetworkExtension hook entirely. Survives reboots; macOS reads
+`/etc/resolver/*` on `HUP`.
+
+**Verification:**
+
+```bash
+dscacheutil -q host -a name server1.taila3964c.ts.net | grep ip_address
+# expected: ip_address: 100.96.87.32  (or whatever your tailnet IP is)
+```
+
+**Note:** the dashboard works fine on iOS, Android, and from `curl
+--resolve` workarounds during the affected period. This is purely a
+macOS resolver-plumbing quirk. Telegram (the primary interface per
+§B9 of CLAUDE.md) is unaffected — it doesn't route through Tailscale.
