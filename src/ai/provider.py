@@ -70,3 +70,102 @@ class OllamaProvider:
             raise OllamaError("ollama returned malformed json") from e
         text = body.get("response", "") if isinstance(body, dict) else ""
         return text.strip()
+
+
+
+class ClaudeError(RuntimeError):
+    """Raised when the Claude API call fails or is refused before send (privacy gate)."""
+
+
+class ClaudeRateLimitError(ClaudeError):
+    """Raised when the per-day quota set on the provider has been exhausted."""
+
+
+# Credential-shaped patterns that must NEVER appear in a prompt sent to Claude (B7).
+# Conservative regex set — extend as new credential types appear in the codebase.
+import re as _re
+_CREDENTIAL_PATTERNS = [
+    _re.compile(r"\bpl_profile\b", _re.IGNORECASE),
+    _re.compile(r"\bsessionid\s*=", _re.IGNORECASE),
+    _re.compile(r"\bcsrftoken\b", _re.IGNORECASE),
+    _re.compile(r"X-CSRFToken", _re.IGNORECASE),
+]
+
+
+class ClaudeProvider:
+    """Anthropic Claude provider for the audit-narration role. Same LLMProvider protocol as
+    OllamaProvider — `generate(prompt, *, max_tokens, temperature) -> str`.
+
+    Guardrails:
+    - Pre-send privacy scan: prompts containing credential-shaped strings are refused
+      before any network call (B7).
+    - Per-day quota: if `max_calls_per_day` ai.audit rows already exist in activity_log
+      within the last 24h, refuses with ClaudeRateLimitError.
+    - Post-call activity_log entry records token usage (B10) for cost visibility.
+    """
+
+    def __init__(self, *, api_key: str, conn,
+                 model: str = "claude-sonnet-4-6",
+                 timeout_seconds: float = 60.0,
+                 max_calls_per_day: int = 5,
+                 _client=None):
+        self.model = model
+        self.timeout_seconds = timeout_seconds
+        self.max_calls_per_day = max_calls_per_day
+        self._conn = conn
+        if _client is not None:
+            self._client = _client
+        else:
+            import anthropic
+            self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout_seconds)
+
+    def generate(self, prompt: str, *, max_tokens: int = 1500,
+                 temperature: float = 0.2) -> str:
+        self._refuse_credential_prompts(prompt)
+        self._enforce_daily_quota()
+        try:
+            response = self._client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except Exception as e:
+            raise ClaudeError(f"claude request failed: {type(e).__name__}") from e
+        text = "".join(block.text for block in response.content if hasattr(block, "text"))
+        self._log_usage(response)
+        return text.strip()
+
+    # ---------- guardrails ----------
+
+    def _refuse_credential_prompts(self, prompt):
+        for pat in _CREDENTIAL_PATTERNS:
+            if pat.search(prompt):
+                raise ClaudeError(
+                    f"prompt rejected: contains credential/sensitive pattern ({pat.pattern})")
+
+    def _enforce_daily_quota(self):
+        row = self._conn.execute(
+            """SELECT COUNT(*) AS n FROM activity_log
+               WHERE decision_type='ai.audit'
+                 AND datetime(ts_utc) >= datetime('now', '-1 day')""").fetchone()
+        n_recent = row["n"] if row else 0
+        if n_recent >= self.max_calls_per_day:
+            raise ClaudeRateLimitError(
+                f"daily quota exhausted ({n_recent}/{self.max_calls_per_day} calls in last 24h)")
+
+    def _log_usage(self, response):
+        import json as _json
+        usage = getattr(response, "usage", None)
+        input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
+        output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
+        self._conn.execute(
+            """INSERT INTO activity_log (ts_utc, gw, mode, decision_type, action_taken,
+                 inputs_json, executed)
+               VALUES (datetime('now'), NULL, 'audit', 'ai.audit', 'claude generate',
+                       ?, 1)""",
+            (_json.dumps({"model": self.model,
+                          "input_tokens": int(input_tokens),
+                          "output_tokens": int(output_tokens)}),)
+        )
+        self._conn.commit()
