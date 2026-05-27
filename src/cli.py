@@ -1,6 +1,8 @@
 import argparse
+import json
 import pathlib
 import yaml
+from . import config
 from .config import load_config, team_id as cfg_team_id, db_path as cfg_db_path
 from .data.db import connect, init_db
 from .data.fpl_client import FPLClient
@@ -206,6 +208,77 @@ def _freeze_status_cli(conn=None):
         print(f"FROZEN since {st['since']} (source: {st['source']}) — {st['reason']}")
     if owns:
         conn.close()
+
+
+
+def _cmd_review_cli(*, gw=None, last=4, ai_override=None, format_="text", conn=None):
+    """Audit past decisions and print results. Window: --gw N (single) OR --last N (last N
+    settled GWs). AI provider: ai_override ∈ {'claude','ollama','none', None}; None falls back
+    to config."""
+    import os
+    from .audit import audit as audit_mod, reports as reports_mod
+
+    owns = conn is None
+    conn = conn or connect(cfg_db_path())
+    init_db(conn)
+    try:
+        # Resolve the GW window.
+        if gw is not None:
+            gw_lo, gw_hi = gw, gw
+        else:
+            settled = [r["id"] for r in conn.execute(
+                "SELECT id FROM gameweeks WHERE finished=1 ORDER BY id")]
+            if not settled:
+                print("No settled gameweeks — nothing to audit yet.")
+                return
+            gw_hi = settled[-1]
+            gw_lo = settled[-min(last, len(settled))]
+
+        # Build the provider (if any).
+        provider, model_id = None, None
+        provider_choice = ai_override or _resolve_audit_provider_choice()
+        if provider_choice == "claude":
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                print("Error: --ai claude requires ANTHROPIC_API_KEY env var. Aborting.")
+                return
+            from .ai.provider import ClaudeProvider
+            provider = ClaudeProvider(api_key=api_key, conn=conn)
+            model_id = "claude-sonnet-4-6"
+        elif provider_choice == "ollama":
+            from .ai.provider import OllamaProvider
+            cfg = config.load_config()
+            provider = OllamaProvider(
+                host=config.ai_ollama_host(cfg),
+                model=config.ai_ollama_model(cfg),
+                timeout_seconds=config.ai_timeout_seconds(cfg))
+            model_id = config.ai_ollama_model(cfg)
+
+        # Run the audit.
+        cfg = config.load_config()
+        current_thresholds = {
+            "thresholds.min_ep_delta_for_transfer":
+                cfg.get("thresholds", {}).get("min_ep_delta_for_transfer", 2.0),
+        }
+        report = audit_mod.run_audit(
+            conn, gw_lo=gw_lo, gw_hi=gw_hi,
+            ai_provider=provider, ai_model_id=model_id,
+            current_thresholds=current_thresholds)
+
+        # Emit.
+        if format_ == "json":
+            print(json.dumps(reports_mod._to_jsonable(report), indent=2, default=str))
+        else:
+            print(reports_mod.format_text(report))
+    finally:
+        if owns:
+            conn.close()
+
+
+def _resolve_audit_provider_choice():
+    """Read ai.audit.provider from config; default to 'none' if missing."""
+    cfg = config.load_config()
+    return cfg.get("ai", {}).get("audit", {}).get("provider", "none")
 
 
 def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
@@ -493,6 +566,16 @@ def main(argv=None):
     p_freeze.add_argument("--reason", default="frozen from CLI")
     sub.add_parser("unfreeze", help="resume autonomous FPL execution")
     sub.add_parser("freeze-status", help="show whether autonomous execution is frozen")
+    p_review = sub.add_parser("review", help="audit past decisions vs outcomes")
+    review_window = p_review.add_mutually_exclusive_group()
+    review_window.add_argument("--gw", type=int, default=None,
+                               help="audit a single GW")
+    review_window.add_argument("--last", type=int, default=4,
+                               help="audit the last N settled GWs (default 4)")
+    p_review.add_argument("--ai", choices=["claude", "ollama", "none"], default=None,
+                          help="override the AI provider for this run (default: from config)")
+    p_review.add_argument("--format", choices=["text", "json"], default="text",
+                          dest="format_", help="output format (default: text)")
     args = parser.parse_args(argv)
     if args.command == "refresh":
         sources = (args.source,) if args.source else ("fpl", "understat")
@@ -524,6 +607,9 @@ def main(argv=None):
         _unfreeze_cli()
     elif args.command == "freeze-status":
         _freeze_status_cli()
+    elif args.command == "review":
+        _cmd_review_cli(gw=args.gw, last=args.last,
+                        ai_override=args.ai, format_=args.format_)
 
 
 if __name__ == "__main__":
