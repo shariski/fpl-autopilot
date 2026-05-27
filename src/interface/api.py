@@ -84,3 +84,28 @@ def audit_for_gw(gw: int):
         raise HTTPException(status_code=404, detail=f"no audit found for gw={gw}")
     report = reports.load(matches[-1])
     return reports._to_jsonable(report)
+
+
+# --- Static frontend (SvelteKit adapter-static build) ---
+# Mounted at "/" so the dashboard PWA is served from the same FastAPI
+# process in production. Conditional on the directory existing so local
+# dev (no built frontend) is unaffected. The mount sits AFTER all
+# @app.get/@app.post decorators above so the /api/* route table is
+# registered first and is not shadowed by StaticFiles.
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+
+_FRONTEND_BUILD = Path("/app/frontend_build")
+
+
+def _mount_frontend(target_app, build_dir=None):
+    """Mount the SvelteKit static build on `target_app` at /, if the build
+    directory exists. Factored out so tests can drive it with a temp path."""
+    build_dir = build_dir or _FRONTEND_BUILD
+    if build_dir.is_dir():
+        target_app.mount("/",
+                         StaticFiles(directory=build_dir, html=True),
+                         name="frontend")
+
+
+_mount_frontend(app)
