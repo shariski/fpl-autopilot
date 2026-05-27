@@ -19,9 +19,9 @@ describe('ChipRecommendation', () => {
 
 describe('ChipRecommendation AI/classic tag + prose', () => {
     it('shows AI prose and AI tag when reasoning_source is ai', () => {
-        const chips = {
+        const chips: Chips = {
             recommendation: { chip: 'triple_captain', reason: 'GW39 DGW: Haaland DGW-xP 14.8.',
-                              reasoning: 'AI chip prose here.', reasoning_source: 'ai' as const },
+                              reasoning: 'AI chip prose here.', reasoning_source: 'ai' },
         };
         render(ChipRecommendation, { chips });
         expect(screen.getByText('AI chip prose here.')).toBeInTheDocument();
@@ -30,9 +30,9 @@ describe('ChipRecommendation AI/classic tag + prose', () => {
     });
 
     it('shows engine reason with no AI tag when reasoning_source is classic', () => {
-        const chips = {
+        const chips: Chips = {
             recommendation: { chip: 'triple_captain', reason: 'GW39 DGW: Haaland DGW-xP 14.8.',
-                              reasoning: 'GW39 DGW: Haaland DGW-xP 14.8.', reasoning_source: 'classic' as const },
+                              reasoning: 'GW39 DGW: Haaland DGW-xP 14.8.', reasoning_source: 'classic' },
         };
         render(ChipRecommendation, { chips });
         expect(screen.getByText('GW39 DGW: Haaland DGW-xP 14.8.')).toBeInTheDocument();
