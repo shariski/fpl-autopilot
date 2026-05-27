@@ -1,0 +1,44 @@
+# fpl-autopilot — production compose. Lives on the VPS at
+# /opt/fpl-autopilot/docker-compose.yml (copy of this file, not a symlink —
+# secrets in .env are not committed and must stay on the host).
+#
+# One service: `app` runs `fpl-autopilot serve`, which embeds the
+# APScheduler in-process. See docs/superpowers/specs/2026-05-27-vps-
+# deployment-design.md for why we don't split into two services.
+#
+# Networking: bound to 127.0.0.1:8000 on the host. The host's
+# `tailscale serve` (running outside Docker) forwards HTTPS from the
+# tailnet to this port. Nothing is publicly routable.
+#
+# Image: from GHCR. CI builds and pushes on every push to main; the VPS
+# only pulls. IMAGE_TAG can pin a specific commit SHA (e.g.
+# `IMAGE_TAG=sha-eee6568... docker compose up -d`); falls back to `latest`.
+
+services:
+  app:
+    image: ghcr.io/shariski/fpl-autopilot:${IMAGE_TAG:-latest}
+    container_name: fpl-autopilot
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - fpl-autopilot-data:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/status', timeout=4)"
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  fpl-autopilot-data:
