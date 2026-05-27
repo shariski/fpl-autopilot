@@ -1,0 +1,53 @@
+[
+  {
+    "input": {
+      "gw_range": [10, 12],
+      "model_version": "v1",
+      "n_residuals": 8,
+      "cluster_counts": {"unclassified": 6, "lucky_outperform": 2},
+      "aggregate_trends": {
+        "lineup": {"n": 6, "mean_residual": 0.5, "ci_lo": -0.8, "ci_hi": 1.8}
+      },
+      "top_residuals": [
+        {"web_name": "Saka", "gw": 11, "decision_type": "lineup",
+         "expected": 12, "actual": 18, "residual": 6, "cluster": "lucky_outperform"}
+      ],
+      "proposals": []
+    },
+    "output": "Across GW10 to GW12, 8 decisions were audited under model v1. The lineup mean residual is 0.5 EP with a confidence interval of -0.8 to 1.8, straddling zero, so the engine appears well-calibrated on captain choices in this window. The largest single outperform was Saka in GW11, who returned 18 against an expectation of 12, contributing a residual of 6 that the audit tagged as lucky_outperform. No threshold adjustments are proposed; the evidence does not support any changes to the engine's current behaviour."
+  },
+  {
+    "input": {
+      "gw_range": [6, 9],
+      "model_version": "v1",
+      "n_residuals": 24,
+      "cluster_counts": {"unclassified": 18, "xp_model_miss": 6},
+      "aggregate_trends": {
+        "transfer": {"n": 22, "mean_residual": -0.7, "ci_lo": -1.1, "ci_hi": -0.3}
+      },
+      "top_residuals": [],
+      "proposals": [
+        {"parameter": "thresholds.min_ep_delta_for_transfer",
+         "current": 2.0, "proposed": 2.5, "n": 22, "confidence": "high"}
+      ]
+    },
+    "output": "Over GW6 through GW9, 24 decisions were audited; 22 of those were transfers and the picture there is not encouraging. The mean transfer residual is -0.7 EP with a confidence interval of -1.1 to -0.3, which sits firmly below zero, meaning suggested transfers underperformed expectation. The audit proposes raising thresholds.min_ep_delta_for_transfer from 2.0 to 2.5 at high confidence. Endorsing this is reasonable given the 22 observations and the narrow confidence band; a more selective threshold should reduce the marginal trades that have been losing points."
+  },
+  {
+    "input": {
+      "gw_range": [25, 28],
+      "model_version": "v1",
+      "n_residuals": 10,
+      "cluster_counts": {"unclassified": 9, "xp_model_miss": 1},
+      "aggregate_trends": {
+        "lineup": {"n": 4, "mean_residual": -3.0, "ci_lo": -5.2, "ci_hi": -0.8}
+      },
+      "top_residuals": [
+        {"web_name": "Haaland", "gw": 26, "decision_type": "lineup",
+         "expected": 13, "actual": 4, "residual": -9, "cluster": "xp_model_miss"}
+      ],
+      "proposals": []
+    },
+    "output": "GW25 to GW28 covers 10 decisions, with a noticeable captain miss at GW26. Haaland was captained for 13 expected EP and returned 4, a residual of -9 the audit clustered as xp_model_miss. GW26 was a double gameweek; the single-fixture xP used by the engine does not sum across both fixtures in a DGW, which means the expectation was structurally low for a DGW captain. Lineup residuals over this window average -3.0 with confidence interval -5.2 to -0.8, and the v1 model's known DGW handicap is the likeliest cause. No proposals are surfaced because thresholds are not the issue; the engine's xP model architecture is what would need to change."
+  }
+]

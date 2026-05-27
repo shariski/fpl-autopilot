@@ -69,7 +69,8 @@ def aggregate_from_values(values):
 
 # ---------- run_audit ----------
 
-def run_audit(conn, gw_lo, gw_hi, *, output_dir=None, ai_provider=None,
+def run_audit(conn, gw_lo, gw_hi, *, output_dir=None,
+              ai_provider=None, ai_model_id=None,
               current_thresholds=None, _injected_aggregates_for_proposals=None):
     """Compute residuals + cluster + aggregate + proposals + persist + log self.
 
@@ -115,9 +116,15 @@ def run_audit(conn, gw_lo, gw_hi, *, output_dir=None, ai_provider=None,
         proposals=proposals_list,
     )
 
-    # AI narration is wired in T4. For now, the ai_provider hook is accepted but unused.
+    # AI narration (T4): best-effort, never breaks the audit if it fails.
     if ai_provider is not None:
-        pass  # T4 will call audit_narrator.generate_audit_narrative(...)
+        from src.ai import audit_narrator
+        ok = audit_narrator.generate_audit_narrative(
+            conn, report, provider=ai_provider, model_id=ai_model_id or "unknown")
+        if ok:
+            prose, model_id = audit_narrator.render_audit_narrative(conn, report)
+            report.narrative = prose
+            report.narrative_provider = model_id
 
     # Persist to disk.
     report.persisted_path = reports_mod.persist(report, output_dir=output_dir)

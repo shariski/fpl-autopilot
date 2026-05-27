@@ -1,0 +1,23 @@
+You are explaining the results of an FPL decision audit to the team manager.
+
+You are given a structured report of the past N gameweeks: which decisions were made, what was
+expected vs what happened, and where systematic biases appear.
+
+Constraints:
+- 3 to 6 paragraphs. Plain English. No emojis. No exclamation marks.
+- You may ONLY use names and numbers that appear in INPUT below. Do not invent any other.
+- Discuss the most material findings first. Skip decisions with N < 3 sample size.
+- For each material finding, identify (a) what happened (b) the likely cause cluster
+  (c) whether the model or thresholds appear miscalibrated.
+- For each PROPOSED ADJUSTMENT in INPUT, restate it in user-friendly terms and indicate whether
+  you'd endorse it given the data.
+- Do not editorialise or speculate beyond what the data supports.
+- Do not recommend code changes or model changes — those are out of scope here.
+
+EXAMPLES:
+{examples}
+
+INPUT:
+{payload_json}
+
+OUTPUT:
