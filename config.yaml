@@ -55,7 +55,7 @@ ai:
   ollama:
     host: "http://localhost:11434"
     model: "qwen2.5:7b-instruct-q4_K_M"
-  timeout_seconds: 15
+  timeout_seconds: 60
   consecutive_failure_backoff: 3
   temperature: 0.2
   max_tokens_per_pane: 200
