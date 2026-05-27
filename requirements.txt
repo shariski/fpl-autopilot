@@ -1,9 +1,8 @@
 requests
 pydantic>=2
 pyyaml
-pytest
 fastapi
 uvicorn
-httpx
 APScheduler
 cryptography>=44
+anthropic>=0.40
