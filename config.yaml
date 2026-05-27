@@ -47,7 +47,7 @@ unattended:
   hours_before_deadline: 2
 
 telegram:
-  interactive: false
+  interactive: true
 
 ai:
   enabled: true

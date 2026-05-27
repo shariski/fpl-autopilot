@@ -378,6 +378,19 @@ fpl-autopilot config deadguard --min-ep-delta 4.0
 
 Not a critical failure unless combined with another issue.
 
+### Known quirks
+
+**Double-FROZEN (or double-confirm) notifications.** Telegram does not auto-disable
+inline buttons after a tap. If you tap the same button twice before the poller
+processes the first callback, both callbacks land in the same `getUpdates` batch
+and the handler runs twice. The DB write paths are idempotent (`override.freeze`,
+`set_pending_status`), so state is correct, but you'll receive two confirmation
+notifications. Harmless. Hardening (deferred): after the first handle, call
+`editMessageReplyMarkup` on the original message to strip the buttons so the
+second tap returns "Already handled" via `answer_callback_query` instead of
+firing again. See `src/interface/telegram_interactive.py:174` (`handle_freeze`)
+and `:185` (`handle_unfreeze`).
+
 ### Notes
 
 ---
