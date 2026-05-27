@@ -1,8 +1,12 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
+import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+	// Override via frontend/.env.local: VITE_API_TARGET=http://localhost:PORT
+	const apiTarget = loadEnv(mode, process.cwd(), 'VITE_').VITE_API_TARGET ?? 'http://localhost:8000';
+	return ({
 	plugins: [
 		sveltekit(),
 		SvelteKitPWA({
@@ -49,8 +53,8 @@ export default defineConfig(({ mode }) => ({
 		})
 	],
 	// Dev/preview: same-origin /api proxied to the FastAPI backend (`fpl-autopilot serve`).
-	server: { proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } } },
-	preview: { proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } } },
+	server: { proxy: { '/api': { target: apiTarget, changeOrigin: true } } },
+	preview: { proxy: { '/api': { target: apiTarget, changeOrigin: true } } },
 	test: {
 		environment: 'jsdom',
 		globals: true,
@@ -58,4 +62,5 @@ export default defineConfig(({ mode }) => ({
 		include: ['src/**/*.{test,spec}.{js,ts}']
 	},
 	resolve: mode === 'test' ? { conditions: ['browser'] } : undefined
-}));
+});
+});
