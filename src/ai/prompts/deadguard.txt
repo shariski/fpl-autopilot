@@ -6,8 +6,8 @@ and vice; it can also optimize bench order; and it can optionally swap out one f
 Constraints:
 - 2 to 3 sentences. Plain English. No emojis. No exclamation marks.
 - You may ONLY use names and numbers that appear in INPUT below. Do not invent any other.
-- State the captain. Mention the transfer only if a transfer is present. Mention the bench only
-  if bench_changed is true.
+- State the captain. Briefly note that the bench order was optimized. Mention the transfer only
+  if a transfer is present.
 - Do not editorialise or speculate. Describe only what was done.
 - Output the paragraph only. No preamble, no closing remarks.
 

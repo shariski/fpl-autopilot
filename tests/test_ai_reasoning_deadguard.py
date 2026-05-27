@@ -13,7 +13,6 @@ def _db():
 OUTCOME_FIXTURE = {
     "captain_name": "Haaland",
     "vice_name": "Salah",
-    "bench_changed": True,
     "transfer": {"out_name": "Watkins", "in_name": "Calvert-Lewin"},
     "gw": 38,
 }
@@ -25,7 +24,6 @@ def test_build_deadguard_payload_shape():
     assert payload == {
         "captain": "Haaland",
         "vice": "Salah",
-        "bench_changed": True,
         "transfer": {"out_name": "Watkins", "in_name": "Calvert-Lewin"},
         "gw": 38,
     }
@@ -40,10 +38,10 @@ def test_build_deadguard_payload_returns_none_on_missing_captain():
 def test_build_deadguard_payload_handles_no_transfer():
     conn = _db()
     outcome = {"captain_name": "Haaland", "vice_name": "Salah",
-               "bench_changed": False, "transfer": None, "gw": 38}
+               "transfer": None, "gw": 38}
     payload = reasoning._build_deadguard_payload(conn, outcome)
     assert payload["transfer"] is None
-    assert payload["bench_changed"] is False
+    assert "bench_changed" not in payload
 
 
 def test_build_deadguard_prompt_includes_payload_and_examples():

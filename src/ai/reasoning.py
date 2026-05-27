@@ -343,17 +343,17 @@ def _build_deadguard_payload(conn, outcome: dict) -> dict | None:
     """Closed-shape payload describing what the deadguard did.
 
     `outcome` is composed by deadguard._run_trigger and looks like:
-        {"captain_name": str, "vice_name": str | None, "bench_changed": bool,
+        {"captain_name": str, "vice_name": str | None,
          "transfer": {"out_name": str, "in_name": str} | None, "gw": int}
 
     Returns None if outcome is missing the captain name (defensive — without a
-    captain there's no meaningful summary)."""
+    captain there's no meaningful summary).
+    """
     if not outcome or not outcome.get("captain_name"):
         return None
     return {
         "captain": outcome["captain_name"],
         "vice": outcome.get("vice_name"),
-        "bench_changed": bool(outcome.get("bench_changed", False)),
         "transfer": outcome.get("transfer"),
         "gw": outcome["gw"],
     }

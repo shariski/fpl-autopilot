@@ -16,14 +16,12 @@ def test_deadguard_examples_file_is_valid_json_list():
     examples = json.loads((PROMPTS_DIR / "deadguard_examples.json").read_text())
     assert isinstance(examples, list)
     assert len(examples) >= 3
-    has_captain_only = any(ex["input"].get("transfer") is None and
-                            not ex["input"].get("bench_changed", False) for ex in examples)
-    has_bench = any(ex["input"].get("bench_changed") and ex["input"].get("transfer") is None
-                    for ex in examples)
+    has_no_transfer = any(ex["input"].get("transfer") is None for ex in examples)
     has_transfer = any(ex["input"].get("transfer") is not None for ex in examples)
-    assert has_captain_only and has_bench and has_transfer
+    assert has_no_transfer and has_transfer
     for ex in examples:
         assert set(ex.keys()) == {"input", "output"}
+        assert "bench_changed" not in ex["input"]
 
 
 def test_every_deadguard_example_output_is_grounded_in_its_input():

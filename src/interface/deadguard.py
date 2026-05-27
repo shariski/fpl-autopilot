@@ -158,7 +158,6 @@ def _run_trigger(conn, key, gw, cfg):
             outcome = {
                 "captain_name": name,
                 "vice_name": vice_name,
-                "bench_changed": True,
                 "transfer": transfer_info,
                 "gw": gw,
             }

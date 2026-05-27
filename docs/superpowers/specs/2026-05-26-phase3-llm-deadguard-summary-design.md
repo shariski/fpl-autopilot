@@ -41,11 +41,11 @@ deadguard, no degraded execution path.
 | Decision | Choice |
 |----------|--------|
 | Generation point | **`deadguard._run_trigger`**, right before the existing `_notify("executed", ...)` call (line 140), after the bookkeeping is complete and `transfer_note` is composed. |
-| Payload depth | **Outcome-shaped, not stat-shaped:** `{captain_name, vice_name, bench_changed: bool, transfer: {out_name, in_name} | None, gw}`. The LLM describes what happened — it doesn't need xP/FDR/fixture context here. The deadguard already made the decision; this is narration. |
+| Payload depth | **Outcome-shaped, not stat-shaped:** `{captain_name, vice_name, transfer: {out_name, in_name} | None, gw}`. The LLM describes what happened — it doesn't need xP/FDR/fixture context here. The deadguard already made the decision; this is narration. Note: bench-change signal was dropped post-review (see "Post-review change" below). |
 | Telegram swap | **In-line at the `_notify` call site.** The `_notify` body uses the AI prose if generated successfully; falls back to the template otherwise. Not a `notify_plan`-style swap (deadguard doesn't route a plan — it acts directly). |
 | Dashboard banner | `_status_banners` in `queries.py` enhances the existing "Deadguard set your team this gameweek" banner: read cached AI prose for the current gw; if present, use it as the banner `text`; else use the existing template. No frontend code change required — the banner type already supports any string. |
 | B4 | **Untouched.** Deterministic deadguard still picks. No `decision-engine.md` change. |
-| Cache identity | New `pane_type = 'deadguard_summary'`. `recommendation_hash` covers the outcome payload (captain_name, transfer in/out names, bench_changed flag). Different deadguard outcomes → different hashes → fresh rows. |
+| Cache identity | New `pane_type = 'deadguard_summary'`. `recommendation_hash` covers the outcome payload (captain_name, transfer in/out names, gw). Different deadguard outcomes → different hashes → fresh rows. |
 | No frontend code change | The dashboard banner reads `Banner.text` from `/api/status` and renders whatever string. The AI prose replaces the template text at the backend layer. No `.svelte` edit, no mock change, no vitest case needed. |
 
 ## Architecture (delta from S-A.3)
@@ -87,7 +87,6 @@ def _build_deadguard_payload(conn, outcome: dict) -> dict | None:
       {
         "captain_name": str,
         "vice_name": str | None,
-        "bench_changed": bool,          # whether the bench order differed from pre-deadguard
         "transfer": {"out_name": str, "in_name": str} | None,
         "gw": int,
       }
@@ -97,13 +96,12 @@ def _build_deadguard_payload(conn, outcome: dict) -> dict | None:
     return {
         "captain": outcome["captain_name"],
         "vice": outcome.get("vice_name"),
-        "bench_changed": bool(outcome.get("bench_changed", False)),
         "transfer": outcome.get("transfer"),     # nested dict or None
         "gw": outcome["gw"],
     }
 ```
 
-The payload contains **only names + a boolean + an int gw**. The grounding check applies to the
+The payload contains **only names + an int gw**. The grounding check applies to the
 gw integer + the names (which are strings, not numbers, so grounding-wise the gw is the only
 number to track).
 
@@ -120,8 +118,8 @@ and vice; it can also optimize bench order; and it can optionally swap out one f
 Constraints:
 - 2 to 3 sentences. Plain English. No emojis. No exclamation marks.
 - You may ONLY use names and numbers that appear in INPUT below. Do not invent any other.
-- State the captain. Mention the transfer only if a transfer is present. Mention the bench only
-  if bench_changed is true.
+- State the captain. Briefly note that the bench order was optimized. Mention the transfer only
+  if a transfer is present.
 - Do not editorialise or speculate. Describe only what was done.
 - Output the paragraph only. No preamble, no closing remarks.
 
@@ -140,24 +138,24 @@ OUTPUT:
 [
   {
     "input": {
-      "captain": "Haaland", "vice": "Salah", "bench_changed": false,
+      "captain": "Haaland", "vice": "Salah",
       "transfer": null, "gw": 38
     },
-    "output": "Deadguard set Haaland as captain and Salah as vice for GW38. Bench order was already correct, and no transfer was needed."
+    "output": "Deadguard set Haaland as captain and Salah as vice for GW38, and optimized the bench order."
   },
   {
     "input": {
-      "captain": "Saka", "vice": "Palmer", "bench_changed": true,
+      "captain": "Saka", "vice": "Palmer",
       "transfer": null, "gw": 32
     },
-    "output": "Deadguard set Saka as captain and Palmer as vice for GW32, and reordered the bench so the highest-xP cover players sit at 13 and 14."
+    "output": "For GW32, deadguard set Saka as captain, Palmer as vice, and optimized the bench order."
   },
   {
     "input": {
-      "captain": "Haaland", "vice": "Salah", "bench_changed": true,
+      "captain": "Haaland", "vice": "Salah",
       "transfer": {"out_name": "Watkins", "in_name": "Calvert-Lewin"}, "gw": 38
     },
-    "output": "Deadguard set Haaland as captain and Salah as vice for GW38, reordered the bench, and transferred out Watkins for Calvert-Lewin to replace the flagged player."
+    "output": "Deadguard set Haaland as captain and Salah as vice for GW38, optimized the bench order, and transferred out Watkins for Calvert-Lewin."
   }
 ]
 ```
@@ -210,7 +208,6 @@ Before that line, build the outcome dict + try to generate AI prose:
             outcome = {
                 "captain_name": name,
                 "vice_name": vice_name,
-                "bench_changed": True,           # _run_lineup always re-ranks the bench (S-A.4 v1 assumption)
                 "transfer": transfer_info,
                 "gw": gw,
             }
@@ -341,3 +338,23 @@ After S-A.4 lands, the four S-A panes (captain, transfer, chip, deadguard-summar
 prose. The cross-cutting architecture spec has been used by four slices without modification — a
 strong signal that the architecture decisions made in the first session were the right ones.
 Future Phase-3 slices (S-B/S-C/S-D/S-E/S-F) reuse the same infrastructure for new surfaces.
+
+## Post-review change: `bench_changed` field dropped
+
+The original spec defined `bench_changed: bool` in the outcome payload, intended to capture
+"whether the bench order differed from pre-deadguard." The implementation hardcoded it to
+`True` as a v1 simplification (acknowledged in a code comment) because `run_lineup` does not
+return whether the bench was actually reordered — only whether it ran the bench optimizer.
+
+The final code review (cumulative, post-merge) flagged this as a grounded-falsehood risk: the
+prompt and exemplars conditioned on `bench_changed`, so a hardcoded `True` could cause the LLM
+to claim "the bench was reordered" when the existing bench was already optimal.
+
+**Resolution (instead of computing the real signal):** drop the field entirely. The deadguard
+always runs the bench optimizer; "the bench order was optimized" is truthful regardless of
+whether the order actually changed. The prompt now always notes the bench was optimized, and
+exemplars no longer carry a `bench_changed` key.
+
+Trade-off: prose can no longer say "bench was already correct" vs. "bench was reordered." If
+the real signal becomes valuable, a future slice can re-introduce the field by having
+`run_lineup` compute and return the comparison.
