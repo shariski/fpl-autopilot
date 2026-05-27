@@ -203,19 +203,59 @@ def test_residual_skips_unsettled_decisions():
     assert out == []
 
 
-def test_residual_dgw_sums_fixture_rows():
-    """DGW: two player_gw_stats rows for (player, gw) → summed actual."""
+def test_residual_dgw_uses_cumulative_total():
+    """DGW: FPL gives the player's CUMULATIVE GW total in stats.total_points (already summed
+    across fixtures). Settlement writes that same cumulative value into each fixture row, so
+    residuals must read via MAX, not SUM, to avoid double-counting."""
     conn = _db()
     _seed_xp(conn, [(10, 18, 6.5)])
-    _seed_actual(conn, [(10, 18, 100, 5), (10, 18, 101, 7)])  # two fixtures → 12 total
+    # Both fixture rows carry the SAME cumulative total (= 12 across both fixtures)
+    _seed_actual(conn, [(10, 18, 100, 12), (10, 18, 101, 12)])
     _log_lineup(conn, gw=18,
                 captain={"player_id": 10, "web_name": "Haaland", "position": "FWD", "xp": 6.5})
 
     out = residuals.compute_residuals(conn, gw_lo=18, gw_hi=18)
     assert len(out) == 1
-    # actual = (5 + 7) * 2 = 24; expected = 6.5 * 2 = 13
+    # actual = 12 * 2 = 24 (NOT 12 + 12 = 24 by coincidence; the point is MAX, not SUM)
     assert out[0].actual_points == 24.0
     assert out[0].expected_points == 13.0
+
+
+def test_residual_dgw_end_to_end_via_settlement():
+    """End-to-end safety net for C1 (post-review fix): run real settlement on a DGW payload
+    and verify the residual uses the cumulative total (12), not the sum of duplicated rows (24)."""
+    from src.data import settlement
+    conn = _db()
+    _seed_xp(conn, [(10, 18, 6.5)])
+    # Mark GW18 as finished so settlement processes it
+    conn.execute(
+        "INSERT INTO gameweeks (id, deadline_utc, finished, is_next, is_current) "
+        "VALUES (18, '2026-03-15T11:30:00Z', 1, 0, 0)")
+    conn.commit()
+    _log_lineup(conn, gw=18,
+                captain={"player_id": 10, "web_name": "Haaland", "position": "FWD", "xp": 6.5})
+
+    # Realistic FPL event/live/ DGW payload: ONE element entry with cumulative
+    # total_points=12 and TWO explain entries (one per fixture).
+    class FakeClient:
+        def event_live(self, gw):
+            return {"elements": [{
+                "id": 10,
+                "stats": {"minutes": 180, "goals_scored": 1, "assists": 1,
+                          "clean_sheets": 0, "bonus": 3, "total_points": 12},
+                "explain": [{"fixture": 100, "stats": []},
+                            {"fixture": 101, "stats": []}],
+            }]}
+
+    written = settlement.settlement_run(conn, FakeClient())
+    assert written == 2  # two fixture rows persisted
+
+    out = residuals.compute_residuals(conn, gw_lo=18, gw_hi=18)
+    assert len(out) == 1
+    # actual = 12 * 2 (captain doubled) = 24. If we erroneously used SUM, this'd be 48.
+    assert out[0].actual_points == 24.0
+    assert out[0].expected_points == 13.0
+    assert out[0].residual == 11.0
 
 
 def test_residual_segments_by_model_version():
@@ -229,6 +269,33 @@ def test_residual_segments_by_model_version():
     out = residuals.compute_residuals(conn, gw_lo=3, gw_hi=3)
     assert len(out) == 1
     assert out[0].model_version == "v2"
+
+
+def test_residual_segments_by_decision_time_during_parallel_run():
+    """During a B5 parallel-run window (v1 + v2 both computed), the audit must use the version
+    that was active when the decision was logged, not the latest version."""
+    conn = _db()
+    # v1 computed first at 2026-01-01, then v2 at 2026-02-01
+    conn.execute(
+        """INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, xassists, xcs, computed_at)
+           VALUES (10, 3, 'v1', 6.5, 0, 0, 0, 0, '2026-01-01T00:00:00Z')""")
+    conn.execute(
+        """INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, xassists, xcs, computed_at)
+           VALUES (10, 3, 'v2', 7.2, 0, 0, 0, 0, '2026-02-01T00:00:00Z')""")
+    _seed_actual(conn, [(10, 3, 100, 9)])
+    # Decision was logged 2026-01-15 — between v1 and v2, so v1 was active
+    conn.execute(
+        """INSERT INTO activity_log (ts_utc, gw, mode, decision_type, action_taken,
+             inputs_json, executed) VALUES ('2026-01-15T11:00:00Z', 3, 'manual', 'lineup',
+             'captain=10', ?, 1)""",
+        (json.dumps({"captain": {"player_id": 10, "web_name": "Haaland", "xp": 6.5},
+                     "vice_player_id": None, "alternatives": []}),))
+    conn.commit()
+
+    out = residuals.compute_residuals(conn, gw_lo=3, gw_hi=3)
+    assert len(out) == 1
+    # Should report v1 (the version active at decision time), NOT v2 (the latest version)
+    assert out[0].model_version == "v1"
 
 
 def test_residual_skips_non_executed_rows():
