@@ -1,0 +1,44 @@
+# Version control + tooling
+.git
+.gitignore
+.gitattributes
+
+# Python virtualenv + caches
+.venv
+.pytest_cache
+__pycache__
+*.py[cod]
+*$py.class
+.coverage
+htmlcov
+.mypy_cache
+.ruff_cache
+
+# Tests + docs (not needed in the runtime image)
+tests
+docs
+
+# Local data (CRITICAL — don't bake the dev SQLite + keys into the image)
+data
+
+# Frontend build artifacts that should come from stage 1, not the host
+frontend/node_modules
+frontend/build
+frontend/.svelte-kit
+frontend/.vite
+
+# Editor / IDE
+.idea
+.vscode
+*.swp
+
+# Local-only files
+.env
+.env.*
+!.env.example
+config.yaml.local
+*.log
+
+# Project metadata that shouldn't end up in the image
+fpl_autopilot.egg-info
+.serena
