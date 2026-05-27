@@ -58,9 +58,16 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # Deploy job needs neither repo contents nor package writes — only
+    # SSH secrets (which `permissions:` does not gate). Empty block
+    # defense-in-depth: minimises GITHUB_TOKEN scope to nothing.
+    permissions: {}
     steps:
       - name: Pull & restart on the VPS
-        uses: appleboy/ssh-action@v1.2.0
+        # Pin third-party action to immutable commit SHA (defends against
+        # tag-repointing supply-chain attacks like tj-actions/changed-files
+        # March 2025). Comment preserves human-readable version reference.
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17  # v1.2.0
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
