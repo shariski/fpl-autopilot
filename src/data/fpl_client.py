@@ -63,3 +63,9 @@ class FPLClient:
 
     def element_summary(self, player_id):
         return ElementSummary.model_validate(self._get(f"element-summary/{player_id}/"))
+
+    def event_live(self, event_id):
+        # Returns the raw FPL payload (no pydantic model — schema is complex + only the
+        # `elements[*].stats.total_points` + `elements[*].explain[*].fixture` slots are used by
+        # the settlement consumer). Schema assertions live in the consumer (repository.upsert).
+        return self._get(f"event/{event_id}/live/")

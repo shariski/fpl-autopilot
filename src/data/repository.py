@@ -372,3 +372,52 @@ def mark_deadguard_transfer_undone(conn, gw):
 def touch_user_action(conn, gw):
     conn.execute("UPDATE gameweeks SET last_user_action_at=?, state='USER_ACTED' WHERE id=?", (_now(), gw))
     conn.commit()
+
+
+
+def upsert_player_gw_stats(conn, gw, payload):
+    """Write per-fixture player stats from an FPL event/{gw}/live/ payload.
+
+    Schema-asserted (B6): payload must have an "elements" key. Per-element shape:
+        {"id": int, "stats": {minutes, goals_scored, assists, clean_sheets, bonus,
+                              total_points: int},
+         "explain": [{"fixture": int, ...}]}.
+
+    Idempotent: INSERT OR IGNORE on (player_id, gw, fixture_id). Returns rows actually written.
+    Skips elements that did not appear in any fixture (empty explain list).
+    """
+    if "elements" not in payload:
+        raise ValueError(f"event_live payload for gw={gw} missing 'elements' (schema drift?)")
+    rows = []
+    now = _now()
+    for el in payload["elements"]:
+        explain = el.get("explain") or []
+        if not explain:
+            continue
+        pid = el["id"]
+        stats = el["stats"]
+        was_sub = bool(stats.get("minutes", 0) > 0 and len(explain) > 0)
+        for ex in explain:
+            fixture_id = ex["fixture"]
+            rows.append((
+                pid, gw, fixture_id,
+                stats.get("minutes", 0),
+                stats.get("goals_scored", 0),
+                stats.get("assists", 0),
+                stats.get("clean_sheets", 0),
+                stats.get("bonus", 0),
+                stats.get("total_points", 0),
+                was_sub,
+                now,
+            ))
+    if not rows:
+        return 0
+    cur = conn.executemany(
+        """INSERT OR IGNORE INTO player_gw_stats
+             (player_id, gw, fixture_id, minutes, goals_scored, assists,
+              clean_sheets, bonus, total_points, was_substituted_in, settled_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        rows,
+    )
+    conn.commit()
+    return cur.rowcount

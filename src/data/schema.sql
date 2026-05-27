@@ -179,3 +179,21 @@ CREATE TABLE IF NOT EXISTS ai_reasoning_cache (
 
 CREATE INDEX IF NOT EXISTS idx_ai_reasoning_cache_lookup
   ON ai_reasoning_cache (gw, pane_type, generated_at DESC);
+
+CREATE TABLE IF NOT EXISTS player_gw_stats (
+  player_id INTEGER NOT NULL,
+  gw INTEGER NOT NULL,
+  fixture_id INTEGER NOT NULL,
+  minutes INTEGER NOT NULL,
+  goals_scored INTEGER NOT NULL,
+  assists INTEGER NOT NULL,
+  clean_sheets INTEGER NOT NULL,
+  bonus INTEGER NOT NULL,
+  total_points INTEGER NOT NULL,
+  was_substituted_in BOOLEAN,
+  settled_at TIMESTAMP NOT NULL,
+  PRIMARY KEY (player_id, gw, fixture_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_gw_stats_gw
+  ON player_gw_stats (gw);

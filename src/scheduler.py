@@ -20,12 +20,17 @@ def _ping_healthcheck():
 
 
 def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=None, key=None):
-    """Public refresh + analytics recompute + healthcheck. With key, also authed my-team snapshot.
+    """Public refresh + analytics recompute + settlement + healthcheck. With key, also authed snapshot.
 
     Public path always runs. Authed step is best-effort: failures are logged but do not crash the
     public refresh — the older authed row (or only the public row) stays as fallback.
+
+    Settlement (S-G T0) writes player_gw_stats for any finished-but-unsettled GW. Per-GW
+    failures are swallowed inside settlement_run so they cannot block the rest of the refresh.
     """
     from .cli import refresh  # lazy import: avoids a cycle (cli.serve imports this module)
+    from .data import settlement
+    from .data.fpl_client import FPLClient
     cfg = cfg or load_config()
     owns = conn is None
     conn = conn or connect(db_path(cfg))
@@ -34,6 +39,10 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
         refresh(cfg=cfg, conn=conn, client=client, understat_client=understat_client)
         fdr.compute_and_store(conn)
         xp.compute_and_store(conn)
+        try:
+            settlement.settlement_run(conn, client or FPLClient())
+        except Exception:
+            log.exception("settlement.run_failed")
         if config.ai_enabled(cfg):
             try:
                 from src.ai import jobs as ai_jobs
