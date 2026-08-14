@@ -54,6 +54,17 @@ def _reason_problems(payload, digest):
     return problems
 
 
+def _sanitize_reasons(payload, digest):
+    """Strip reasons that fail per-pick grounding (they may have survived a
+    normalization/repair swap). Deterministic, never rejects the squad."""
+    per_player = _per_player_text(digest)
+    for pick in payload.get("picks", []):
+        reason = pick.get("reason") or ""
+        ok, _ = grounding.is_grounded(reason, per_player.get(pick.get("player_id"), ""))
+        if not ok:
+            pick["reason"] = ""
+
+
 def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
                    temperature: float = 0.2) -> dict | None:
     pool = build_candidate_pool(conn)
@@ -117,6 +128,7 @@ def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
         normalized = normalize_squad(last_payload["picks"], pool)
         if normalized is not None:
             last_payload["picks"] = normalized
+            _sanitize_reasons(last_payload, digest)
             last_payload["source"] = "ai"
             cache.put(conn, gw, PANE_TYPE, rec_hash, json.dumps(last_payload, sort_keys=True),
                       model_id)

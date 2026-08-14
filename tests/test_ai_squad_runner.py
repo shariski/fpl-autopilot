@@ -148,3 +148,16 @@ def test_runner_rejects_reason_with_foreign_number(db, monkeypatch):
     out = runner.generate_squad(db, provider=prov, model_id="m")
     assert out is not None and out["source"] == "ai"
     assert "cites numbers" in prov.calls[1].lower() or "not in their data" in prov.calls[1].lower()
+
+
+def test_sanitize_reasons_strips_foreign_numbers(db, monkeypatch):
+    """A reason surviving a swap (e.g. '39.12' for Evanilson) is stripped."""
+    from src.ai.squad.runner import _sanitize_reasons
+    digest = {"next_gw": 1, "budget": 100, "players": _pool()}
+    payload = {"picks": [
+        {"player_id": 0, "slot": "GKP1", "reason": "top keeper at 30.0 xP"},   # own number
+        {"player_id": 1, "slot": "GKP2", "reason": "best value at 28.0 xP"},   # foreign (player 3's)
+    ]}
+    _sanitize_reasons(payload, digest)
+    assert payload["picks"][0]["reason"] == "top keeper at 30.0 xP"
+    assert payload["picks"][1]["reason"] == ""

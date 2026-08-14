@@ -138,7 +138,7 @@ def normalize_squad(picks, pool):
                 break
             if p["player_id"] in used:
                 continue
-            group.append({"player_id": p["player_id"], "reason": "pool fill"})
+            group.append({"player_id": p["player_id"], "reason": ""})
             used.add(p["player_id"])
         for i, pk in enumerate(group[:n]):
             out.append({"player_id": pk["player_id"], "slot": f"{pos}{i + 1}",
@@ -167,6 +167,7 @@ def normalize_squad(picks, pool):
                 for x in out:
                     if x["player_id"] == pk["player_id"]:
                         x["player_id"] = alt["player_id"]
+                        x["reason"] = ""  # reason belongs to the original player
                 clubs[club] -= 1
                 clubs[alt["team_short"]] += 1
                 swapped = True
@@ -230,6 +231,7 @@ def repair_budget(picks, pool):
                 for x in new_picks:
                     if x["player_id"] == pk["player_id"]:
                         x["player_id"] = best["player_id"]
+                        x["reason"] = ""  # reason belongs to the original player
                 if not validate_squad(new_picks, pool):
                     picks = new_picks
                     swapped = True
