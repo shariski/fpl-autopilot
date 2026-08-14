@@ -46,12 +46,14 @@ class _Seq:
         return self._responses.pop(0)
 
 
+def _digest():
+    return {"next_gw": 1, "budget": 100, "players": _pool()}
+
+
 def test_spikes_happy_path_caches(db, monkeypatch):
     _seed(db)
     monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
-    monkeypatch.setattr(spikes_mod, "build_squad_digest",
-                        lambda c, pool=None, next_gw=None: {"next_gw": 1, "budget": 100,
-                                                            "players": _pool()})
+    monkeypatch.setattr(spikes_mod, "build_squad_digest", lambda c, pool=None, next_gw=None: _digest())
     prov = _Seq([_signals_json()])
     out = spikes_mod.generate_spike_signals(db, provider=prov, model_id="m")
     assert out is not None
@@ -66,8 +68,7 @@ def test_spikes_rejects_unknown_id_and_retries(db, monkeypatch):
     _seed(db)
     monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
     monkeypatch.setattr(spikes_mod, "build_squad_digest",
-                        lambda c, pool=None, next_gw=None: {"next_gw": 1, "budget": 100,
-                                                            "players": _pool()})
+                        lambda c, pool=None, next_gw=None: _digest())
     bad = json.dumps({"spikes": [{"player_id": 9999, "level": "high", "reason": "x"}],
                       "drops": [], "market_read": "m"})
     good = _signals_json()
@@ -81,8 +82,7 @@ def test_spikes_returns_none_when_exhausted(db, monkeypatch):
     _seed(db)
     monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
     monkeypatch.setattr(spikes_mod, "build_squad_digest",
-                        lambda c, pool=None, next_gw=None: {"next_gw": 1, "budget": 100,
-                                                            "players": _pool()})
+                        lambda c, pool=None, next_gw=None: _digest())
     bad = json.dumps({"spikes": [{"player_id": 9999, "level": "high", "reason": "x"}],
                       "drops": [], "market_read": "m"})
     prov = _Seq([bad, bad, bad, bad])
@@ -96,8 +96,7 @@ def test_spikes_provider_failure_returns_none(db, monkeypatch):
     _seed(db)
     monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
     monkeypatch.setattr(spikes_mod, "build_squad_digest",
-                        lambda c, pool=None, next_gw=None: {"next_gw": 1, "budget": 100,
-                                                            "players": _pool()})
+                        lambda c, pool=None, next_gw=None: _digest())
 
     class Boom:
         def generate(self, prompt, **kw):

@@ -31,14 +31,15 @@ def _per_player_text(digest):
     return {p["player_id"]: json.dumps(p, sort_keys=True) for p in digest.get("players", [])}
 
 
-def validate_signals(payload, pool):
+def validate_signals(payload, pool, digest):
     """Return problems; empty = valid. ids ∈ pool, levels bounded, reasons
-    grounded per-player, no player twice."""
+    grounded against the DIGEST the AI saw (per-player), no player twice."""
     problems = []
     if not isinstance(payload, dict):
         return ["not an object"]
     players = {p["player_id"] for p in pool}
-    per_player = {p["player_id"]: json.dumps(p, sort_keys=True) for p in pool}
+    per_player = {p["player_id"]: json.dumps(p, sort_keys=True)
+                  for p in digest.get("players", [])}
     seen = set()
     for kind in ("spikes", "drops"):
         items = payload.get(kind)
@@ -89,7 +90,7 @@ def generate_spike_signals(conn, *, provider, model_id, max_tokens: int = 2000,
         if payload is None:
             problems_seen.append("not valid JSON")
         else:
-            problems_seen = validate_signals(payload, pool)
+            problems_seen = validate_signals(payload, pool, digest)
         if not problems_seen:
             cache.put(conn, gw, PANE_TYPE, rec_hash, json.dumps(payload, sort_keys=True),
                       model_id)
