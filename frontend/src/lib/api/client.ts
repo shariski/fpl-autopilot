@@ -102,3 +102,9 @@ export async function fetchAudit(gw: number, fetchFn: Fetch = fetch): Promise<Au
 	}
 	return (await res.json()) as AuditReport;
 }
+
+import type { PlayerInsight } from '../types';
+
+export async function fetchInsight(playerId: number, fetchFn: Fetch = fetch): Promise<PlayerInsight> {
+	return getJson<PlayerInsight>(`/api/players/${playerId}/insight`, fetchFn);
+}

@@ -174,3 +174,22 @@ export interface AuditReport {
 	narrative: string | null;
 	narrative_provider: string | null;
 }
+
+export interface Insight {
+	category: 'overperformance' | 'fixture_alignment' | 'minutes_role' | 'value_market';
+	claim: string;
+	evidence_used: string[];
+	confidence: 'high' | 'medium' | 'low';
+	implication: string;
+}
+
+export interface PlayerInsight {
+	status: 'cached' | 'generated' | 'unavailable';
+	player_id: number;
+	gw: number | null;
+	insights: Insight[];
+	summary: string;
+	data_limits: string[];
+	model_id: string | null;
+	generated_at: string | null;
+}
