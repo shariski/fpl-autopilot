@@ -56,42 +56,76 @@
 
 <style>
 	.insight-page {
-		padding: 1rem;
+		padding: 1rem 0;
 		max-width: 720px;
 		margin: 0 auto;
 	}
 	.summary {
-		font-size: 1.1rem;
+		font-size: 1.05rem;
+		margin: 0 0 1rem;
 	}
 	.card {
-		border: 1px solid var(--border, #ccc);
-		border-radius: 8px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--surface);
 		padding: 0.75rem;
 		margin: 0.5rem 0;
+		list-style: none;
+	}
+	.insights {
+		padding: 0;
+		margin: 0;
 	}
 	.chip {
 		display: inline-block;
-		font-size: 0.75rem;
-		padding: 0.1rem 0.4rem;
-		border-radius: 4px;
-		background: #eef;
-		margin-right: 0.3rem;
+		font-size: 0.72rem;
+		padding: 0.15rem 0.45rem;
+		border-radius: 999px;
+		background: var(--surface-2);
+		color: var(--text-dim);
+		margin-right: 0.35rem;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
 	}
-	.confidence {
-		background: #efe;
+	.chip.confidence {
+		background: var(--surface-2);
+		color: var(--accent);
+	}
+	.claim {
+		margin: 0.5rem 0 0.35rem;
+		color: var(--text);
+	}
+	.evidence {
+		margin: 0 0 0.35rem;
 	}
 	.ev-chip {
-		font-family: monospace;
-		background: #ffe;
-		padding: 0.1rem 0.3rem;
-		margin-right: 0.2rem;
-		border-radius: 3px;
+		font-family: var(--mono);
+		font-size: 0.75rem;
+		background: var(--surface-2);
+		color: var(--accent-2);
+		padding: 0.1rem 0.35rem;
+		margin-right: 0.25rem;
+		border-radius: 4px;
+	}
+	.implication {
+		margin: 0;
+		font-size: 0.9rem;
+		color: var(--text-dim);
 	}
 	.limits {
 		font-size: 0.8rem;
 		margin-top: 1rem;
 	}
 	.muted {
-		color: #777;
+		color: var(--text-dim);
+	}
+	button {
+		background: var(--accent);
+		color: #04100b;
+		border: none;
+		border-radius: var(--radius);
+		padding: 0.45rem 1rem;
+		font-weight: 600;
+		cursor: pointer;
 	}
 </style>
