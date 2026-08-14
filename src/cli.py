@@ -223,7 +223,7 @@ def _freeze_status_cli(conn=None):
 
 def _cmd_review_cli(*, gw=None, last=4, ai_override=None, format_="text", conn=None):
     """Audit past decisions and print results. Window: --gw N (single) OR --last N (last N
-    settled GWs). AI provider: ai_override ∈ {'claude','ollama','none', None}; None falls back
+    settled GWs). AI provider: ai_override ∈ {'deepseek','ollama','none', None}; None falls back
     to config."""
     import os
     from .audit import audit as audit_mod, reports as reports_mod
@@ -247,22 +247,17 @@ def _cmd_review_cli(*, gw=None, last=4, ai_override=None, format_="text", conn=N
         # Build the provider (if any).
         provider, model_id = None, None
         provider_choice = ai_override or _resolve_audit_provider_choice()
-        if provider_choice == "claude":
-            api_key = os.environ.get("ANTHROPIC_API_KEY")
-            if not api_key:
-                print("Error: --ai claude requires ANTHROPIC_API_KEY env var. Aborting.")
+        if provider_choice == "deepseek":
+            if not os.environ.get("DEEPSEEK_API_KEY"):
+                print("Error: --ai deepseek requires DEEPSEEK_API_KEY env var. Aborting.")
                 return
-            from .ai.provider import ClaudeProvider
-            provider = ClaudeProvider(api_key=api_key, conn=conn)
-            model_id = "claude-sonnet-4-6"
+            from .ai.provider import build_provider
+            provider = build_provider(config.load_config(), conn=conn)
+            model_id = config.ai_deepseek_model()
         elif provider_choice == "ollama":
-            from .ai.provider import OllamaProvider
-            cfg = config.load_config()
-            provider = OllamaProvider(
-                host=config.ai_ollama_host(cfg),
-                model=config.ai_ollama_model(cfg),
-                timeout_seconds=config.ai_timeout_seconds(cfg))
-            model_id = config.ai_ollama_model(cfg)
+            from .ai.provider import build_provider
+            provider = build_provider(config.load_config())
+            model_id = config.ai_ollama_model()
 
         # Run the audit.
         cfg = config.load_config()
@@ -582,7 +577,7 @@ def main(argv=None):
                                help="audit a single GW")
     review_window.add_argument("--last", type=int, default=4,
                                help="audit the last N settled GWs (default 4)")
-    p_review.add_argument("--ai", choices=["claude", "ollama", "none"], default=None,
+    p_review.add_argument("--ai", choices=["deepseek", "ollama", "none"], default=None,
                           help="override the AI provider for this run (default: from config)")
     p_review.add_argument("--format", choices=["text", "json"], default="text",
                           dest="format_", help="output format (default: text)")

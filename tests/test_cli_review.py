@@ -126,14 +126,13 @@ def test_review_ai_override_none_skips_provider(db):
     assert kwargs.get("ai_provider") is None
 
 
-def test_review_ai_override_claude_requires_api_key(db, monkeypatch, capsys):
-    """--ai claude with no ANTHROPIC_API_KEY → graceful error, audit not run."""
+def test_review_ai_override_deepseek_requires_api_key(db, monkeypatch, capsys):
+    """--ai deepseek with no DEEPSEEK_API_KEY → graceful error, audit not run."""
     _seed_settled_gws(db, [3])
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     with patch("src.audit.audit.run_audit") as mock_audit:
-        cli._cmd_review_cli(conn=db, gw=3, ai_override="claude")
+        cli._cmd_review_cli(conn=db, gw=3, ai_override="deepseek")
 
     mock_audit.assert_not_called()
-    err = capsys.readouterr().out + capsys.readouterr().err
-    # Some error/warning surfaced to the user about missing key
-    # (we read both out + err since the implementation may print to either)
+    out = capsys.readouterr().out
+    assert "requires DEEPSEEK_API_KEY" in out

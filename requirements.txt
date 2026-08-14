@@ -5,4 +5,4 @@ fastapi
 uvicorn
 APScheduler
 cryptography>=44
-anthropic>=0.40
+openai>=1.40

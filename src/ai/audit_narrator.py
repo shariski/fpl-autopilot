@@ -2,7 +2,7 @@
 
 Layers LLM prose onto an AuditReport using the same prompt+payload+render+generate pattern as
 the S-A narrators in src/ai/reasoning.py. The only differences: a new pane_type ('audit') in
-the ai_reasoning_cache, and the provider can be either Ollama OR Claude (selected by the
+the ai_reasoning_cache, and the provider can be either Ollama OR DeepSeek (selected by the
 caller — typically run_audit reads config to choose).
 """
 import json
@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 
 from src.ai import cache, grounding
-from src.ai.provider import ClaudeError, OllamaError
+from src.ai.provider import DeepSeekError, OllamaError
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ def generate_audit_narrative(conn, report, *, provider, model_id,
 
     try:
         prose = provider.generate(prompt, max_tokens=max_tokens, temperature=temperature)
-    except (OllamaError, ClaudeError) as e:
+    except (OllamaError, DeepSeekError) as e:
         logger.warning("ai.audit.provider_error",
                        extra={"gw_range": list(report.gw_range),
                               "model_id": model_id, "error": type(e).__name__})

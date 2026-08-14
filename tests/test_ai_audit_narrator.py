@@ -95,7 +95,7 @@ def test_generate_audit_narrative_skips_empty_report():
     provider = MagicMock()
 
     out = audit_narrator.generate_audit_narrative(conn, report, provider=provider,
-                                                  model_id="claude-sonnet-4-6")
+                                                  model_id="deepseek-chat")
     assert out is False
     provider.generate.assert_not_called()
 
@@ -108,9 +108,9 @@ def test_generate_audit_narrative_caches_by_report_hash():
     provider.generate.return_value = "Audit covers GW3 with residual +5."
 
     first = audit_narrator.generate_audit_narrative(conn, report, provider=provider,
-                                                    model_id="claude-sonnet-4-6")
+                                                    model_id="deepseek-chat")
     second = audit_narrator.generate_audit_narrative(conn, report, provider=provider,
-                                                     model_id="claude-sonnet-4-6")
+                                                     model_id="deepseek-chat")
     assert first is True
     assert second is True
     provider.generate.assert_called_once()  # one call total
@@ -126,20 +126,20 @@ def test_generate_audit_narrative_rejects_ungrounded_numbers():
     provider.generate.return_value = "Haaland scored 18 against expectations of 13 — but also 42 something."
 
     out = audit_narrator.generate_audit_narrative(conn, report, provider=provider,
-                                                  model_id="claude-sonnet-4-6")
+                                                  model_id="deepseek-chat")
     assert out is False  # rejected, not cached
 
 
 def test_generate_audit_narrative_swallows_provider_error():
-    """Provider exceptions (OllamaError, ClaudeError, RateLimit) are caught — narrator returns False."""
-    from src.ai.provider import ClaudeError
+    """Provider exceptions (OllamaError, DeepSeekError) are caught — narrator returns False."""
+    from src.ai.provider import DeepSeekError
     conn = _db()
     report = _make_report(residuals=[_make_residual(web_name="Haaland")])
     provider = MagicMock()
-    provider.generate.side_effect = ClaudeError("API down")
+    provider.generate.side_effect = DeepSeekError("API down")
 
     out = audit_narrator.generate_audit_narrative(conn, report, provider=provider,
-                                                  model_id="claude-sonnet-4-6")
+                                                  model_id="deepseek-chat")
     assert out is False
 
 
@@ -152,12 +152,12 @@ def test_render_audit_narrative_reads_cache():
     provider.generate.return_value = "Captain pick Haaland returned 18 EP vs expected 13."
 
     ok = audit_narrator.generate_audit_narrative(conn, report, provider=provider,
-                                                 model_id="claude-sonnet-4-6")
+                                                 model_id="deepseek-chat")
     assert ok is True
 
     prose, model_id = audit_narrator.render_audit_narrative(conn, report)
     assert "Haaland" in prose
-    assert model_id == "claude-sonnet-4-6"
+    assert model_id == "deepseek-chat"
 
 
 def test_run_audit_attaches_narrative_when_provider_given():
@@ -193,7 +193,7 @@ def test_run_audit_attaches_narrative_when_provider_given():
 
     out_dir = tempfile.mkdtemp()
     report = audit_mod.run_audit(conn, gw_lo=1, gw_hi=5, output_dir=out_dir,
-                                 ai_provider=provider, ai_model_id="claude-sonnet-4-6")
+                                 ai_provider=provider, ai_model_id="deepseek-chat")
     assert report.narrative is not None
     assert "Haaland" in report.narrative
-    assert report.narrative_provider == "claude-sonnet-4-6"
+    assert report.narrative_provider == "deepseek-chat"
