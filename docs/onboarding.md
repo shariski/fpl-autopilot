@@ -461,3 +461,6 @@ Costs ~$0.01-0.02 per unique analysis.
 When disabled (or when DeepSeek is unreachable), the dashboard renders the
 template string with a small `classic` badge, and the Telegram body uses the
 template string. No banner, no broken page.
+
+**AI squad builder:** `/squad-builder` on the dashboard suggests a starting 15. Apply with
+`fpl-autopilot apply-squad --live` on the server (dry-run first — it prints the plan).

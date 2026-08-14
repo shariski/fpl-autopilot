@@ -17,6 +17,7 @@ System architecture, stack reasoning, data model, and scheduling. Read this befo
 │   Prompt builder + few-shot                 │
 │   Number-grounding check                    │
 │   Player insight (deep-dive)                │
+│   Squad builder (AI picks + validator)      │
 │   ai_reasoning_cache                        │
 └──────────────────┬──────────────────────────┘
                    ↓

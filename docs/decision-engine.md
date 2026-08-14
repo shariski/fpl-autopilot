@@ -168,6 +168,29 @@ The user always sees the hit cost and the EP delta. The system does not hide tra
 
 Each chip has a trigger condition. When met, surface a recommendation. Phase 1 does not execute.
 
+## Squad builder (S-B) — AI-assisted starting squad
+
+**Status:** added 2026-08-14 (B4 entry; spec `docs/superpowers/specs/2026-08-14-squad-builder-design.md`).
+
+**Division of labour (unchanged principle: deterministic law, inspectable output):**
+
+1. **Deterministic candidate pool** (`src/decisions/squad_builder.py`): legal prefilter
+   (status a/d, price ≥ 4.0, xP present), per-position top-15 by xP-6-GW ∪ top-10 by value,
+   ~90-100 players. Logged with the result.
+2. **AI proposes** (`src/ai/squad/runner.py`): the LLM picks the 15 and explains each pick.
+   AI is upstream of this decision — the first such case in the system.
+3. **Validator is the law** (`src/decisions/squad_validator.py`): 2-5-5-3, budget ≤ 100,
+   ≤ 3/club, unique ids from the digest. Violations → retry with feedback (≤3) → deterministic
+   greedy fallback (`source: "optimizer"`, never silent).
+4. **Apply** (`src/execution/squad.py`): dry-run default; `--live` requires master key + typed
+   confirm; any API refusal aborts with a report. Applies only when the API allows
+   (pre-season unlimited window; wildcard).
+5. **Logging (B10):** every squad decision logs `decision_type="squad"` with the pool, picks,
+   validator result, source, budget, and per-transfer outcomes.
+
+No thresholds changed. The squad the AI proposes is a **suggestion** until the user executes
+it — execution rules (chips, hits, caps) are unchanged.
+
 ### Wildcard
 
 Trigger if **any** of:

@@ -664,3 +664,8 @@ macOS resolver-plumbing quirk. Telegram (the primary interface per
 `ai.insight` activity-log rows for `gate_result`). Retry from the page re-runs
 the analysis. Pre-season, insights are expected to be thinner — the digest
 carries prior-season stats only until `player_gw_stats` accumulates.
+
+**Squad builder unavailable / apply-squad fails:** check `ai.squad.*` log entries
+(`ai.squad.attempt_rejected`, `provider_error`). `apply-squad --live` requires the master
+password on the host and works only while FPL allows unlimited transfers (pre-season /
+wildcard). API refusals abort with a per-pair report in the `squad` activity-log rows.
