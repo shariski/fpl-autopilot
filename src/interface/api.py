@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from .deps import get_db
 from . import queries
 from src.data import repository
@@ -68,6 +69,52 @@ def deadguard_keep(conn=Depends(get_db)):
     if nxt:
         repository.touch_user_action(conn, nxt["id"])
     return queries.get_status(conn)
+
+
+@app.get("/api/players/{player_id}/insight")
+def player_insight(player_id: int, conn=Depends(get_db)):
+    """Per-player AI deep-dive. Cache-first; generates on miss; never 500s."""
+    from src import config
+    from src.ai import cache as ai_cache
+    from src.ai.insight import runner
+
+    nxt = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
+    if nxt is None or nxt["gw"] is None:
+        return {"status": "unavailable", "reason": "no_next_gw"}
+    gw = nxt["gw"]
+    exists = conn.execute("SELECT id FROM players WHERE id=?", (player_id,)).fetchone()
+    if exists is None:
+        return JSONResponse(status_code=404, content={"detail": "unknown player"})
+    if not config.ai_enabled():
+        return {"status": "unavailable", "reason": "ai_disabled"}
+    digest = runner.build_player_digest(conn, player_id, gw)
+    if digest is None:
+        return {"status": "unavailable", "reason": "no_digest"}
+    rec_hash = ai_cache.recommendation_hash(digest)
+    hit = ai_cache.get(conn, gw, runner.PANE_TYPE, rec_hash)
+    if hit is not None:
+        payload = runner.extract_json_object(hit["prose"])
+        status = "cached"
+    else:
+        try:
+            from src.ai.provider import build_provider
+            provider = build_provider(config.load_config())
+            payload = runner.generate_player_insight(
+                conn, player_id, provider=provider,
+                model_id=config.ai_deepseek_model())
+        except Exception:
+            return {"status": "unavailable", "reason": "provider_error"}
+        if payload is None:
+            return {"status": "unavailable", "reason": "gate_rejected"}
+        status = "generated"
+    return {
+        "status": status, "player_id": player_id, "gw": gw,
+        "insights": payload.get("insights", []),
+        "summary": payload.get("summary", ""),
+        "data_limits": payload.get("data_limits", []),
+        "model_id": config.ai_deepseek_model(),
+        "generated_at": hit["generated_at"] if hit is not None else None,
+    }
 
 
 @app.get("/api/audit/{gw}")
