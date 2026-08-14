@@ -32,6 +32,13 @@ For a fixture `Home H vs Away A`, each team is rated from the opponent's venue-s
 
 `quintile(value)` ranks the value against the 20-team distribution for that venue/column and returns 1–5 (5 = strongest opponent = hardest): `min(below*5 // n + 1, 5)` where `below` = count strictly less than `value`. `fdr_attack` keys off the opponent's defense; `fdr_defense` off the opponent's attack. Venue advantage is intrinsic to FPL's separate home/away columns (no extra ±0.3 factor). A single current rating, not rolling form.
 
+> **Pre-season caveat (observed 2026-08-14, 26/27):** FPL publishes `strength_* = 0` for all
+> teams before the season starts, so every team lands in the same quintile and all fixtures
+> rate `fdr_attack = fdr_defense = 1`. The xP model therefore treats every fixture as neutral
+> until FPL populates real strengths (expected around GW1). Not a bug in the computation —
+> degenerate input, expected state, self-corrects. The AI insight feature may surface this as
+> a "flat fixture ratings" finding; treat it as data-quality noise, not an anomaly.
+
 ### v2 (target) — xG-based
 
 Deferred: blocked on team per-match xG ingestion (xG conceded/scored), unavailable from Understat as of 2026-05-22. The original xG-based definition:
