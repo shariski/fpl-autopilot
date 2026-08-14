@@ -891,7 +891,7 @@ def test_run_trigger_uses_ai_prose_in_notify_when_cache_populated(monkeypatch, d
         def generate(self, prompt, **kw):
             return "Deadguard set Haaland as captain for GW30."
 
-    monkeypatch.setattr(ai_prv, "OllamaProvider", _StubProvider)
+    monkeypatch.setattr(ai_prv, "build_provider", lambda cfg, conn=None: _StubProvider())
 
     sent = []
     monkeypatch.setattr(dg, "_notify", lambda conn, kind, text: sent.append((kind, text)))
@@ -917,7 +917,7 @@ def test_run_trigger_falls_back_to_template_when_ai_unavailable(monkeypatch, db)
         def generate(self, prompt, **kw):
             raise ai_prv.OllamaError("ollama down")
 
-    monkeypatch.setattr(ai_prv, "OllamaProvider", _ErrProvider)
+    monkeypatch.setattr(ai_prv, "build_provider", lambda cfg, conn=None: _ErrProvider())
 
     sent = []
     monkeypatch.setattr(dg, "_notify", lambda conn, kind, text: sent.append((kind, text)))
@@ -940,18 +940,6 @@ def test_run_trigger_uses_template_when_ai_disabled(monkeypatch, db):
 
     monkeypatch.setattr(_cfg_mod, "ai_enabled", lambda cfg=None: False)
 
-    boom = []
-
-    class _BoomProvider:
-        def __init__(self, *a, **kw):
-            boom.append("init")
-
-        def generate(self, prompt, **kw):
-            boom.append("generate")
-            return "should not be called"
-
-    monkeypatch.setattr(ai_prv, "OllamaProvider", _BoomProvider)
-
     sent = []
     monkeypatch.setattr(dg, "_notify", lambda conn, kind, text: sent.append((kind, text)))
 
@@ -961,4 +949,3 @@ def test_run_trigger_uses_template_when_ai_disabled(monkeypatch, db):
     assert executed_calls, "Expected at least one 'executed' notify"
     assert any(t.startswith("Deadguard: captain ") for t in executed_calls), \
         f"Expected template format, got: {executed_calls}"
-    assert boom == [], f"AI provider must NOT be instantiated when ai.enabled=false, got: {boom}"

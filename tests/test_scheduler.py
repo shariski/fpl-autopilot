@@ -395,6 +395,7 @@ def test_refresh_and_recompute_invokes_ai_job_when_enabled(monkeypatch):
                  "finished, state) VALUES (38, 'GW38', '2026-05-20T11:00:00Z', 0, 1, 0, 'PENDING')")
     conn.commit()
     cfg = {"fpl": {"team_id": 1}, "ai": {"enabled": True}}
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
 
     calls = {"refresh": 0, "fdr": 0, "xp": 0, "ai": 0}
     monkeypatch.setattr("src.cli.refresh", lambda **kw: calls.__setitem__("refresh", calls["refresh"] + 1))
@@ -435,6 +436,7 @@ def test_refresh_and_recompute_swallows_ai_exception(monkeypatch, caplog):
     conn = connect(":memory:")
     init_db(conn)
     cfg = {"fpl": {"team_id": 1}, "ai": {"enabled": True}}
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
 
     monkeypatch.setattr("src.cli.refresh", lambda **kw: None)
     monkeypatch.setattr("src.analytics.fdr.compute_and_store", lambda c: None)
@@ -448,6 +450,29 @@ def test_refresh_and_recompute_swallows_ai_exception(monkeypatch, caplog):
         scheduler.refresh_and_recompute(cfg=cfg, conn=conn)   # must NOT raise
     assert any("ai" in r.message.lower() or "ai.generate_job_failed" in r.message
                for r in caplog.records)
+
+
+def test_refresh_and_recompute_logs_missing_deepseek_key(monkeypatch, caplog):
+    """Missing DEEPSEEK_API_KEY -> factory raises, logged as ai.generate_job_failed, no crash."""
+    import logging
+    from src import scheduler
+    from src.data.db import connect, init_db
+    conn = connect(":memory:")
+    init_db(conn)
+    cfg = {"fpl": {"team_id": 1}, "ai": {"enabled": True}}
+
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setattr("src.cli.refresh", lambda **kw: None)
+    monkeypatch.setattr("src.analytics.fdr.compute_and_store", lambda c: None)
+    monkeypatch.setattr("src.analytics.xp.compute_and_store", lambda c: None)
+    called = {"ai": 0}
+    monkeypatch.setattr("src.ai.jobs.generate_ai_reasoning_job",
+                        lambda *a, **kw: called.__setitem__("ai", called["ai"] + 1) or {})
+
+    with caplog.at_level(logging.WARNING, logger="src.scheduler"):
+        scheduler.refresh_and_recompute(cfg=cfg, conn=conn)   # must NOT raise
+    assert called["ai"] == 0
+    assert any("ai.generate_job_failed" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
@@ -608,6 +633,7 @@ def test_refresh_and_recompute_invokes_ai_with_both_panes(monkeypatch):
                  "finished, state) VALUES (38, 'GW38', '2026-06-02T18:30Z', 0, 1, 0, 'PENDING')")
     conn.commit()
     cfg = {"fpl": {"team_id": 1}, "ai": {"enabled": True}}
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
 
     captured_panes = []
     monkeypatch.setattr("src.cli.refresh", lambda **kw: None)
@@ -630,6 +656,7 @@ def test_refresh_and_recompute_invokes_ai_with_three_panes(monkeypatch):
                  "finished, state) VALUES (38, 'GW38', '2026-06-02T18:30Z', 0, 1, 0, 'PENDING')")
     conn.commit()
     cfg = {"fpl": {"team_id": 1}, "ai": {"enabled": True}}
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
 
     captured_panes = []
     monkeypatch.setattr("src.cli.refresh", lambda **kw: None)

@@ -162,14 +162,10 @@ def _run_trigger(conn, key, gw, cfg):
                 "gw": gw,
             }
             from src.ai import reasoning as ai_reasoning, provider as ai_provider
-            ollama = ai_provider.OllamaProvider(
-                host=config.ai_ollama_host(cfg),
-                model=config.ai_ollama_model(cfg),
-                timeout_seconds=config.ai_timeout_seconds(cfg),
-            )
+            provider = ai_provider.build_provider(cfg)
             if ai_reasoning.generate_deadguard_summary(
                     conn, gw=gw, outcome=outcome,
-                    provider=ollama, model_id=config.ai_ollama_model(cfg)):
+                    provider=provider, model_id=config.ai_deepseek_model(cfg)):
                 prose, src = ai_reasoning.render_deadguard_summary(conn, gw, outcome)
                 if src == "ai" and prose:
                     summary = prose

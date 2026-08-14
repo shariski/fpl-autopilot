@@ -46,15 +46,11 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
         if config.ai_enabled(cfg):
             try:
                 from src.ai import jobs as ai_jobs
-                from src.ai.provider import OllamaProvider
-                provider = OllamaProvider(
-                    host=config.ai_ollama_host(cfg),
-                    model=config.ai_ollama_model(cfg),
-                    timeout_seconds=config.ai_timeout_seconds(cfg),
-                )
+                from src.ai.provider import build_provider
+                provider = build_provider(cfg)
                 ai_jobs.generate_ai_reasoning_job(
                     conn, panes=["captain", "transfer", "chip"], provider=provider,
-                    model_id=config.ai_ollama_model(cfg))
+                    model_id=config.ai_deepseek_model(cfg))
             except Exception:
                 log.exception("ai.generate_job_failed")
         _ping_healthcheck()
