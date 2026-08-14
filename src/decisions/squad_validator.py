@@ -175,8 +175,7 @@ def normalize_squad(picks, pool):
                 break
         if not swapped:
             return None
-    if validate_squad(out, pool):
-        return None
+    # budget is the last step — repair (which validates internally)
     return repair_budget(out, pool)
 
 

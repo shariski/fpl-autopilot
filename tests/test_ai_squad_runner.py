@@ -64,7 +64,9 @@ def test_runner_ai_pick_caches(db, monkeypatch):
     assert row is not None
 
 
-def test_runner_retries_then_falls_back(db, monkeypatch):
+def test_runner_normalizes_llm_slop_after_retries(db, monkeypatch):
+    """A structurally broken proposal (1 pick) is retried, then normalized into
+    a legal squad instead of falling back to the optimizer."""
     _seed(db)
     monkeypatch.setattr(runner, "build_squad_digest",
                         lambda c, pool=None, next_gw=None: {"next_gw": 1, "budget": 100,
@@ -74,9 +76,14 @@ def test_runner_retries_then_falls_back(db, monkeypatch):
                       "template_rationale": "x", "risks": []})
     prov = _Seq([bad, bad, bad, bad])
     out = runner.generate_squad(db, provider=prov, model_id="m")
-    assert out is not None and out["source"] == "optimizer"
+    assert out is not None and out["source"] == "ai"
+    assert len(out["picks"]) == 15
     assert len(prov.calls) == 3
     assert "validator" in prov.calls[1].lower() or "legal" in prov.calls[1].lower()
+    row = db.execute("SELECT * FROM activity_log WHERE decision_type='squad'"
+                     " ORDER BY rowid DESC LIMIT 1").fetchone()
+    import json as _json
+    assert _json.loads(row["inputs_json"])["result"] == "normalized"
 
 
 def test_runner_returns_none_on_total_failure(db, monkeypatch):
@@ -113,7 +120,7 @@ def test_runner_budget_repair_on_over_budget_proposal(db, monkeypatch):
     row = db.execute("SELECT * FROM activity_log WHERE decision_type='squad'"
                      " ORDER BY rowid DESC LIMIT 1").fetchone()
     import json as _json
-    assert _json.loads(row["inputs_json"])["result"] == "budget_repaired"
+    assert _json.loads(row["inputs_json"])["result"] == "normalized"
 
 
 def test_runner_rejects_reason_with_foreign_number(db, monkeypatch):
