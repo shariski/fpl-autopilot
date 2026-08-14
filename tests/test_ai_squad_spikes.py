@@ -81,6 +81,26 @@ def test_spikes_rejects_unknown_id_and_retries(db, monkeypatch):
     assert len(prov.calls) == 3
 
 
+def test_spikes_accepts_mixed_edge_and_stat_reason(db, monkeypatch):
+    """A reason citing edge evidence AND projection stats is fine (edge present)."""
+    _seed(db)
+    monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
+    monkeypatch.setattr(spikes_mod, "build_squad_digest", lambda c, pool=None, next_gw=None: _digest())
+    payload = json.loads(_signals_json())
+    payload["spikes"][0]["reason"] = "100000 transfers in and 30.0 xp_6gw"
+    assert spikes_mod.validate_signals(payload, _pool(), _digest()) == []
+
+
+def test_spikes_rejects_stat_only_restatement(db, monkeypatch):
+    _seed(db)
+    monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
+    monkeypatch.setattr(spikes_mod, "build_squad_digest", lambda c, pool=None, next_gw=None: _digest())
+    payload = json.loads(_signals_json())
+    payload["spikes"][0]["reason"] = "best at 30.0 xp_6gw"
+    problems = spikes_mod.validate_signals(payload, _pool(), _digest())
+    assert any("restatement" in p for p in problems)
+
+
 def test_spikes_returns_none_when_exhausted(db, monkeypatch):
     _seed(db)
     monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())

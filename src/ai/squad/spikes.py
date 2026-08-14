@@ -75,18 +75,22 @@ def validate_signals(payload, pool, digest):
                 problems.append(f"player {pid} appears twice")
             seen.add(pid)
             reason = s.get("reason") or ""
-            ok, bad = grounding.is_grounded(reason, edge_text.get(pid, ""))
-            if not ok:
-                # grounded only in projection stats = restatement, not a call
-                ok2, _ = grounding.is_grounded(reason, stat_text.get(pid, ""))
-                if ok2:
-                    problems.append(
-                        f"{kind}[{i}]: restatement — cite market/trend evidence "
-                        f"(transfers, ownership, form, recent_gws, fixtures), "
-                        f"not the projection")
-                else:
-                    problems.append(f"{kind}[{i}]: reason cites {sorted(bad)} "
-                                    f"not in player data")
+            if not reason:
+                problems.append(f"{kind}[{i}]: reason missing")
+                continue
+            reason_nums = grounding.numbers_in(reason)
+            edge_nums = reason_nums & grounding.numbers_in(edge_text.get(pid, ""))
+            stat_nums = reason_nums & grounding.numbers_in(stat_text.get(pid, ""))
+            ungrounded = reason_nums - edge_nums - stat_nums
+            if ungrounded:
+                problems.append(
+                    f"{kind}[{i}]: cites {sorted(ungrounded)} not in player data — "
+                    f"copy digest numbers verbatim (e.g. '48.1' not '48')")
+            elif not edge_nums:
+                problems.append(
+                    f"{kind}[{i}]: restatement — cite market/trend evidence "
+                    f"(transfers, ownership, form, recent_gws, fixtures), "
+                    f"not the projection")
     if not isinstance(payload.get("market_read"), str) or not payload["market_read"].strip():
         problems.append("market_read missing")
     return problems
