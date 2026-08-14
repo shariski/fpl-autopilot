@@ -448,6 +448,10 @@ LLM-generated prose grounded in the deterministic engine's existing numbers.
 **Enabled by default.** The scheduler pre-warms the cache after each
 `refresh_and_recompute`; the dashboard and Telegram read cached prose.
 
+**Player deep-dive:** open any player's page (`/players/<id>`) for an
+AI-generated pattern analysis of their data — on-demand, cached per gameweek.
+Costs ~$0.01-0.02 per unique analysis.
+
 **To disable** (and revert to the deterministic engine's template strings), set:
 
     # config.yaml

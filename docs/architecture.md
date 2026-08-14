@@ -16,6 +16,7 @@ System architecture, stack reasoning, data model, and scheduling. Read this befo
 │   Provider (DeepSeek / Ollama)              │
 │   Prompt builder + few-shot                 │
 │   Number-grounding check                    │
+│   Player insight (deep-dive)                │
 │   ai_reasoning_cache                        │
 └──────────────────┬──────────────────────────┘
                    ↓

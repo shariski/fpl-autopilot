@@ -390,5 +390,6 @@ This architecture spec is done when the three companion files exist and agree:
 
 | Version | Date | Change |
 |---|---|---|
+| v0.3 | 2026-08-14 | New consumer: on-demand player insight deep-dive (`src/ai/insight/`) — deterministic digest → analysis prompt → structured JSON → grounding gate with retry ≤3 → `ai_reasoning_cache` (`pane_type='insight'`). See `2026-08-14-player-insight-design.md`. |
 | v0.2 | 2026-08-14 | Provider decision revised: local Ollama → **DeepSeek API** (`deepseek-chat`) via the OpenAI SDK with configurable `base_url`; Claude audit provider dropped; `build_provider(cfg, conn)` factory in `src/ai/provider.py`; `DEEPSEEK_API_KEY` env var. See `2026-08-14-deepseek-provider-design.md`. |
 | v0.1 | 2026-05-26 | Initial architecture: Ollama provider, qwen2.5:7b-instruct-q4_K_M, AI sub-layer between Decision and Interface, per-pane structured prompts + few-shot, narrow JSON context, pre-warm cache in scheduler, post-generation number-grounding check, silent fallback + per-pane source tag, B4/B7/R3 stance locked. |

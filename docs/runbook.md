@@ -657,3 +657,10 @@ macOS resolver-plumbing quirk. Telegram (the primary interface per
    `ai.deepseek.model` exists. Watch `logs/` for `ai.*.provider_error` entries.
 4. If the key is revoked: create a new one on the platform, update `.env`, restart. Prose keeps
    falling back to templates until then — nothing breaks, the classic badge is the tell.
+
+**"Analysis unavailable" on a player page:** causes are (a) `ai.enabled: false`,
+(b) provider error (see above), or (c) the quality gate rejected all 3 attempts
+(logs: `ai.insight.attempt_rejected` / `ai.insight.provider_error`; check the
+`ai.insight` activity-log rows for `gate_result`). Retry from the page re-runs
+the analysis. Pre-season, insights are expected to be thinner — the digest
+carries prior-season stats only until `player_gw_stats` accumulates.
