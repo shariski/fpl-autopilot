@@ -361,6 +361,49 @@ def _resolve_audit_provider_choice():
     return cfg.get("ai", {}).get("audit", {}).get("provider", "none")
 
 
+def _cmd_apply_squad(conn=None, salt_path=None, verify_path=None, live=False,
+                     session=None, provider=None, confirm_fn=None):
+    """Apply the AI-built squad (dry-run default; --live = master key + typed confirm)."""
+    from .auth import master
+    from .execution import squad as squad_mod
+    mkw = {}
+    if salt_path is not None:
+        mkw["salt_path"] = salt_path
+    if verify_path is not None:
+        mkw["verify_path"] = verify_path
+    if live:
+        if not master.is_initialized(**mkw):
+            print("Master password not set — run `fpl-autopilot init-master-password` first.")
+            return
+        key = master.get_master_key(**mkw)
+    else:
+        key = None
+    if confirm_fn is None:
+        def confirm_fn(diff):
+            print(f"Planned: {diff}")
+            return input("Type 'yes' to submit to your live FPL team: ").strip().lower() == "yes"
+    owns_conn = conn is None
+    conn = conn or connect(cfg_db_path())
+    init_db(conn)
+    try:
+        result = squad_mod.apply_squad(conn, key, live=live, confirm_fn=confirm_fn,
+                                       session=session, provider=provider)
+    except Exception as exc:
+        print(f"Could not apply: {exc}")
+        if owns_conn:
+            conn.close()
+        return
+    for p in result.get("pairs", []):
+        print(f"  OUT {p['out_name']} -> IN {p['in_name']}")
+    print(f"Applied: {len(result['applied'])} | Failed: {result['failed'] or 'none'}")
+    if not live:
+        print("DRY-RUN — nothing was written. Re-run with --live to apply.")
+    elif result["failed"]:
+        print("Aborted — not all transfers applied.")
+    if owns_conn:
+        conn.close()
+
+
 def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
                         session=None, ranker=None, confirm_fn=None):
     from .auth import master
@@ -636,6 +679,8 @@ def main(argv=None):
     p_xfer = sub.add_parser("execute-transfer", help="make one free transfer from the suggestions (dry-run unless --live)")
     p_xfer.add_argument("--live", action="store_true", help="actually submit to FPL (requires typed confirmation)")
     p_xfer.add_argument("--rank", type=int, default=1, help="which suggestion to execute (1-based; default 1)")
+    p_apply = sub.add_parser("apply-squad", help="apply the AI-built squad (dry-run unless --live)")
+    p_apply.add_argument("--live", action="store_true", help="actually submit the transfers (requires master password + typed confirmation)")
     p_route = sub.add_parser("route-gameweek", help="route captain + transfer per mode/confidence (dry-run unless --live)")
     p_route.add_argument("--live", action="store_true", help="execute the auto-routed decisions (requires typed confirmation)")
     p_route.add_argument("--mode", choices=["auto", "manual", "hybrid"], default=None, help="override config mode for this run")
@@ -675,6 +720,8 @@ def main(argv=None):
         _execute_lineup_cli(live=args.live)
     elif args.command == "execute-transfer":
         _execute_transfer_cli(live=args.live, rank=args.rank)
+    elif args.command == "apply-squad":
+        _cmd_apply_squad(live=args.live)
     elif args.command == "route-gameweek":
         _route_gameweek_cli(live=args.live, mode=args.mode)
     elif args.command == "undo-transfer":

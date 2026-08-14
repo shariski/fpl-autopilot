@@ -54,16 +54,18 @@ def apply_squad(conn, key, *, live=False, confirm_fn=None, session=None, provide
     result = runner.generate_squad(conn, provider=provider, model_id=model_id)
     if result is None:
         return {"applied": [], "failed": ["squad builder produced no result"],
-                "dry_run": not live}
+                "dry_run": not live, "pairs": []}
     pairs = plan_squad_transfers(conn, result["picks"])
     if not pairs:
         repository.log_activity(conn, decision_type="squad", mode="manual",
                                 action_taken="refused: squad already matches",
                                 inputs={"picks": [p["player_id"] for p in result["picks"]]},
                                 executed=False)
-        return {"applied": [], "failed": ["no changes to apply"], "dry_run": not live}
+        return {"applied": [], "failed": ["no changes to apply"], "dry_run": not live,
+                "pairs": []}
     if live and (confirm_fn is None or not confirm_fn(f"{len(pairs)} transfers to apply")):
-        return {"applied": [], "failed": ["aborted by user"], "dry_run": False}
+        return {"applied": [], "failed": ["aborted by user"], "dry_run": False,
+                "pairs": pairs}
     session = session or auth_session.ensure_session(conn, key)
     entry = config.team_id()
     event = _next_gw(conn)
@@ -90,4 +92,4 @@ def apply_squad(conn, key, *, live=False, confirm_fn=None, session=None, provide
         repository.log_activity(conn, decision_type="squad", mode="manual",
                                 action_taken=f"apply {pair['out_name']} IN {pair['in_name']}",
                                 inputs={"pair": pair, "live": live}, executed=live)
-    return {"applied": applied, "failed": failed, "dry_run": not live}
+    return {"applied": applied, "failed": failed, "dry_run": not live, "pairs": pairs}
