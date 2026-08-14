@@ -219,6 +219,8 @@ export interface SpikeSignal {
 	player_id: number;
 	level: 'high' | 'medium';
 	reason: string;
+	web_name?: string;
+	team?: string | null;
 }
 
 export interface Speculation {

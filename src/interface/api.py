@@ -172,11 +172,18 @@ def squad_builder(conn=Depends(get_db)):
                       "price": p["price"], "xp_6gw": p["xp_6gw"],
                       "slot": pk["slot"], "reason": pk.get("reason", "")})
     budget_used = round(sum(p["price"] for p in picks), 1)
+    spec = result.get("speculation")
+    if spec:
+        for kind in ("spikes", "drops", "differentials"):
+            for s in spec.get(kind, []):
+                p = by_id.get(s["player_id"])
+                s["web_name"] = p["web_name"] if p else f"#{s['player_id']}"
+                s["team"] = p["team_short"] if p else None
     return {
         "status": status, "gw": gw, "source": result.get("source", "ai"),
         "picks": picks, "template_rationale": result.get("template_rationale", ""),
         "risks": result.get("risks", []), "budget_used": budget_used,
-        "speculation": result.get("speculation"),
+        "speculation": spec,
         "model_id": config.ai_deepseek_model(),
         "generated_at": hit["generated_at"] if hit is not None else None,
     }

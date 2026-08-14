@@ -43,6 +43,9 @@
 
 	const spikeName = (pid: number) =>
 		builder?.picks.find((p) => p.player_id === pid)?.web_name ?? `#${pid}`;
+
+	const signalName = (s: { web_name?: string; player_id: number }) =>
+		s.web_name ?? spikeName(s.player_id);
 </script>
 
 <svelte:head><title>Squad Builder — FPL Autopilot</title></svelte:head>
@@ -100,7 +103,7 @@
 						{#each builder.speculation.drops as s}
 							<li class="spec-item drop">
 								<span class="spec-badge">{s.level}</span>
-								<strong>{spikeName(s.player_id)}</strong>
+								<strong>{signalName(s)}</strong>
 								<span class="spec-reason">{s.reason}</span>
 							</li>
 						{/each}
@@ -112,7 +115,7 @@
 						{#each builder.speculation.differentials as s}
 							<li class="spec-item spike">
 								<span class="spec-badge">{s.level}</span>
-								<strong>{spikeName(s.player_id)}</strong>
+								<strong>{signalName(s)}</strong>
 								<span class="spec-reason">{s.reason}</span>
 							</li>
 						{/each}
