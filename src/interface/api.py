@@ -109,7 +109,7 @@ def player_insight(player_id: int, conn=Depends(get_db)):
         status = "generated"
     return {
         "status": status, "player_id": player_id, "gw": gw,
-        "player_name": _player_name(conn, player_id),
+        "player": _player_identity(conn, player_id),
         "insights": payload.get("insights", []),
         "summary": payload.get("summary", ""),
         "data_limits": payload.get("data_limits", []),
@@ -118,9 +118,15 @@ def player_insight(player_id: int, conn=Depends(get_db)):
     }
 
 
-def _player_name(conn, player_id):
-    row = conn.execute("SELECT web_name FROM players WHERE id=?", (player_id,)).fetchone()
-    return row["web_name"] if row else None
+def _player_identity(conn, player_id):
+    row = conn.execute(
+        "SELECT p.name, p.web_name, p.position, p.price, t.short_name AS team "
+        "FROM players p JOIN teams t ON t.id = p.team_id WHERE p.id=?",
+        (player_id,)).fetchone()
+    if row is None:
+        return None
+    return {"name": row["name"], "web_name": row["web_name"],
+            "position": row["position"], "team": row["team"], "price": row["price"]}
 
 
 @app.get("/api/audit/{gw}")

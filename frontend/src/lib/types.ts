@@ -183,10 +183,18 @@ export interface Insight {
 	implication: string;
 }
 
+export interface PlayerIdentity {
+	name: string | null;
+	web_name: string;
+	position: string;
+	team: string;
+	price: number | null;
+}
+
 export interface PlayerInsight {
 	status: 'cached' | 'generated' | 'unavailable';
 	player_id: number;
-	player_name: string | null;
+	player: PlayerIdentity | null;
 	gw: number | null;
 	insights: Insight[];
 	summary: string;

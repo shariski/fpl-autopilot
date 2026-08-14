@@ -22,14 +22,21 @@
 </script>
 
 <svelte:head>
-	<title>{insight?.player_name ?? `Player ${data.playerId}`} — FPL Autopilot</title>
+	<title>{insight?.player?.name ?? `Player ${data.playerId}`} — FPL Autopilot</title>
 </svelte:head>
 
 <div class="insight-page">
 	<header class="page-head">
-		<h1>{insight?.player_name ?? `Player ${data.playerId}`}</h1>
+		<h1>{insight?.player?.name ?? `Player ${data.playerId}`}</h1>
 		{#if insight}
-			<p class="gw-label">Gameweek {insight.gw ?? '—'} · analysis</p>
+			<p class="id-line">
+				<span class="id-chip">{insight.player?.position ?? '—'}</span>
+				<span class="id-chip">{insight.player?.team ?? '—'}</span>
+				{#if insight.player?.price != null}
+					<span class="id-chip">£{insight.player.price}m</span>
+				{/if}
+				<span class="gw-label">GW {insight.gw ?? '—'}</span>
+			</p>
 		{/if}
 	</header>
 
@@ -81,6 +88,28 @@
 	}
 	.gw-label {
 		margin: 0 0 1rem;
+		font-size: 0.78rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--text-dim);
+	}
+	.id-line {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin: 0 0 1rem;
+	}
+	.id-chip {
+		display: inline-block;
+		font-size: 0.72rem;
+		font-weight: 600;
+		padding: 0.15rem 0.5rem;
+		border-radius: 999px;
+		background: var(--surface-2);
+		color: var(--text);
+	}
+	.gw-label {
+		margin: 0 0 0 0.3rem;
 		font-size: 0.78rem;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
