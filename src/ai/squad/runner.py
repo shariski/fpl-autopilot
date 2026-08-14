@@ -12,7 +12,8 @@ from src.ai.insight.runner import extract_json_object
 from src.ai.squad.digest import build_squad_digest
 from src.ai.squad.prompt import build_squad_prompt
 from src.decisions.squad_builder import build_candidate_pool
-from src.decisions.squad_validator import optimize_squad, repair_budget, validate_squad
+from src.decisions.squad_validator import (normalize_squad, optimize_squad,
+                                           repair_budget, validate_squad)
 
 logger = logging.getLogger(__name__)
 
@@ -108,17 +109,19 @@ def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
             prompt = f"{prompt}\n\nPrevious proposal was rejected by the validator: " \
                      f"{'; '.join(problems[:5])}.{budget_hint} " \
                      f"Output ONLY the JSON with a legal squad."
-    # Deterministic budget repair of the last AI proposal (legal except budget)
+    # Deterministic rescue of the last AI proposal: normalize (slots/clubs/
+    # positions), then repair the budget. The LLM's structure is preserved as
+    # much as possible; the validator is the law.
     last_payload = locals().get("payload")
     if last_payload is not None and isinstance(last_payload.get("picks"), list):
-        repaired = repair_budget(last_payload["picks"], pool)
-        if repaired is not None:
-            last_payload["picks"] = repaired
+        normalized = normalize_squad(last_payload["picks"], pool)
+        if normalized is not None:
+            last_payload["picks"] = normalized
             last_payload["source"] = "ai"
             cache.put(conn, gw, PANE_TYPE, rec_hash, json.dumps(last_payload, sort_keys=True),
                       model_id)
-            _log(conn, gw, model_id, result="budget_repaired",
-                 picks=[p["player_id"] for p in repaired],
+            _log(conn, gw, model_id, result="normalized",
+                 picks=[p["player_id"] for p in normalized],
                  extra={"problems": problems[:5]})
             return last_payload
     try:

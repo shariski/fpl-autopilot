@@ -115,3 +115,31 @@ def test_optimize_squad_budget_aware_with_premiums():
     picks = optimize_squad(pool)
     assert len(picks) == 15
     assert validate_squad(picks, pool) == []
+
+
+def test_normalize_squad_fixes_llm_slop():
+    """LLM output with invented slots, position mismatch, surplus and over-budget
+    picks is normalized into a legal squad."""
+    from src.decisions.squad_validator import normalize_squad
+
+    pool = [dict(p) for p in POOL]
+    # GKP: 3 GKP picked (surplus of 1); DEF: 7 picked (surplus of 2);
+    # a MID wrongly slotted as FWD3; a 4th player from T0 (club limit)
+    slop = [
+        {"player_id": 0, "slot": "GKP1"}, {"player_id": 1, "slot": "GKP2"},
+        {"player_id": 2, "slot": "GKP3"},
+        {"player_id": 3, "slot": "DEF1"}, {"player_id": 4, "slot": "DEF2"},
+        {"player_id": 5, "slot": "DEF3"}, {"player_id": 6, "slot": "DEF4"},
+        {"player_id": 7, "slot": "DEF5"}, {"player_id": 8, "slot": "DEF6"},
+        {"player_id": 9, "slot": "DEF7"},
+        {"player_id": 10, "slot": "MID1"}, {"player_id": 11, "slot": "MID2"},
+        {"player_id": 12, "slot": "MID3"}, {"player_id": 13, "slot": "MID4"},
+        {"player_id": 14, "slot": "FWD3"},   # MID in a FWD slot
+    ]
+    normalized = normalize_squad(slop, pool)
+    assert normalized is not None
+    assert validate_squad(normalized, pool) == []
+    assert len(normalized) == 15
+    slots = [pk["slot"] for pk in normalized]
+    assert slots.count("GKP1") == 1 and slots.count("GKP2") == 1
+    assert "DEF6" not in slots and "DEF7" not in slots

@@ -111,6 +111,75 @@ def optimize_squad(pool):
     return picked
 
 
+def normalize_squad(picks, pool):
+    """Deterministic normalization of an AI proposal (observed 2026-08-14: the
+    LLM invented DEF6/DEF7, mismatched positions, breached club limit and
+    budget). Fixes slot names by position order, drops surplus per position,
+    fills gaps from the pool, enforces the club limit, then budget-repairs.
+    Returns a legal squad or None if unfixable."""
+    players = {p["player_id"]: p for p in pool}
+    by_pos_pool = {pos: sorted([p for p in pool if p["position"] == pos],
+                               key=lambda p: (p["xp_6gw"], p["value"] or 0), reverse=True)
+                   for pos in SLOTS}
+    per_pos = {pos: [] for pos in SLOTS}
+    for pk in picks:
+        p = players.get(pk.get("player_id"))
+        if p is not None:
+            per_pos[p["position"]].append(pk)
+    out = []
+    used = set()
+    for pos, n in SLOTS.items():
+        group = per_pos[pos]
+        if len(group) > n:
+            group = sorted(group, key=lambda pk: players[pk["player_id"]]["xp_6gw"],
+                           reverse=True)[:n]
+        for p in by_pos_pool[pos]:
+            if len(group) >= n:
+                break
+            if p["player_id"] in used:
+                continue
+            group.append({"player_id": p["player_id"], "reason": "pool fill"})
+            used.add(p["player_id"])
+        for i, pk in enumerate(group[:n]):
+            out.append({"player_id": pk["player_id"], "slot": f"{pos}{i + 1}",
+                        "reason": pk.get("reason", "")})
+    if len(out) != 15:
+        return None
+    # club limit: for clubs with > 3, swap surplus (lowest xp first) with the
+    # best same-position pool player not used, whose club has room
+    clubs = Counter(players[pk["player_id"]]["team_short"] for pk in out)
+    for _ in range(20):
+        over = [club for club, c in clubs.items() if c > MAX_PER_CLUB]
+        if not over:
+            break
+        club = over[0]
+        surplus = sorted([pk for pk in out if players[pk["player_id"]]["team_short"] == club],
+                         key=lambda pk: players[pk["player_id"]]["xp_6gw"])
+        swapped = False
+        for pk in surplus:
+            pos = players[pk["player_id"]]["position"]
+            for alt in by_pos_pool[pos]:
+                if alt["player_id"] in {x["player_id"] for x in out}:
+                    continue
+                if clubs[alt["team_short"]] >= MAX_PER_CLUB:
+                    continue
+                out = [dict(x) for x in out]
+                for x in out:
+                    if x["player_id"] == pk["player_id"]:
+                        x["player_id"] = alt["player_id"]
+                clubs[club] -= 1
+                clubs[alt["team_short"]] += 1
+                swapped = True
+                break
+            if swapped:
+                break
+        if not swapped:
+            return None
+    if validate_squad(out, pool):
+        return None
+    return repair_budget(out, pool)
+
+
 def repair_budget(picks, pool):
     """Deterministic budget repair for an AI squad that is otherwise legal.
 

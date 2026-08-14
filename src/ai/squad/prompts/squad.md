@@ -9,7 +9,9 @@ points, prices, and upcoming fixtures. Pick the strongest possible starting 15
 for the upcoming gameweek.
 
 Constraints (MANDATORY, verified by a validator after you answer):
-- exactly 15 picks, one per slot: GKP1 GKP2, DEF1..DEF5, MID1..MID5, FWD1..FWD3
+- exactly 15 picks, one per slot, using EXACTLY these slot names, each once:
+  GKP1 GKP2, DEF1 DEF2 DEF3 DEF4 DEF5, MID1 MID2 MID3 MID4 MID5, FWD1 FWD2 FWD3
+  (never invent slots like DEF6)
 - slot position MUST match the player's position
 - total price <= 100
 - at most 3 players from the same team
