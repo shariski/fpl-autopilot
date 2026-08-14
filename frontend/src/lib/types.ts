@@ -202,3 +202,26 @@ export interface PlayerInsight {
 	model_id: string | null;
 	generated_at: string | null;
 }
+
+export interface SquadPick {
+	player_id: number;
+	web_name: string;
+	team: string;
+	position: Position;
+	price: number;
+	xp_6gw: number;
+	slot: string;
+	reason: string;
+}
+
+export interface SquadBuilder {
+	status: 'cached' | 'generated' | 'unavailable';
+	gw: number | null;
+	source: 'ai' | 'optimizer';
+	picks: SquadPick[];
+	template_rationale: string;
+	risks: string[];
+	budget_used: number;
+	model_id: string | null;
+	generated_at: string | null;
+}

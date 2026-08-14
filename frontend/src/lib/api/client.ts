@@ -108,3 +108,9 @@ import type { PlayerInsight } from '../types';
 export async function fetchInsight(playerId: number, fetchFn: Fetch = fetch): Promise<PlayerInsight> {
 	return getJson<PlayerInsight>(`/api/players/${playerId}/insight`, fetchFn);
 }
+
+import type { SquadBuilder } from '../types';
+
+export async function fetchSquadBuilder(fetchFn: Fetch = fetch): Promise<SquadBuilder> {
+	return getJson<SquadBuilder>('/api/squad/builder', fetchFn);
+}
