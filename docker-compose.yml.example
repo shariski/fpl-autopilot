@@ -19,7 +19,7 @@ services:
     image: ghcr.io/shariski/fpl-autopilot:${IMAGE_TAG:-latest}
     container_name: fpl-autopilot
     restart: unless-stopped
-    env_file: .env
+    env_file: .env    # must include DEEPSEEK_API_KEY=sk-... (AI provider); TELEGRAM_BOT_TOKEN etc.
     ports:
       - "127.0.0.1:8000:8000"
     volumes:

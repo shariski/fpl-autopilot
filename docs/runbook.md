@@ -640,3 +640,20 @@ dscacheutil -q host -a name server1.taila3964c.ts.net | grep ip_address
 --resolve` workarounds during the affected period. This is purely a
 macOS resolver-plumbing quirk. Telegram (the primary interface per
 §B9 of CLAUDE.md) is unaffected — it doesn't route through Tailscale.
+
+## §10 — AI prose missing (DeepSeek) 🟡
+
+**Symptom:** Dashboard panes show the `classic` badge instead of `AI` prose; scheduler logs `ai.generate_job_failed`.
+
+### Triage
+
+1. Check the key is set in the container env:
+   ```bash
+   docker compose exec fpl-autopilot env | grep DEEPSEEK_API_KEY
+   ```
+   Expected: `DEEPSEEK_API_KEY=sk-...` (values are never logged by the app by design — B7).
+2. If missing: add `DEEPSEEK_API_KEY=sk-...` to the host `.env`, then `docker compose up -d` to recreate.
+3. If set but still failing: check the key is valid (DeepSeek platform dashboard) and the configured
+   `ai.deepseek.model` exists. Watch `logs/` for `ai.*.provider_error` entries.
+4. If the key is revoked: create a new one on the platform, update `.env`, restart. Prose keeps
+   falling back to templates until then — nothing breaks, the classic badge is the tell.

@@ -13,7 +13,7 @@ System architecture, stack reasoning, data model, and scheduling. Read this befo
                    ↓
 ┌─────────────────────────────────────────────┐
 │  AI Reasoning (Phase 3, optional)           │
-│   Provider (Ollama / Claude)                │
+│   Provider (DeepSeek / Ollama)              │
 │   Prompt builder + few-shot                 │
 │   Number-grounding check                    │
 │   ai_reasoning_cache                        │

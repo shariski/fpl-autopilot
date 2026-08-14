@@ -51,7 +51,10 @@ telegram:
 
 ai:
   enabled: true
-  provider: ollama
+  provider: deepseek   # deepseek | ollama | none
+  deepseek:
+    base_url: "https://api.deepseek.com/v1"
+    model: "deepseek-chat"
   ollama:
     host: "http://localhost:11434"
     model: "qwen2.5:7b-instruct-q4_K_M"

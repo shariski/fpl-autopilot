@@ -112,9 +112,11 @@ The decision is captured here and reflected in `architecture.md`. Phase 1.4 task
 
 ## D2 — LLM choice for Phase 3
 
-Claude API vs local LLM (e.g., Llama 3.1, Qwen 2.5). Earlier project considerations (separate context) leaned toward local for personal projects, but the user has not yet stated a preference here.
-
-**Decision needed by:** Phase 3 start. Not relevant until Phase 2 is operational.
+DeepSeek API (`deepseek-chat`) via the OpenAI SDK, chosen 2026-08-14
+(`docs/superpowers/specs/2026-08-14-deepseek-provider-design.md`). Base URL +
+model are configurable, so switching to another OpenAI-compatible provider is
+config-only. Local LLMs (Ollama) remain a config-selectable fallback but are
+not deployed.
 
 ---
 

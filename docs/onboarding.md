@@ -440,12 +440,10 @@ fpl-autopilot config <key> <value>         # set a config value
 The captain pane on the dashboard and the Telegram H-24 preview body can show
 LLM-generated prose grounded in the deterministic engine's existing numbers.
 
-**Prerequisite:** an Ollama daemon running on localhost with the
-`qwen2.5:7b-instruct-q4_K_M` model installed:
+**Prerequisite:** a DeepSeek API key:
 
-    brew install ollama          # or your platform's equivalent
-    ollama serve                  # in a background shell
-    ollama pull qwen2.5:7b-instruct-q4_K_M
+    # .env
+    DEEPSEEK_API_KEY=sk-...
 
 **Enabled by default.** The scheduler pre-warms the cache after each
 `refresh_and_recompute`; the dashboard and Telegram read cached prose.
@@ -456,6 +454,6 @@ LLM-generated prose grounded in the deterministic engine's existing numbers.
     ai:
       enabled: false
 
-When disabled (or when Ollama is unreachable), the dashboard renders the
+When disabled (or when DeepSeek is unreachable), the dashboard renders the
 template string with a small `classic` badge, and the Telegram body uses the
 template string. No banner, no broken page.
