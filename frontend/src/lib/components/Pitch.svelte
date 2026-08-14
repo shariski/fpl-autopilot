@@ -2,6 +2,7 @@
 	import type { Squad, Position } from '$lib/types';
 	import { dash } from '$lib/format';
 	import PlayerCard from './PlayerCard.svelte';
+	import EmptyState from './EmptyState.svelte';
 	let { squad }: { squad: Squad } = $props();
 	const starters = $derived(squad.players.filter((p) => p.multiplier > 0));
 	const bench = $derived(squad.players.filter((p) => p.multiplier === 0));
@@ -14,17 +15,21 @@
 	{#if squad.free_transfers !== null}· {squad.free_transfers} FT{/if}
 </div>
 
-<div class="pitch">
-	{#each order as pos}
-		<div class="line">
-			{#each rowFor(pos) as p (p.id)}<PlayerCard player={p} />{/each}
-		</div>
-	{/each}
-</div>
+{#if squad.players.length === 0}
+	<EmptyState message="No squad for this season yet — pick your team on fantasy.premierleague.com and it appears here within the hour." />
+{:else}
+	<div class="pitch">
+		{#each order as pos}
+			<div class="line">
+				{#each rowFor(pos) as p (p.id)}<PlayerCard player={p} />{/each}
+			</div>
+		{/each}
+	</div>
 
-<div class="bench">
-	{#each bench as p (p.id)}<PlayerCard player={p} />{/each}
-</div>
+	<div class="bench">
+		{#each bench as p (p.id)}<PlayerCard player={p} />{/each}
+	</div>
+{/if}
 
 <style>
 	.summary { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 8px; }

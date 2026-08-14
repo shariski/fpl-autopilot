@@ -21,4 +21,8 @@ describe('Pitch', () => {
 		render(Pitch, { props: { squad: launchMock.squad } });
 		expect(screen.getAllByText('—').length).toBeGreaterThan(0);
 	});
+	it('shows the empty-squad message when no players', () => {
+		render(Pitch, { props: { squad: { gw: 1, bank: 0, team_value: 0, free_transfers: 1, players: [] } } });
+		expect(screen.getByText(/pick your team on fantasy\.premierleague\.com/i)).toBeInTheDocument();
+	});
 });
