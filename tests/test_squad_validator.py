@@ -93,3 +93,25 @@ def test_repair_budget_returns_none_when_unfixable():
     all_expensive = [dict(p, price=9.0) for p in POOL]
     picks = _picks(0, 1, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 19)
     assert repair_budget(picks, all_expensive) is None
+
+
+def test_optimize_squad_budget_aware_with_premiums():
+    """A premium-heavy pool must still fill all 15 slots (naive greedy stranding
+    a later slot was observed 2026-08-14)."""
+    from src.decisions.squad_validator import optimize_squad
+
+    pool = [dict(p) for p in POOL]
+    pool += [
+        {"player_id": 100, "web_name": "Haaland", "team_short": "T10",
+         "position": "FWD", "price": 15.5, "status": "a", "xp_next": 8.0,
+         "xp_6gw": 48.0, "value": 48.0 / 15.5},
+        {"player_id": 101, "web_name": "Saka", "team_short": "T11",
+         "position": "MID", "price": 10.5, "status": "a", "xp_next": 7.0,
+         "xp_6gw": 40.0, "value": 40.0 / 10.5},
+        {"player_id": 102, "web_name": "Sánchez", "team_short": "T12",
+         "position": "GKP", "price": 5.5, "status": "a", "xp_next": 5.0,
+         "xp_6gw": 26.0, "value": 26.0 / 5.5},
+    ]
+    picks = optimize_squad(pool)
+    assert len(picks) == 15
+    assert validate_squad(picks, pool) == []
