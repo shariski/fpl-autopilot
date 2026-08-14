@@ -90,3 +90,27 @@ def test_runner_returns_none_on_total_failure(db, monkeypatch):
     assert runner.generate_squad(db, provider=Boom(), model_id="m") is None
     digest = {"next_gw": 1, "budget": 100, "players": _pool()}
     assert cache.get(db, 1, "squad", cache.recommendation_hash(digest)) is None
+
+
+def test_runner_budget_repair_on_over_budget_proposal(db, monkeypatch):
+    """AI proposes a legal-shape squad that is over budget -> deterministic repair."""
+    _seed(db)
+    pool = _pool()
+    # GKP1 (player 0) is priced +12 over -> any squad containing it is over budget
+    pool = [dict(p, price=p["price"] + 12 if p["player_id"] == 0 else p["price"])
+            for p in pool]
+    pool.append({"player_id": 50, "web_name": "CheapGK", "team_short": "T9",
+                 "position": "GKP", "price": 4.0, "status": "a", "xp_next": 1.0,
+                 "xp_6gw": 6.0, "value": 1.5})
+    monkeypatch.setattr(runner, "build_squad_digest",
+                        lambda c, pool=None, next_gw=None: {"next_gw": 1, "budget": 100,
+                                                            "players": pool})
+    monkeypatch.setattr(runner, "build_candidate_pool", lambda c, next_gw=None: pool)
+    prov = _Seq([_legal_picks_json()] * 3)  # over budget, repeated on retries
+    out = runner.generate_squad(db, provider=prov, model_id="m")
+    assert out is not None and out["source"] == "ai"
+    assert runner.validate_squad(out["picks"], pool) == []
+    row = db.execute("SELECT * FROM activity_log WHERE decision_type='squad'"
+                     " ORDER BY rowid DESC LIMIT 1").fetchone()
+    import json as _json
+    assert _json.loads(row["inputs_json"])["result"] == "budget_repaired"

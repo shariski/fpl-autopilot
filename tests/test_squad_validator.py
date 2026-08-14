@@ -63,3 +63,33 @@ def test_optimize_fallback_is_always_legal():
             assert slot.startswith(pos)
             counts[pos] = counts.get(pos, 0) + 1
         assert counts == {"GKP": 2, "DEF": 5, "MID": 5, "FWD": 3}
+
+
+def test_repair_budget_fixes_over_budget_squad():
+    from src.decisions.squad_validator import repair_budget
+
+    pool = [dict(p) for p in POOL]
+    pool.append({"player_id": 50, "web_name": "CheapGK", "team_short": "T9",
+                 "position": "GKP", "price": 4.0, "status": "a", "xp_next": 1.0,
+                 "xp_6gw": 6.0, "value": 1.5})
+    picks = _picks(0, 1, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 19)
+    # bump GKP1's price by 5 -> 102 total (over budget)
+    bumped = [dict(p, price=p["price"] + 5 if p["player_id"] == 0 else p["price"])
+              for p in pool]
+    assert any("budget" in p for p in validate_squad(picks, bumped))
+    repaired = repair_budget(picks, bumped)
+    assert repaired is not None
+    assert validate_squad(repaired, bumped) == []
+    # GKP1's slot now holds the cheap GK; rest of the structure preserved
+    gkp1 = next(p for p in repaired if p["slot"] == "GKP1")
+    assert gkp1["player_id"] == 50
+    assert len(repaired) == 15
+
+
+def test_repair_budget_returns_none_when_unfixable():
+    from src.decisions.squad_validator import repair_budget
+
+    # every pool player is expensive -> no cheaper alternative exists
+    all_expensive = [dict(p, price=9.0) for p in POOL]
+    picks = _picks(0, 1, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 19)
+    assert repair_budget(picks, all_expensive) is None

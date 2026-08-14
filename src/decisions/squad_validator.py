@@ -56,9 +56,13 @@ def validate_squad(picks, pool):
 
 
 def optimize_squad(pool):
-    """Greedy fill by value desc; always legal when the pool can fill each slot."""
+    """Greedy fill by xp_6gw desc (value as tiebreak); always legal when the
+    pool can fill each slot. Realistic: best projected players, not cheapest."""
+    def _key(p):
+        return (p["xp_6gw"], p["value"] or 0)
+
     by_pos = {pos: sorted([p for p in pool if p["position"] == pos],
-                          key=lambda p: (p["value"] or 0), reverse=True)
+                          key=_key, reverse=True)
               for pos in SLOTS}
     picked, clubs, budget = [], Counter(), 0.0
     for pos, n in SLOTS.items():
@@ -80,3 +84,65 @@ def optimize_squad(pool):
             clubs[chosen["team_short"]] += 1
             budget += chosen["price"]
     return picked
+
+
+def repair_budget(picks, pool):
+    """Deterministic budget repair for an AI squad that is otherwise legal.
+
+    Repeatedly swaps the most expensive pick for the best same-position pool
+    alternative (not already in the squad) that fits the budget, until the squad
+    is legal. Returns the repaired picks, or None when the pool cannot fix it.
+    Preserves the AI's structure as much as possible.
+    """
+    players = {p["player_id"]: p for p in pool}
+    by_pos = {}
+    for p in pool:
+        by_pos.setdefault(p["position"], []).append(p)
+    picks = [dict(pk) for pk in picks]
+    for _ in range(30):  # hard cap on swaps
+        problems = validate_squad(picks, pool)
+        if not problems:
+            return picks
+        budget_problems = [pr for pr in problems if "budget" in pr]
+        if not budget_problems:
+            return None  # non-budget violation: not our job
+        in_squad = {pk["player_id"] for pk in picks}
+        total = sum(players[pk["player_id"]]["price"] for pk in picks
+                    if pk["player_id"] in players)
+        # most expensive pick first
+        expensive = sorted(
+            [pk for pk in picks if pk["player_id"] in players],
+            key=lambda pk: players[pk["player_id"]]["price"], reverse=True)
+        swapped = False
+        for pk in expensive:
+            pos = players[pk["player_id"]]["position"]
+            slot = pk["slot"]
+            old_price = players[pk["player_id"]]["price"]
+            # candidates: same position, unused, cheaper, and the swap fits the budget
+            candidates = []
+            for alt in by_pos.get(pos, []):
+                if alt["player_id"] in in_squad:
+                    continue
+                if alt["price"] >= old_price:
+                    continue
+                if total - old_price + alt["price"] > MAX_BUDGET + EPS:
+                    continue
+                candidates.append(alt)
+            if not candidates:
+                continue
+            # try candidates best-first (projected xP); a swap must stay legal
+            for best in sorted(candidates,
+                               key=lambda p: (p["xp_6gw"], p["value"] or 0), reverse=True):
+                new_picks = [dict(x) for x in picks]
+                for x in new_picks:
+                    if x["player_id"] == pk["player_id"]:
+                        x["player_id"] = best["player_id"]
+                if not validate_squad(new_picks, pool):
+                    picks = new_picks
+                    swapped = True
+                    break
+            if swapped:
+                break
+        if not swapped:
+            return None
+    return picks
