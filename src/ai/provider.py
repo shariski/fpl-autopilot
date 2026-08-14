@@ -72,6 +72,73 @@ class OllamaProvider:
         return text.strip()
 
 
+class DeepSeekError(RuntimeError):
+    """Raised when the DeepSeek API call fails or is refused before send (B7)."""
+
+
+class DeepSeekProvider:
+    """DeepSeek API provider (OpenAI-compatible) — implements LLMProvider.
+
+    Uses the `openai` SDK pointed at a configurable base_url, so other
+    OpenAI-compatible providers (Groq, OpenRouter, ...) work with config-only
+    changes. Guardrails: pre-send credential scan (B7); optional usage log to
+    activity_log when a conn is provided (audit path, B10).
+    """
+
+    def __init__(self, api_key: str, *, model: str, base_url: str,
+                 timeout_seconds: float, conn=None, _client=None):
+        self.model = model
+        self.timeout_seconds = timeout_seconds
+        self._conn = conn
+        if _client is not None:
+            self._client = _client
+        else:
+            from openai import OpenAI
+            self._client = OpenAI(api_key=api_key, base_url=base_url,
+                                  timeout=timeout_seconds)
+
+    def generate(self, prompt: str, *, max_tokens: int = 200,
+                 temperature: float = 0.2) -> str:
+        self._refuse_credential_prompts(prompt)
+        try:
+            response = self._client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        except Exception as e:
+            raise DeepSeekError(f"deepseek request failed: {type(e).__name__}") from e
+        text = ""
+        if response.choices:
+            text = response.choices[0].message.content or ""
+        self._log_usage(response)
+        return text.strip()
+
+    def _refuse_credential_prompts(self, prompt):
+        for pat in _CREDENTIAL_PATTERNS:
+            if pat.search(prompt):
+                raise DeepSeekError(
+                    f"prompt rejected: contains credential/sensitive pattern ({pat.pattern})")
+
+    def _log_usage(self, response):
+        if self._conn is None:
+            return
+        import json as _json
+        usage = getattr(response, "usage", None)
+        input_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
+        output_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
+        self._conn.execute(
+            """INSERT INTO activity_log (ts_utc, gw, mode, decision_type, action_taken,
+                 inputs_json, executed)
+               VALUES (datetime('now'), NULL, 'audit', 'ai.audit', 'deepseek generate',
+                       ?, 1)""",
+            (_json.dumps({"model": self.model,
+                          "input_tokens": int(input_tokens),
+                          "output_tokens": int(output_tokens)}),)
+        )
+        self._conn.commit()
+
 
 class ClaudeError(RuntimeError):
     """Raised when the Claude API call fails or is refused before send (privacy gate)."""

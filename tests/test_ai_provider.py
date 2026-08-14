@@ -80,3 +80,81 @@ def test_ollama_provider_raises_on_malformed_json():
     p = prv.OllamaProvider("http://localhost:11434", "m", timeout_seconds=15, session=session)
     with pytest.raises(prv.OllamaError):
         p.generate("hello")
+
+
+# ---------- DeepSeekProvider (OpenAI-compatible) ----------
+
+def _fake_completions(text="Grounded 8.0 prose", usage=None):
+    from types import SimpleNamespace
+
+    def create(**kwargs):
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=text))],
+            usage=usage,
+        )
+
+    return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+
+def _deepseek_provider(**kw):
+    from src.ai.provider import DeepSeekProvider
+
+    defaults = dict(model="deepseek-chat", base_url="https://api.deepseek.com/v1",
+                    timeout_seconds=15)
+    defaults.update(kw)
+    return DeepSeekProvider("sk-test", **defaults)
+
+
+def test_deepseek_generate_happy_path():
+    from types import SimpleNamespace
+
+    usage = SimpleNamespace(prompt_tokens=120, completion_tokens=40)
+    client = _fake_completions(usage=usage)
+    p = _deepseek_provider(_client=client)
+    out = p.generate("Captain Haaland for GW1.")
+    assert out == "Grounded 8.0 prose"
+
+
+def test_deepseek_refuses_credential_patterns():
+    import pytest
+    from src.ai.provider import DeepSeekError
+
+    p = _deepseek_provider(_client=_fake_completions())
+    with pytest.raises(DeepSeekError, match="credential"):
+        p.generate("pl_profile leaked here")
+
+
+def test_deepseek_wraps_sdk_errors():
+    import pytest
+    from types import SimpleNamespace
+    from src.ai.provider import DeepSeekError
+
+    class Boom:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=SimpleNamespace(
+                create=lambda **kw: (_ for _ in ()).throw(RuntimeError("connection reset"))))
+
+    p = _deepseek_provider(_client=Boom())
+    with pytest.raises(DeepSeekError, match="deepseek request failed"):
+        p.generate("hello")
+
+
+def test_deepseek_logs_usage_only_when_conn_present(db):
+    from types import SimpleNamespace
+    from src.ai.provider import DeepSeekProvider
+
+    usage = SimpleNamespace(prompt_tokens=50, completion_tokens=25)
+    client = _fake_completions(usage=usage)
+    p = DeepSeekProvider("sk-test", model="deepseek-chat",
+                         base_url="https://api.deepseek.com/v1",
+                         timeout_seconds=15, conn=db, _client=client)
+    p.generate("hello")
+    row = db.execute("SELECT * FROM activity_log WHERE decision_type='ai.audit'").fetchone()
+    assert row is not None and row["action_taken"] == "deepseek generate"
+    assert '"input_tokens": 50' in row["inputs_json"]
+    assert '"output_tokens": 25' in row["inputs_json"]
+
+
+def test_deepseek_skips_usage_log_without_conn():
+    p = _deepseek_provider(_client=_fake_completions())
+    p.generate("hello")  # no conn -> no activity_log write; no exception is the assertion
