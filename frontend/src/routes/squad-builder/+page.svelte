@@ -40,6 +40,9 @@
 		xp_next: null,
 		xp_next5: null
 	});
+
+	const spikeName = (pid: number) =>
+		builder?.picks.find((p) => p.player_id === pid)?.web_name ?? `#${pid}`;
 </script>
 
 <svelte:head><title>Squad Builder — FPL Autopilot</title></svelte:head>
@@ -72,6 +75,34 @@
 			</section>
 		{/each}
 		<p class="budget">Budget: {builder.budget_used}m used / 100m</p>
+		{#if builder.speculation}
+			<section class="spec-block">
+				<h2 class="pos-label">AI speculation</h2>
+				<p class="market-read">{builder.speculation.market_read}</p>
+				{#if builder.speculation.spikes?.length}
+					<ul class="spec-list">
+						{#each builder.speculation.spikes as s}
+							<li class="spec-item spike">
+								<span class="spec-badge">{s.level}</span>
+								<strong>{spikeName(s.player_id)}</strong>
+								<span class="spec-reason">{s.reason}</span>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+				{#if builder.speculation.drops?.length}
+					<ul class="spec-list">
+						{#each builder.speculation.drops as s}
+							<li class="spec-item drop">
+								<span class="spec-badge">{s.level}</span>
+								<strong>{spikeName(s.player_id)}</strong>
+								<span class="spec-reason">{s.reason}</span>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
+		{/if}
 		{#if builder.risks?.length}
 			<ul class="risks">{#each builder.risks as r}<li>{r}</li>{/each}</ul>
 		{/if}
@@ -148,6 +179,53 @@
 		font-size: 0.85rem;
 		padding-left: 1.1rem;
 		line-height: 1.5;
+	}
+	.spec-block {
+		margin-top: 1.25rem;
+	}
+	.market-read {
+		background: var(--surface);
+		border-left: 3px solid var(--warning);
+		padding: 0.75rem 1rem;
+		border-radius: 0 var(--radius) var(--radius) 0;
+		line-height: 1.5;
+		margin: 0 0 0.5rem;
+	}
+	.spec-list {
+		list-style: none;
+		padding: 0;
+		margin: 0.4rem 0;
+	}
+	.spec-item {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		font-size: 0.88rem;
+		padding: 0.35rem 0;
+		border-bottom: 1px dashed var(--border);
+	}
+	.spec-item:last-child {
+		border-bottom: none;
+	}
+	.spec-badge {
+		flex-shrink: 0;
+		font-size: 0.66rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		padding: 0.1rem 0.45rem;
+		border-radius: 999px;
+	}
+	.spec-item.spike .spec-badge {
+		background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+		color: var(--accent);
+	}
+	.spec-item.drop .spec-badge {
+		background: color-mix(in srgb, var(--danger) 18%, var(--surface-2));
+		color: var(--danger);
+	}
+	.spec-reason {
+		color: var(--text-dim);
+		font-size: 0.82rem;
 	}
 	.hint {
 		margin-top: 1.25rem;

@@ -214,14 +214,27 @@ export interface SquadPick {
 	reason: string;
 }
 
+export interface SpikeSignal {
+	player_id: number;
+	level: 'high' | 'medium';
+	reason: string;
+}
+
+export interface Speculation {
+	spikes: SpikeSignal[];
+	drops: SpikeSignal[];
+	market_read: string;
+}
+
 export interface SquadBuilder {
 	status: 'cached' | 'generated' | 'unavailable';
 	gw: number | null;
-	source: 'ai' | 'optimizer';
+	source: 'ai' | 'deterministic';
 	picks: SquadPick[];
 	template_rationale: string;
 	risks: string[];
 	budget_used: number;
+	speculation: Speculation | null;
 	model_id: string | null;
 	generated_at: string | null;
 }

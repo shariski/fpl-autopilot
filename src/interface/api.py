@@ -176,6 +176,7 @@ def squad_builder(conn=Depends(get_db)):
         "status": status, "gw": gw, "source": result.get("source", "ai"),
         "picks": picks, "template_rationale": result.get("template_rationale", ""),
         "risks": result.get("risks", []), "budget_used": budget_used,
+        "speculation": result.get("speculation"),
         "model_id": config.ai_deepseek_model(),
         "generated_at": hit["generated_at"] if hit is not None else None,
     }
