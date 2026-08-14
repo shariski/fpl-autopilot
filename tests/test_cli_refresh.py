@@ -211,3 +211,75 @@ def test_refresh_my_team_surfaces_session_expired(db, monkeypatch, capsys):
     assert exc_info.value.code != 0
     err = capsys.readouterr().err
     assert "session" in err.lower() or "token" in err.lower()
+
+
+def test_rematch_relinks_stale_season_rows(db):
+    """Season rollover: prior-season understat rows must be re-linked to the new
+    players table by name+team — old fpl_player_id pointers reference dead ids."""
+    from src.cli import _rematch_prior_understat
+
+    db.execute("INSERT INTO teams (id, name, short_name) VALUES (1, 'Newcastle', 'NEW')")
+    db.execute("INSERT INTO players (id, name, web_name, team_id, position, price, status, "
+               "ownership, form) VALUES (449, 'Lewis Hall', 'Hall', 1, 'DEF', 5.0, 'a', 3.9, 0.0)")
+    # Understat rows: one still pointing at an OLD id (449 was Bruno Fernandes last season),
+    # one for a player who left the league (unmatchable), one for the CURRENT season.
+    db.execute("INSERT INTO understat_players (understat_id, fpl_player_id, season, player_name, "
+               "team_title, xg_per_90, xa_per_90, minutes, games, goals, assists) "
+               "VALUES (1001, 449, '2025', 'Lewis Hall', 'Newcastle United', 0.04, 0.08, 2700, 30, 1, 1)")
+    db.execute("INSERT INTO understat_players (understat_id, fpl_player_id, season, player_name, "
+               "team_title, xg_per_90, xa_per_90, minutes, games, goals, assists) "
+               "VALUES (1002, 999, '2025', 'Someone Else', 'Old Team', 0.1, 0.1, 900, 10, 0, 0)")
+    db.execute("INSERT INTO understat_players (understat_id, fpl_player_id, season, player_name, "
+               "team_title, xg_per_90, xa_per_90, minutes, games, goals, assists) "
+               "VALUES (1003, NULL, '2026', 'Fresh Player', 'Newcastle United', 0.1, 0.1, 0, 0, 0, 0)")
+    db.commit()
+
+    n = _rematch_prior_understat(db, "2026", {})
+    assert n == 1
+    row = db.execute("SELECT fpl_player_id FROM understat_players WHERE understat_id=1001").fetchone()
+    assert row["fpl_player_id"] == 449
+    # unmatchable player is nulled, not left dangling at a wrong id
+    row = db.execute("SELECT fpl_player_id FROM understat_players WHERE understat_id=1002").fetchone()
+    assert row["fpl_player_id"] is None
+    # current-season rows are untouched
+    row = db.execute("SELECT fpl_player_id FROM understat_players WHERE understat_id=1003").fetchone()
+    assert row["fpl_player_id"] is None
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (1, '2026-08-21T17:30:00Z', 0, 0, 1)")
+    db.commit()
+
+
+def test_rematch_is_noop_when_no_stale_rows(db):
+    from src.cli import _rematch_prior_understat
+
+    db.execute("INSERT INTO understat_players (understat_id, fpl_player_id, season, player_name, "
+               "team_title, xg_per_90, xa_per_90, minutes, games, goals, assists) "
+               "VALUES (1, NULL, '2026', 'X', 'Newcastle United', 0.1, 0.1, 0, 0, 0, 0)")
+    db.commit()
+    assert _rematch_prior_understat(db, "2026", {}) == 0
+
+
+def test_refresh_rematches_prior_understat_after_rollover(load):
+    """Full refresh on a rolled-over DB: stale 2025 links get re-pointed at the new players."""
+    conn = connect(":memory:")
+    init_db(conn)
+    bs = BootstrapStatic.model_validate(load("bootstrap-static.json"))
+    fx = [Fixture.model_validate(f) for f in load("fixtures.json")]
+    picks = EntryPicks.model_validate(load("picks.json"))
+    cfg = {"fpl": {"team_id": 3122849}, "storage": {"db_path": ":memory:"},
+           "understat": {"season": "2026"}}
+    # Seed a stale 2025 understat row pointing at an arbitrary old id.
+    conn.execute("INSERT INTO understat_players (understat_id, fpl_player_id, season, player_name, "
+                 "team_title, xg_per_90, xa_per_90, minutes, games, goals, assists) "
+                 "VALUES (999, 1, '2025', 'Lewis Hall', 'Newcastle United', 0.04, 0.08, 2700, 30, 1, 1)")
+    conn.commit()
+
+    cli.refresh(full=True, cfg=cfg, conn=conn, client=FakeClient(bs, fx, picks), sources=("fpl",))
+
+    # After refresh, the 2025 row must point at the REAL Lewis Hall in the new players table.
+    row = conn.execute("""SELECT p.web_name, t.short_name AS team
+                          FROM understat_players u JOIN players p ON p.id = u.fpl_player_id
+                          JOIN teams t ON t.id = p.team_id
+                          WHERE u.understat_id=999""").fetchone()
+    assert row is not None and row["web_name"] == "Hall" and row["team"] == "NEW"
+    conn.close()

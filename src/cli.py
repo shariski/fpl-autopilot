@@ -81,6 +81,43 @@ def _refresh_understat(conn, understat_client, cfg, full):
         print(f"WARNING: understat refresh failed ({exc}); keeping last data")
 
 
+def _rematch_prior_understat(conn, current_season, overrides=None):
+    """Re-link stored understat rows from earlier seasons to the current players table.
+
+    FPL player ids change every season: a row stored under 25/26 ids silently points
+    at the wrong player once the players table is replaced at rollover (observed
+    2026-08-14: Lewis Hall's digest showed Bruno Fernandes' 9G/21A). Re-resolve
+    name+team against the live roster; unmatchable rows are nulled, never left
+    dangling (B6: wrong data is worse than no data).
+    """
+    rows = [dict(r) for r in conn.execute(
+        "SELECT understat_id, player_name, team_title FROM understat_players "
+        "WHERE season != ?", (current_season,))]
+    if not rows:
+        return 0
+    fpl_players = [dict(r) for r in conn.execute("SELECT id, name, web_name, team_id FROM players")]
+    fpl_teams = [dict(r) for r in conn.execute("SELECT id, name, short_name FROM teams")]
+    if not fpl_players:
+        return 0
+    import types
+    ups = [types.SimpleNamespace(id=r["understat_id"], player_name=r["player_name"],
+                                 team_title=r["team_title"]) for r in rows]
+    res = name_resolver.resolve_players(fpl_players, fpl_teams, ups,
+                                        overrides or _load_name_overrides())
+    n = 0
+    for uid, pid in res.matched.items():
+        conn.execute("UPDATE understat_players SET fpl_player_id=? WHERE understat_id=?",
+                     (pid, uid))
+        n += 1
+    unmatched_ids = [u.id for u in res.unmatched]
+    if unmatched_ids:
+        conn.execute(
+            "UPDATE understat_players SET fpl_player_id=NULL WHERE understat_id IN (%s)"
+            % ",".join("?" * len(unmatched_ids)), unmatched_ids)
+    conn.commit()
+    return n
+
+
 def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None, sources=None):
     cfg = cfg or load_config()
     if sources is None:  # explicit: an empty tuple means "no sources", not "both"
@@ -93,6 +130,17 @@ def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None,
         _refresh_fpl(conn, client or FPLClient(), cfg_team_id(cfg), full)
     if "understat" in sources:
         _refresh_understat(conn, understat_client or UnderstatClient(), cfg, full)
+
+    # Season rollover: re-link prior-season understat rows to the current players
+    # table (player ids change every season; stale pointers silently feed the wrong
+    # player's stats into xP and insights). Always runs — also on fpl-only refreshes.
+    try:
+        current_season = cfg.get("understat", {}).get("season", "2025")
+        n = _rematch_prior_understat(conn, current_season)
+        if n:
+            print(f"understat prior rematch: {n} rows re-linked to current player ids")
+    except Exception as exc:  # noqa: BLE001 - data hygiene must not break refresh
+        print(f"WARNING: understat prior rematch failed ({exc})")
 
     if owns_conn:
         conn.close()
