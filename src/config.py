@@ -107,7 +107,7 @@ def ai_enabled(cfg=None):
 
 
 def ai_provider(cfg=None):
-    return _ai(cfg).get("provider", "ollama")
+    return _ai(cfg).get("provider", "deepseek")
 
 
 def ai_ollama_host(cfg=None):
@@ -116,6 +116,18 @@ def ai_ollama_host(cfg=None):
 
 def ai_ollama_model(cfg=None):
     return _ai_ollama(cfg).get("model", "qwen2.5:7b-instruct-q4_K_M")
+
+
+def _ai_deepseek(cfg):
+    return _ai(cfg).get("deepseek", {})
+
+
+def ai_deepseek_model(cfg=None):
+    return _ai_deepseek(cfg).get("model", "deepseek-chat")
+
+
+def ai_deepseek_base_url(cfg=None):
+    return _ai_deepseek(cfg).get("base_url", "https://api.deepseek.com/v1")
 
 
 def ai_timeout_seconds(cfg=None):

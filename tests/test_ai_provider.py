@@ -158,3 +158,40 @@ def test_deepseek_logs_usage_only_when_conn_present(db):
 def test_deepseek_skips_usage_log_without_conn():
     p = _deepseek_provider(_client=_fake_completions())
     p.generate("hello")  # no conn -> no activity_log write; no exception is the assertion
+
+
+# ---------- build_provider factory ----------
+
+def test_build_provider_deepseek(monkeypatch):
+    from src.ai.provider import build_provider
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+    cfg = {"ai": {"provider": "deepseek"}}
+    provider = build_provider(cfg)
+    assert isinstance(provider, prv.DeepSeekProvider)
+    assert provider.model == "deepseek-chat"
+
+
+def test_build_provider_deepseek_missing_key_raises(monkeypatch):
+    import pytest
+    from src.ai.provider import DeepSeekError, build_provider
+
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    cfg = {"ai": {"provider": "deepseek"}}
+    with pytest.raises(DeepSeekError, match="DEEPSEEK_API_KEY"):
+        build_provider(cfg)
+
+
+def test_build_provider_ollama():
+    from src.ai.provider import build_provider
+
+    cfg = {"ai": {"provider": "ollama", "ollama": {"host": "http://x:1", "model": "m"}}}
+    provider = build_provider(cfg)
+    assert isinstance(provider, prv.OllamaProvider)
+
+
+def test_build_provider_none_when_disabled_or_unknown():
+    from src.ai.provider import build_provider
+
+    assert build_provider({"ai": {"provider": "none"}}) is None
+    assert build_provider({"ai": {"provider": "something-else"}}) is None

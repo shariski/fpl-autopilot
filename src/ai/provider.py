@@ -76,6 +76,38 @@ class DeepSeekError(RuntimeError):
     """Raised when the DeepSeek API call fails or is refused before send (B7)."""
 
 
+def build_provider(cfg, conn=None):
+    """Construct the configured LLM provider, or None when no provider is set.
+
+    deepseek -> DeepSeekProvider (requires DEEPSEEK_API_KEY env var; raises
+    DeepSeekError with a clear message when missing). ollama -> OllamaProvider.
+    anything else / none -> None (AI job no-ops; classic templates render).
+    """
+    import os
+    from src import config
+
+    choice = config.ai_provider(cfg)
+    if choice == "deepseek":
+        api_key = os.environ.get("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise DeepSeekError(
+                "DEEPSEEK_API_KEY env var is not set; AI provider 'deepseek' cannot start")
+        return DeepSeekProvider(
+            api_key,
+            model=config.ai_deepseek_model(cfg),
+            base_url=config.ai_deepseek_base_url(cfg),
+            timeout_seconds=config.ai_timeout_seconds(cfg),
+            conn=conn,
+        )
+    if choice == "ollama":
+        return OllamaProvider(
+            host=config.ai_ollama_host(cfg),
+            model=config.ai_ollama_model(cfg),
+            timeout_seconds=config.ai_timeout_seconds(cfg),
+        )
+    return None
+
+
 class DeepSeekProvider:
     """DeepSeek API provider (OpenAI-compatible) — implements LLMProvider.
 
