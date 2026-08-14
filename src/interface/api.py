@@ -129,6 +129,58 @@ def _player_identity(conn, player_id):
             "position": row["position"], "team": row["team"], "price": row["price"]}
 
 
+@app.get("/api/squad/builder")
+def squad_builder(conn=Depends(get_db)):
+    """AI-picked starting squad. Cache-first; validates + enriches the picks."""
+    from src import config
+    from src.ai import cache as ai_cache
+    from src.ai.squad import runner
+    from src.decisions.squad_builder import build_candidate_pool
+
+    pool = build_candidate_pool(conn)
+    if not pool:
+        return JSONResponse(status_code=404, content={"detail": "no upcoming gameweek"})
+    nxt = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
+    gw = nxt["gw"] if nxt else None
+    if not config.ai_enabled():
+        return {"status": "unavailable", "reason": "ai_disabled"}
+    digest = runner.build_squad_digest(conn, pool=pool)
+    rec_hash = ai_cache.recommendation_hash(digest)
+    hit = ai_cache.get(conn, gw, runner.PANE_TYPE, rec_hash)
+    if hit is not None:
+        result = runner.extract_json_object(hit["prose"])
+        status = "cached"
+    else:
+        try:
+            from src.ai.provider import build_provider
+            provider = build_provider(config.load_config())
+            result = runner.generate_squad(conn, provider=provider,
+                                           model_id=config.ai_deepseek_model())
+        except Exception:
+            return {"status": "unavailable", "reason": "provider_error"}
+        if result is None:
+            return {"status": "unavailable", "reason": "gate_rejected"}
+        status = "generated"
+    by_id = {p["player_id"]: p for p in pool}
+    picks = []
+    for pk in result["picks"]:
+        p = by_id.get(pk["player_id"])
+        if p is None:
+            continue
+        picks.append({"player_id": pk["player_id"], "web_name": p["web_name"],
+                      "team": p["team_short"], "position": p["position"],
+                      "price": p["price"], "xp_6gw": p["xp_6gw"],
+                      "slot": pk["slot"], "reason": pk.get("reason", "")})
+    budget_used = round(sum(p["price"] for p in picks), 1)
+    return {
+        "status": status, "gw": gw, "source": result.get("source", "ai"),
+        "picks": picks, "template_rationale": result.get("template_rationale", ""),
+        "risks": result.get("risks", []), "budget_used": budget_used,
+        "model_id": config.ai_deepseek_model(),
+        "generated_at": hit["generated_at"] if hit is not None else None,
+    }
+
+
 @app.get("/api/audit/{gw}")
 def audit_for_gw(gw: int):
     """Return the most recent persisted audit whose gw_hi matches `gw`. 404 if none.
