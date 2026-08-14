@@ -18,33 +18,35 @@ def _picks(*ids):
 
 
 def test_valid_squad_has_no_problems():
-    ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    # pool: 0-2 GKP, 3-9 DEF, 10-16 MID, 17-21 FWD
+    ids = [0, 1, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 19]
     assert validate_squad(_picks(*ids), POOL) == []
 
 
 def test_wrong_position_for_slot():
-    ids = [0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 2, 1]  # GKP2 slot gets DEF
+    ids = [0, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 19, 2]  # FWD3 slot gets GKP
     assert any("position" in p for p in validate_squad(_picks(*ids), POOL))
 
 
 def test_duplicate_player():
-    ids = [0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    ids = [0, 0, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 19]
     assert any("duplicate" in p for p in validate_squad(_picks(*ids), POOL))
 
 
 def test_over_budget():
-    ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    ids = [0, 1, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 19]
     expensive = [dict(p, price=p["price"] + 5) for p in POOL]
     assert any("budget" in p for p in validate_squad(_picks(*ids), expensive))
 
 
 def test_three_per_club():
-    ids = [0, 5, 10, 1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14]  # T0,T5,T10 all club 0
+    # players 0, 5, 10, 15 are all club T0 -> 4 from one club
+    ids = [0, 5, 10, 15, 1, 3, 4, 6, 7, 11, 12, 13, 14, 17, 18]
     assert any("club" in p for p in validate_squad(_picks(*ids), POOL))
 
 
 def test_unknown_player_rejected():
-    ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 9999]
+    ids = [0, 1, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 9999]
     assert any("unknown" in p for p in validate_squad(_picks(*ids), POOL))
 
 

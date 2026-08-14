@@ -36,8 +36,10 @@ def validate_squad(picks, pool):
         if p is None:
             problems.append(f"unknown player {pid}")
             continue
-        if slot and not slot.startswith(p["position"]):
-            problems.append(f"slot {slot} expects {p['position']}, player {pid} is {p['position']}")
+        expected_pos = slot[:3] if slot else None
+        if slot and expected_pos != p["position"]:
+            problems.append(f"position mismatch: slot {slot} expects {expected_pos}, "
+                            f"player {pid} is {p['position']}")
         if slot in used_slots:
             problems.append(f"slot {slot} used twice")
         used_slots.append(slot)
@@ -49,7 +51,7 @@ def validate_squad(picks, pool):
                     if p["player_id"] in players)
     for club, n in clubs.items():
         if n > MAX_PER_CLUB:
-            problems.append(f"{n} players from {club}; max is {MAX_PER_CLUB}")
+            problems.append(f"club limit: {n} players from {club}; max is {MAX_PER_CLUB}")
     return problems
 
 
