@@ -22,8 +22,9 @@ const builder = {
 	risks: ['Fixture rotation risk.'],
 	budget_used: 99.5,
 	speculation: {
-		spikes: [{ player_id: 1, level: 'high', reason: 'Three home fixtures at fdr 1.' }],
+		spikes: [{ player_id: 1, level: 'high', reason: '100k transfers in.' }],
 		drops: [],
+		differentials: [{ player_id: 99, level: 'medium', reason: 'Bandwagon forming.' }],
 		market_read: 'Midfield-heavy slate.'
 	},
 	model_id: 'deepseek-chat',
@@ -42,6 +43,8 @@ describe('squad-builder page', () => {
 		expect(screen.getByText(/apply-squad/)).toBeInTheDocument();
 		expect(screen.getByText('AI speculation')).toBeInTheDocument();
 		expect(screen.getByText('Midfield-heavy slate.')).toBeInTheDocument();
-		expect(screen.getByText(/Three home fixtures at fdr 1\./)).toBeInTheDocument();
+		expect(screen.getByText(/100k transfers in\./)).toBeInTheDocument();
+		expect(screen.getByText(/left out of the XI/)).toBeInTheDocument();
+		expect(screen.getByText(/Bandwagon forming\./)).toBeInTheDocument();
 	});
 });

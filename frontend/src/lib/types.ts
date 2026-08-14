@@ -212,6 +212,7 @@ export interface SquadPick {
 	xp_6gw: number;
 	slot: string;
 	reason: string;
+	spike_bonus?: number | null;
 }
 
 export interface SpikeSignal {
@@ -223,6 +224,7 @@ export interface SpikeSignal {
 export interface Speculation {
 	spikes: SpikeSignal[];
 	drops: SpikeSignal[];
+	differentials: SpikeSignal[];
 	market_read: string;
 }
 

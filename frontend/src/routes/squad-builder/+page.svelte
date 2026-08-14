@@ -67,7 +67,12 @@
 					{#each row(pos) as pk}
 						<div class="pick">
 							<PlayerCard player={pickCard(pk)} />
-							<span class="slot">{pk.slot} · {pk.xp_6gw} xP</span>
+							<span class="slot">
+								{pk.slot} · {pk.xp_6gw} xP
+								{#if pk.spike_bonus}
+									<span class="bonus-chip">+{pk.spike_bonus} AI</span>
+								{/if}
+							</span>
 							<p class="reason">{pk.reason}</p>
 						</div>
 					{/each}
@@ -94,6 +99,18 @@
 					<ul class="spec-list">
 						{#each builder.speculation.drops as s}
 							<li class="spec-item drop">
+								<span class="spec-badge">{s.level}</span>
+								<strong>{spikeName(s.player_id)}</strong>
+								<span class="spec-reason">{s.reason}</span>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+				{#if builder.speculation.differentials?.length}
+					<h3 class="diff-label">Differential calls — spiked, but left out of the XI</h3>
+					<ul class="spec-list">
+						{#each builder.speculation.differentials as s}
+							<li class="spec-item spike">
 								<span class="spec-badge">{s.level}</span>
 								<strong>{spikeName(s.player_id)}</strong>
 								<span class="spec-reason">{s.reason}</span>
@@ -226,6 +243,24 @@
 	.spec-reason {
 		color: var(--text-dim);
 		font-size: 0.82rem;
+	}
+	.diff-label {
+		font-size: 0.72rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--warning);
+		margin: 0.8rem 0 0.2rem;
+	}
+	.bonus-chip {
+		display: inline-block;
+		margin-left: 0.35rem;
+		font-size: 0.64rem;
+		font-weight: 700;
+		padding: 0.08rem 0.4rem;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--accent) 20%, var(--surface-2));
+		color: var(--accent);
 	}
 	.hint {
 		margin-top: 1.25rem;

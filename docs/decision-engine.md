@@ -184,6 +184,10 @@ the deterministic optimizer owns the decision (spec
 2. **AI speculative signal** (`src/ai/squad/spikes.py`): the LLM labels up to 10 spike and
    5 drop candidates with `high`/`medium` levels and one grounded reason each, plus a
    `market_read`. No slots, no prices, no sums — the AI never touches legality.
+   **Edge gate:** a reason that only restates the projection (xP/xG/xA/price) is rejected —
+   the signal must cite market/trend evidence the optimizer does not see
+   (`transfers_in`/`transfers_out`/`net_momentum`, ownership, form, recent GW points,
+   fixture shape). This keeps the signal additive rather than redundant with xP.
 3. **Deterministic optimizer decides** (`src/decisions/squad_validator.py`): picks the 15 by
    `xp_6gw + bonus`, budget-aware with minimum-remaining-cost reservation. Bonus constants
    (B4 — do not change without a log entry): `SPIKE_BONUS = {high: +1.5, medium: +0.75}`,

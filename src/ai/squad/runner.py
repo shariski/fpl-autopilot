@@ -65,18 +65,27 @@ def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
     picks = optimize_squad(pool, bonus)
     by_id = {p["player_id"]: p for p in pool}
     budget_used = round(sum(by_id[pk["player_id"]]["price"] for pk in picks), 1)
+    picked_ids = {pk["player_id"] for pk in picks}
+    # differential calls: spiked players the optimizer still left out
+    differentials = []
+    if signals:
+        for s in signals.get("spikes", []):
+            if s["player_id"] not in picked_ids:
+                differentials.append(s)
     result = {
         "picks": [{"player_id": pk["player_id"], "slot": pk["slot"],
                    "reason": (f"Highest projected {by_id[pk['player_id']]['position']} "
                               f"available: {by_id[pk['player_id']]['xp_6gw']} xP over 6 GWs "
-                              f"at £{by_id[pk['player_id']]['price']}m.")}
+                              f"at £{by_id[pk['player_id']]['price']}m."),
+                   "spike_bonus": bonus.get(pk["player_id"])}
                   for pk in picks],
-        "template_rationale": _rationale(picks, by_id, budget_used, signals),
+        "template_rationale": _rationale(picks, by_id, budget_used, signals, differentials),
         "risks": [],
         "source": "ai" if signals else "deterministic",
         "speculation": {
             "spikes": signals.get("spikes", []) if signals else [],
             "drops": signals.get("drops", []) if signals else [],
+            "differentials": differentials,
             "market_read": signals.get("market_read", "") if signals else "",
         } if signals else None,
     }
@@ -91,7 +100,8 @@ def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
     return result
 
 
-def _rationale(picks, by_id, budget_used, signals):
+def _rationale(picks, by_id, budget_used, signals, differentials=None):
+    differentials = differentials or []
     best = max(picks, key=lambda pk: by_id[pk["player_id"]]["xp_6gw"])
     base = (f"Deterministic selection: {budget_used}m of 100m used, "
             f"top pick {by_id[best['player_id']]['web_name']} "
@@ -101,5 +111,7 @@ def _rationale(picks, by_id, budget_used, signals):
                        "optimization.")
     n_spikes = len(signals.get("spikes", []))
     n_drops = len(signals.get("drops", []))
+    diff = (f" {len(differentials)} spike calls left out of the XI — "
+            "see the differential section.") if differentials else ""
     return (f"{base} AI speculation active: {n_spikes} spike calls, "
-            f"{n_drops} drop calls influenced the ranking.")
+            f"{n_drops} drop calls influenced the ranking.{diff}")
