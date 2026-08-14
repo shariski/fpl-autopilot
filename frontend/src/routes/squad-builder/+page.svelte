@@ -92,7 +92,7 @@
 						{#each builder.speculation.spikes as s}
 							<li class="spec-item spike">
 								<span class="spec-badge">{s.level}</span>
-								<strong>{spikeName(s.player_id)}</strong>
+								<strong>{signalName(s)}</strong>
 								<span class="spec-reason">{s.reason}</span>
 							</li>
 						{/each}
