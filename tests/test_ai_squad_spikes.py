@@ -87,7 +87,7 @@ def test_spikes_accepts_mixed_edge_and_stat_reason(db, monkeypatch):
     monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
     monkeypatch.setattr(spikes_mod, "build_squad_digest", lambda c, pool=None, next_gw=None: _digest())
     payload = json.loads(_signals_json())
-    payload["spikes"][0]["reason"] = "100000 transfers in and 30.0 xp_6gw"
+    payload["spikes"][0]["reason"] = "100000 transfers in and 30.0 projected points"
     assert spikes_mod.validate_signals(payload, _pool(), _digest()) == []
 
 
@@ -96,7 +96,7 @@ def test_spikes_rejects_stat_only_restatement(db, monkeypatch):
     monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
     monkeypatch.setattr(spikes_mod, "build_squad_digest", lambda c, pool=None, next_gw=None: _digest())
     payload = json.loads(_signals_json())
-    payload["spikes"][0]["reason"] = "best at 30.0 xp_6gw"
+    payload["spikes"][0]["reason"] = "best at 30.0 projected points"
     problems = spikes_mod.validate_signals(payload, _pool(), _digest())
     assert any("restatement" in p for p in problems)
 
