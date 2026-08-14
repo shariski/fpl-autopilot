@@ -129,8 +129,22 @@ def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
     except Exception:
         logger.exception("ai.squad.optimizer_failed", extra={"gw": gw})
         return None
-    fallback = {"picks": picks, "template_rationale": "Deterministic fallback: greedy "
-                "value-optimized selection.", "risks": [], "source": "optimizer"}
+    by_id = {p["player_id"]: p for p in pool}
+    budget_used = round(sum(by_id[pk["player_id"]]["price"] for pk in picks), 1)
+    best = max(picks, key=lambda pk: by_id[pk["player_id"]]["xp_6gw"])
+    best_p = by_id[best["player_id"]]
+    fallback = {
+        "picks": [{"player_id": pk["player_id"], "slot": pk["slot"],
+                   "reason": (f"Highest projected {by_id[pk['player_id']]['position']} "
+                              f"available: {by_id[pk['player_id']]['xp_6gw']} xP over 6 GWs "
+                              f"at £{by_id[pk['player_id']]['price']}m.")}
+                  for pk in picks],
+        "template_rationale": (f"Deterministic selection: {budget_used}m of 100m used, "
+                               f"top pick {best_p['web_name']} ({best_p['xp_6gw']} xP). "
+                               f"The AI proposals failed validation, so this squad is "
+                               f"computed greedily by projected points."),
+        "risks": [], "source": "optimizer",
+    }
     cache.put(conn, gw, PANE_TYPE, rec_hash, json.dumps(fallback, sort_keys=True), model_id)
     _log(conn, gw, model_id, result="fallback",
          picks=[p["player_id"] for p in fallback["picks"]],
