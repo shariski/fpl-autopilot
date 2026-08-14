@@ -171,25 +171,34 @@ Each chip has a trigger condition. When met, surface a recommendation. Phase 1 d
 ## Squad builder (S-B) — AI-assisted starting squad
 
 **Status:** added 2026-08-14 (B4 entry; spec `docs/superpowers/specs/2026-08-14-squad-builder-design.md`).
+**Revised 2026-08-14:** the AI no longer picks the squad (it proved unable to satisfy the
+constraints — invented slots, budget overshoot). It is now a **speculative input signal**;
+the deterministic optimizer owns the decision (spec
+`2026-08-14-squad-speculation-design.md`).
 
-**Division of labour (unchanged principle: deterministic law, inspectable output):**
+**Division of labour (deterministic law, inspectable output):**
 
 1. **Deterministic candidate pool** (`src/decisions/squad_builder.py`): legal prefilter
    (status a/d, price ≥ 4.0, xP present), per-position top-15 by xP-6-GW ∪ top-10 by value,
    ~90-100 players. Logged with the result.
-2. **AI proposes** (`src/ai/squad/runner.py`): the LLM picks the 15 and explains each pick.
-   AI is upstream of this decision — the first such case in the system.
-3. **Validator is the law** (`src/decisions/squad_validator.py`): 2-5-5-3, budget ≤ 100,
-   ≤ 3/club, unique ids from the digest. Violations → retry with feedback (≤3) → deterministic
-   greedy fallback (`source: "optimizer"`, never silent).
-4. **Apply** (`src/execution/squad.py`): dry-run default; `--live` requires master key + typed
+2. **AI speculative signal** (`src/ai/squad/spikes.py`): the LLM labels up to 10 spike and
+   5 drop candidates with `high`/`medium` levels and one grounded reason each, plus a
+   `market_read`. No slots, no prices, no sums — the AI never touches legality.
+3. **Deterministic optimizer decides** (`src/decisions/squad_validator.py`): picks the 15 by
+   `xp_6gw + bonus`, budget-aware with minimum-remaining-cost reservation. Bonus constants
+   (B4 — do not change without a log entry): `SPIKE_BONUS = {high: +1.5, medium: +0.75}`,
+   `DROP_BONUS = {high: −1.5, medium: −0.75}`.
+4. **Validator is the law**: 2-5-5-3, budget ≤ 100, ≤ 3/club, unique ids from the digest.
+   Guaranteed legal — the optimizer is budget-aware by construction.
+5. **Apply** (`src/execution/squad.py`): dry-run default; `--live` requires master key + typed
    confirm; any API refusal aborts with a report. Applies only when the API allows
    (pre-season unlimited window; wildcard).
-5. **Logging (B10):** every squad decision logs `decision_type="squad"` with the pool, picks,
-   validator result, source, budget, and per-transfer outcomes.
+6. **Logging (B10):** every squad decision logs `decision_type="squad"` with the pool, picks,
+   the applied speculation map (player → level), source, budget, and per-transfer outcomes.
+   Speculation failure is logged (`spikes_failed`) and degrades to pure xP — never blocks.
 
-No thresholds changed. The squad the AI proposes is a **suggestion** until the user executes
-it — execution rules (chips, hits, caps) are unchanged.
+No thresholds changed. The squad is a **suggestion** until the user executes it — execution
+rules (chips, hits, caps) are unchanged.
 
 ### Wildcard
 

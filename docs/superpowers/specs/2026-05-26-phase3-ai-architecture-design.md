@@ -390,6 +390,7 @@ This architecture spec is done when the three companion files exist and agree:
 
 | Version | Date | Change |
 |---|---|---|
+| v0.5 | 2026-08-14 | Squad builder revised: AI as **speculative operator** — LLM emits spike/drop signals over the candidate pool; the deterministic optimizer applies fixed bonuses (`SPIKE_BONUS`/`DROP_BONUS`) and owns the decision. AI-picks path retired. See `2026-08-14-squad-speculation-design.md`. |
 | v0.4 | 2026-08-14 | New consumer: AI squad builder (`src/ai/squad/`) — candidate pool → AI picks 15 → legal-squad validator → deterministic fallback; apply-on-confirm executor. B4 entry in `decision-engine.md` §"Squad builder (S-B)". See `2026-08-14-squad-builder-design.md`. |
 | v0.3 | 2026-08-14 | New consumer: on-demand player insight deep-dive (`src/ai/insight/`) — deterministic digest → analysis prompt → structured JSON → grounding gate with retry ≤3 → `ai_reasoning_cache` (`pane_type='insight'`). See `2026-08-14-player-insight-design.md`. |
 | v0.2 | 2026-08-14 | Provider decision revised: local Ollama → **DeepSeek API** (`deepseek-chat`) via the OpenAI SDK with configurable `base_url`; Claude audit provider dropped; `build_provider(cfg, conn)` factory in `src/ai/provider.py`; `DEEPSEEK_API_KEY` env var. See `2026-08-14-deepseek-provider-design.md`. |

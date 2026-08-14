@@ -669,3 +669,7 @@ carries prior-season stats only until `player_gw_stats` accumulates.
 (`ai.squad.attempt_rejected`, `provider_error`). `apply-squad --live` requires the master
 password on the host and works only while FPL allows unlimited transfers (pre-season /
 wildcard). API refusals abort with a per-pair report in the `squad` activity-log rows.
+
+**Squad builder speculation missing:** the squad still builds (pure xP optimization) — the
+AI spike/drop signals failed. Check `ai.squad.spikes.attempt_rejected` /
+`spikes.provider_error` logs and the `squad` activity rows (`spikes_failed`).
