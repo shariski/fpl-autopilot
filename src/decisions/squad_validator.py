@@ -13,6 +13,12 @@ MAX_BUDGET = 100.0
 MAX_PER_CLUB = 3
 EPS = 1e-9
 
+# Speculative input signal (decision-engine.md §S-B): the LLM labels spike/drop
+# levels; the optimizer adds/subtracts these fixed bonuses to xP. Deterministic
+# constants — changing them needs a decision-engine.md entry (B4).
+SPIKE_BONUS = {"high": 1.5, "medium": 0.75}
+DROP_BONUS = {"high": -1.5, "medium": -0.75}
+
 
 def _by_id(pool):
     return {p["player_id"]: p for p in pool}
@@ -55,14 +61,16 @@ def validate_squad(picks, pool):
     return problems
 
 
-def optimize_squad(pool):
-    """Greedy fill by xp_6gw desc (value as tiebreak), budget-aware: a pick is
+def optimize_squad(pool, bonus_map=None):
+    """Greedy fill by (xp_6gw + speculation bonus) desc, budget-aware: a pick is
     only taken when the remaining budget still covers the cheapest legal option
-    for every slot yet to fill. Always legal when the pool can fill each slot —
-    including premium-heavy pools where a naive greedy would exhaust the budget
-    (observed 2026-08-14: 'pool cannot fill slot FWD3')."""
+    for every slot yet to fill. bonus_map: player_id -> xp adjustment from the
+    AI speculation layer (SPIKE_BONUS/DROP_BONUS); None/{} = no speculation.
+    Always legal when the pool can fill each slot."""
+    bonus_map = bonus_map or {}
+
     def _key(p):
-        return (p["xp_6gw"], p["value"] or 0)
+        return (p["xp_6gw"] + bonus_map.get(p["player_id"], 0.0), p["value"] or 0)
 
     by_pos = {pos: sorted([p for p in pool if p["position"] == pos],
                           key=_key, reverse=True)

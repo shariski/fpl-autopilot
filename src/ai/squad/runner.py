@@ -1,24 +1,24 @@
-"""Squad runner: digest -> prompt -> LLM picks -> validator -> cache/fallback.
+"""Squad runner: deterministic optimization with an AI speculation input.
 
-The AI proposes; validate_squad is the law. Illegal proposals get retried with
-feedback (<=3); on total failure the deterministic optimize_squad fallback
-produces the squad, flagged source="optimizer". Never raises.
+The deterministic optimizer picks the squad (legal, xP-maximized); the AI
+speculation layer (spikes.py) provides spike/drop signals that adjust the
+optimizer's sort key by fixed constants (SPIKE_BONUS/DROP_BONUS). The AI never
+touches legality — it only labels players. Signals failing → no speculation.
+Never raises.
 """
 import json
 import logging
 
-from src.ai import cache, grounding
+from src.ai import cache
 from src.ai.insight.runner import extract_json_object
+from src.ai.squad import spikes
 from src.ai.squad.digest import build_squad_digest
-from src.ai.squad.prompt import build_squad_prompt
 from src.decisions.squad_builder import build_candidate_pool
-from src.decisions.squad_validator import (normalize_squad, optimize_squad,
-                                           repair_budget, validate_squad)
+from src.decisions.squad_validator import DROP_BONUS, SPIKE_BONUS, optimize_squad
 
 logger = logging.getLogger(__name__)
 
 PANE_TYPE = "squad"
-MAX_ATTEMPTS = 3
 
 
 def _log(conn, gw, model_id, *, result, picks=None, extra=None):
@@ -32,37 +32,16 @@ def _log(conn, gw, model_id, *, result, picks=None, extra=None):
                             action_taken="squad generate", inputs=payload, executed=True)
 
 
-def _per_player_text(digest):
-    """player_id -> JSON text of that player's digest entry (for per-pick grounding)."""
-    return {p["player_id"]: json.dumps(p, sort_keys=True) for p in digest.get("players", [])}
-
-
-def _reason_problems(payload, digest):
-    """Every number in a pick's reason must appear in THAT player's digest entry —
-    otherwise the AI misattributed another player's stats (observed 2026-08-14:
-    'Evanilson ... 39.12' was Haaland's projection)."""
-    per_player = _per_player_text(digest)
-    problems = []
-    for pick in payload.get("picks", []):
-        pid = pick.get("player_id")
-        reason = pick.get("reason") or ""
-        block = per_player.get(pid, "")
-        ok, bad = grounding.is_grounded(reason, block)
-        if not ok:
-            problems.append(f"reason for player {pid} cites numbers not in their data: "
-                            f"{sorted(bad)}")
-    return problems
-
-
-def _sanitize_reasons(payload, digest):
-    """Strip reasons that fail per-pick grounding (they may have survived a
-    normalization/repair swap). Deterministic, never rejects the squad."""
-    per_player = _per_player_text(digest)
-    for pick in payload.get("picks", []):
-        reason = pick.get("reason") or ""
-        ok, _ = grounding.is_grounded(reason, per_player.get(pick.get("player_id"), ""))
-        if not ok:
-            pick["reason"] = ""
+def _bonus_map(signals):
+    """player_id -> xp adjustment from the AI speculation labels."""
+    bonus = {}
+    if not signals:
+        return bonus
+    for s in signals.get("spikes", []):
+        bonus[s["player_id"]] = SPIKE_BONUS[s["level"]]
+    for s in signals.get("drops", []):
+        bonus[s["player_id"]] = DROP_BONUS[s["level"]]
+    return bonus
 
 
 def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
@@ -79,86 +58,48 @@ def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
     if hit is not None:
         payload = extract_json_object(hit["prose"])
         if payload is not None:
-            payload["source"] = payload.get("source", "ai")
             return payload
-    prompt = build_squad_prompt(digest)
-    for attempt in range(MAX_ATTEMPTS):
-        try:
-            prose = provider.generate(prompt, max_tokens=max_tokens, temperature=temperature)
-        except Exception:
-            logger.exception("ai.squad.provider_error", extra={"gw": gw})
-            return None
-        payload = extract_json_object(prose) if prose else None
-        if payload is None:
-            problems = ["not valid JSON"]
-        else:
-            picks = payload.get("picks")
-            problems = validate_squad(picks, pool) if isinstance(picks, list) else \
-                ["picks missing or not a list"]
-            if not problems:
-                problems = _reason_problems(payload, digest)
-        if not problems:
-            payload["source"] = "ai"
-            cache.put(conn, gw, PANE_TYPE, rec_hash, json.dumps(payload, sort_keys=True),
-                      model_id)
-            _log(conn, gw, model_id, result="passed",
-                 picks=[p["player_id"] for p in payload["picks"]])
-            return payload
-        logger.warning("ai.squad.attempt_rejected",
-                       extra={"gw": gw, "attempt": attempt, "problems": problems[:5]})
-        if attempt < MAX_ATTEMPTS - 1:
-            budget_hint = ""
-            budget_probs = [p for p in problems if "budget exceeded" in p]
-            if budget_probs:
-                try:
-                    over = float(budget_probs[0].split(":")[1].split("m")[0].strip())
-                    budget_hint = (f" You are over budget by "
-                                   f"{max(0.1, round(over - 100.0, 1))}m — "
-                                   f"remove that much price from your picks.")
-                except (IndexError, ValueError):
-                    pass
-            prompt = f"{prompt}\n\nPrevious proposal was rejected by the validator: " \
-                     f"{'; '.join(problems[:5])}.{budget_hint} " \
-                     f"Output ONLY the JSON with a legal squad."
-    # Deterministic rescue of the last AI proposal: normalize (slots/clubs/
-    # positions), then repair the budget. The LLM's structure is preserved as
-    # much as possible; the validator is the law.
-    last_payload = locals().get("payload")
-    if last_payload is not None and isinstance(last_payload.get("picks"), list):
-        normalized = normalize_squad(last_payload["picks"], pool)
-        if normalized is not None:
-            last_payload["picks"] = normalized
-            _sanitize_reasons(last_payload, digest)
-            last_payload["source"] = "ai"
-            cache.put(conn, gw, PANE_TYPE, rec_hash, json.dumps(last_payload, sort_keys=True),
-                      model_id)
-            _log(conn, gw, model_id, result="normalized",
-                 picks=[p["player_id"] for p in normalized],
-                 extra={"problems": problems[:5]})
-            return last_payload
-    try:
-        picks = optimize_squad(pool)
-    except Exception:
-        logger.exception("ai.squad.optimizer_failed", extra={"gw": gw})
-        return None
+    # AI speculation layer (optional input; never blocks)
+    signals = spikes.generate_spike_signals(conn, provider=provider, model_id=model_id)
+    bonus = _bonus_map(signals)
+    picks = optimize_squad(pool, bonus)
     by_id = {p["player_id"]: p for p in pool}
     budget_used = round(sum(by_id[pk["player_id"]]["price"] for pk in picks), 1)
-    best = max(picks, key=lambda pk: by_id[pk["player_id"]]["xp_6gw"])
-    best_p = by_id[best["player_id"]]
-    fallback = {
+    result = {
         "picks": [{"player_id": pk["player_id"], "slot": pk["slot"],
                    "reason": (f"Highest projected {by_id[pk['player_id']]['position']} "
                               f"available: {by_id[pk['player_id']]['xp_6gw']} xP over 6 GWs "
                               f"at £{by_id[pk['player_id']]['price']}m.")}
                   for pk in picks],
-        "template_rationale": (f"Deterministic selection: {budget_used}m of 100m used, "
-                               f"top pick {best_p['web_name']} ({best_p['xp_6gw']} xP). "
-                               f"The AI proposals failed validation, so this squad is "
-                               f"computed greedily by projected points."),
-        "risks": [], "source": "optimizer",
+        "template_rationale": _rationale(picks, by_id, budget_used, signals),
+        "risks": [],
+        "source": "ai" if signals else "deterministic",
+        "speculation": {
+            "spikes": signals.get("spikes", []) if signals else [],
+            "drops": signals.get("drops", []) if signals else [],
+            "market_read": signals.get("market_read", "") if signals else "",
+        } if signals else None,
     }
-    cache.put(conn, gw, PANE_TYPE, rec_hash, json.dumps(fallback, sort_keys=True), model_id)
-    _log(conn, gw, model_id, result="fallback",
-         picks=[p["player_id"] for p in fallback["picks"]],
-         extra={"problems": problems[:5] if "problems" in locals() else []})
-    return fallback
+    cache.put(conn, gw, PANE_TYPE, rec_hash, json.dumps(result, sort_keys=True), model_id)
+    logged_spec = None
+    if signals:
+        logged_spec = {"spikes": [(s["player_id"], s["level"]) for s in signals.get("spikes", [])],
+                       "drops": [(s["player_id"], s["level"]) for s in signals.get("drops", [])]}
+    _log(conn, gw, model_id, result="passed" if signals else "deterministic",
+         picks=[p["player_id"] for p in picks],
+         extra={"speculation": logged_spec})
+    return result
+
+
+def _rationale(picks, by_id, budget_used, signals):
+    best = max(picks, key=lambda pk: by_id[pk["player_id"]]["xp_6gw"])
+    base = (f"Deterministic selection: {budget_used}m of 100m used, "
+            f"top pick {by_id[best['player_id']]['web_name']} "
+            f"({by_id[best['player_id']]['xp_6gw']} xP).")
+    if not signals:
+        return base + (" AI speculation unavailable this run — pure xP "
+                       "optimization.")
+    n_spikes = len(signals.get("spikes", []))
+    n_drops = len(signals.get("drops", []))
+    return (f"{base} AI speculation active: {n_spikes} spike calls, "
+            f"{n_drops} drop calls influenced the ranking.")
