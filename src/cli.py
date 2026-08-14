@@ -118,6 +118,27 @@ def _rematch_prior_understat(conn, current_season, overrides=None):
     return n
 
 
+def _clear_stale_season_rows(conn):
+    """Season rollover hygiene: drop rows keyed by last season's player ids.
+
+    player_gw_stats and my_team carry no season column — their player_id/gw keys
+    only mean something while the players table belongs to the same season. Rows
+    written before the current season's GW1 deadline are previous-season data
+    (settlement and snapshots re-populate them fresh as the season progresses).
+    Observed 2026-08-14: Lewis Hall's digest showed Bruno Fernandes' 25/26 points.
+    """
+    row = conn.execute("SELECT MIN(deadline_utc) AS d FROM gameweeks WHERE id=1").fetchone()
+    if row is None or row["d"] is None:
+        return 0, 0
+    gw1_deadline = row["d"]
+    n_gw = conn.execute("DELETE FROM player_gw_stats WHERE settled_at < ?",
+                        (gw1_deadline,)).rowcount
+    n_team = conn.execute("DELETE FROM my_team WHERE snapshot_at < ?",
+                          (gw1_deadline,)).rowcount
+    conn.commit()
+    return n_gw, n_team
+
+
 def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None, sources=None):
     cfg = cfg or load_config()
     if sources is None:  # explicit: an empty tuple means "no sources", not "both"
@@ -141,6 +162,12 @@ def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None,
             print(f"understat prior rematch: {n} rows re-linked to current player ids")
     except Exception as exc:  # noqa: BLE001 - data hygiene must not break refresh
         print(f"WARNING: understat prior rematch failed ({exc})")
+    try:
+        n_gw, n_team = _clear_stale_season_rows(conn)
+        if n_gw or n_team:
+            print(f"season rollover cleanup: {n_gw} gw_stats rows, {n_team} my_team rows cleared")
+    except Exception as exc:  # noqa: BLE001 - data hygiene must not break refresh
+        print(f"WARNING: season rollover cleanup failed ({exc})")
 
     if owns_conn:
         conn.close()

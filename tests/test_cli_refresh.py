@@ -283,3 +283,28 @@ def test_refresh_rematches_prior_understat_after_rollover(load):
                           WHERE u.understat_id=999""").fetchone()
     assert row is not None and row["web_name"] == "Hall" and row["team"] == "NEW"
     conn.close()
+
+
+def test_clear_stale_season_rows_clears_pre_season_data(db):
+    """Rows written before the current season's GW1 deadline are last season's data
+    (player ids change every season) — drop them; keep anything settled after."""
+    from src.cli import _clear_stale_season_rows
+
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (1, '2026-08-21T17:30:00+00:00', 0, 0, 1)")
+    db.execute("INSERT INTO player_gw_stats (player_id, gw, fixture_id, minutes, "
+               "goals_scored, assists, clean_sheets, bonus, total_points, settled_at) "
+               "VALUES (449, 38, 1, 90, 1, 1, 0, 2, 14, '2026-05-27T08:00:00+00:00')")
+    db.execute("INSERT INTO player_gw_stats (player_id, gw, fixture_id, minutes, "
+               "goals_scored, assists, clean_sheets, bonus, total_points, settled_at) "
+               "VALUES (449, 1, 2, 90, 0, 0, 1, 0, 6, '2026-08-22T08:00:00+00:00')")
+    db.execute("INSERT INTO my_team (gw, picks_json, snapshot_at) "
+               "VALUES (38, '[]', '2026-05-27T08:00:00+00:00')")
+    db.execute("INSERT INTO my_team (gw, picks_json, snapshot_at) "
+               "VALUES (1, '[]', '2026-08-22T08:00:00+00:00')")
+    db.commit()
+
+    n_gw, n_team = _clear_stale_season_rows(db)
+    assert (n_gw, n_team) == (1, 1)
+    assert db.execute("SELECT COUNT(*) c FROM player_gw_stats").fetchone()["c"] == 1
+    assert db.execute("SELECT gw FROM my_team").fetchall()[0]["gw"] == 1
