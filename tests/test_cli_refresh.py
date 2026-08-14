@@ -1,4 +1,5 @@
 import pytest
+import requests
 from src import cli
 from src.data.db import connect, init_db
 from src.data.models import BootstrapStatic, EntryPicks, Fixture
@@ -18,6 +19,16 @@ class FakeClient:
         return self._picks
 
 
+class NoSquadClient(FakeClient):
+    """FPL returns 404 for entry/{id}/event/{gw}/picks/ when no squad is saved yet (pre-season)."""
+
+    def picks(self, team_id, gw):
+        resp = requests.Response()
+        resp.status_code = 404
+        resp.url = f"https://fantasy.premierleague.com/api/entry/{team_id}/event/{gw}/picks/"
+        raise requests.exceptions.HTTPError("404 Client Error", response=resp)
+
+
 def test_refresh_populates_db(load):
     conn = connect(":memory:")
     init_db(conn)
@@ -34,6 +45,41 @@ def test_refresh_populates_db(load):
     assert conn.execute("SELECT COUNT(*) c FROM fixtures").fetchone()["c"] == len(fx)
     assert conn.execute("SELECT COUNT(*) c FROM my_team").fetchone()["c"] == 1
     conn.close()
+
+
+def test_refresh_skips_my_team_when_no_squad_saved(load, capsys):
+    """A 404 from the picks endpoint (squad not saved for the new season) must not abort refresh."""
+    conn = connect(":memory:")
+    init_db(conn)
+    bs = BootstrapStatic.model_validate(load("bootstrap-static.json"))
+    fx = [Fixture.model_validate(f) for f in load("fixtures.json")]
+    cfg = {"fpl": {"team_id": 3122849}, "storage": {"db_path": ":memory:"}}
+
+    cli.refresh(full=True, cfg=cfg, conn=conn, client=NoSquadClient(bs, fx, None), sources=("fpl",))
+
+    assert conn.execute("SELECT COUNT(*) c FROM players").fetchone()["c"] == len(bs.elements)
+    assert conn.execute("SELECT COUNT(*) c FROM fixtures").fetchone()["c"] == len(fx)
+    assert conn.execute("SELECT COUNT(*) c FROM my_team").fetchone()["c"] == 0
+    assert "no squad saved" in capsys.readouterr().out
+    conn.close()
+
+
+def test_current_gw_prefers_next_gw_pre_season(db):
+    """Pre-season: no finished/current GW; picks must resolve to the is_next GW (GW1), not MAX(id)."""
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (1, '2026-08-21T17:30:00Z', 0, 0, 1), "
+               "(38, '2027-05-30T13:30:00Z', 0, 0, 0)")
+    db.commit()
+    assert cli._current_gw_from_db(db) == 1
+
+
+def test_current_gw_prefers_next_gw_mid_season(db):
+    """Mid-season: is_next (upcoming GW) wins over is_current (live GW)."""
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (5, '2026-09-25T17:30:00Z', 0, 1, 0), "
+               "(6, '2026-10-02T17:30:00Z', 0, 0, 1)")
+    db.commit()
+    assert cli._current_gw_from_db(db) == 6
 
 
 class FakeUnderstatClient:

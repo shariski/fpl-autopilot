@@ -2,6 +2,7 @@ import argparse
 import json
 import pathlib
 import yaml
+import requests
 from . import config
 from .config import load_config, team_id as cfg_team_id, db_path as cfg_db_path
 from .data.db import connect, init_db
@@ -13,6 +14,9 @@ NAME_RESOLUTION_PATH = pathlib.Path(__file__).resolve().parent.parent / "data" /
 
 
 def _current_gw_from_db(conn):
+    row = conn.execute("SELECT id FROM gameweeks WHERE is_next=1").fetchone()
+    if row:
+        return row["id"]
     row = conn.execute("SELECT id FROM gameweeks WHERE is_current=1").fetchone()
     if row:
         return row["id"]
@@ -47,7 +51,13 @@ def _refresh_fpl(conn, client, tid, full):
         print(f"fixtures OK ({len(fx)} fixtures)")
     gw = _current_gw_from_db(conn)
     if gw is not None and (full or cache.is_stale(conn, "my_team")):
-        picks = client.picks(tid, gw)
+        try:
+            picks = client.picks(tid, gw)
+        except requests.exceptions.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                print(f"my_team skipped: no squad saved yet for GW{gw} (404)")
+                return
+            raise
         repository.snapshot_my_team(conn, gw, picks)
         cache.mark_fetched(conn, "my_team")
         print(f"my_team OK (GW{gw}, {len(picks.picks)} picks)")
