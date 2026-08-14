@@ -54,6 +54,22 @@ User approved options **1 + 2**: CLI-first data surface **and** keep the in-app 
 - Possibly an MCP server (kerf's "BYO-LLM via MCP" tier) later — defer.
 - In-app AI stays (display), flagged as optional.
 
+**Server/agent ergonomics (user request — brainstorm these too):**
+- **One-shot bootstrapping:** a `fpl-autopilot status --json` (or `doctor`) command that
+  prints everything an agent needs in one call: mode, frozen?, data freshness, next GW +
+  deadline, last system actions, pending decisions. New agent sessions start with one command.
+- **SSH/driver ergonomics:** documented one-liner aliases/scripts for the agent to run on
+  jumbo (`make status`, `make log`, `make shell`), plus a runbook section "agent operating
+  notes" (which commands are read-only-safe, which need the human).
+- **Session continuity:** a `resume` command that prints the state snapshot + recent
+  activity-log tail, so any fresh agent session boots with context instead of spelunking.
+- **Skill planting:** a reusable skill (superpowers-style) that plants context at session
+  start — project conventions (B-rules), where things run, how to drive the CLI, current
+  GW state. Possibly an AGENTS.md at repo root so non-Claude agents (Codex/Copilot/Gemini)
+  auto-load the contract too (CLAUDE.md only serves Claude-family).
+- Secrets ergonomics: read-only/dry-run commands must never need the master password;
+  `--live` stays human-gated (R3).
+
 **Out of scope until discussed:** auto-execution beyond current rules (B3/B8), Telegram
 one-tap apply-confirm, wildcard-aware rebuild, speculation quality feedback loop.
 
