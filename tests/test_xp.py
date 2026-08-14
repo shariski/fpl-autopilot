@@ -81,3 +81,17 @@ def test_compute_and_store_no_upcoming_returns_zero(db, load):
     db.execute("INSERT INTO gameweeks (id, name, finished) VALUES (1, 'GW1', 1)")
     db.commit()
     assert xp.compute_and_store(db) == 0
+
+
+def test_compute_and_store_removes_stale_rows_for_unmatched_players(db, load):
+    """Players that lose their understat link must not keep stale xp rows —
+    upsert-only recompute would otherwise serve ghost projections (observed
+    2026-08-14: Heaton kept xP rows with no understat match)."""
+    _seed_full(db, load)
+    xp.compute_and_store(db, horizon=6)
+    # simulate rollover: some players lose their understat link
+    db.execute("UPDATE understat_players SET fpl_player_id=NULL")
+    db.commit()
+    n = xp.compute_and_store(db, horizon=6)
+    assert n == 0  # no matched players remain
+    assert db.execute("SELECT COUNT(*) c FROM xp").fetchone()["c"] == 0

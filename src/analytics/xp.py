@@ -60,5 +60,20 @@ def compute_and_store(conn, horizon=6):
             res = compute_player_xp(pl["position"], pl["status"], pl["xg_per_90"], pl["xa_per_90"],
                                     pl["minutes"], pl["games"], fdr[0], fdr[1])
             rows.append({"player_id": pl["player_id"], "gw": gw, "model_version": MODEL_VERSION, **res})
+    # Stale-row cleanup: players who lost their understat link (season rollover /
+    # rematch) must not keep ghost xp rows — upsert alone would serve projections
+    # from another player's data (observed 2026-08-14: Heaton kept xP with no match).
+    joined_ids = {pl["player_id"] for pl in players}
+    if joined_ids:
+        placeholders = ",".join("?" * len(joined_ids))
+        conn.execute(
+            f"DELETE FROM xp WHERE model_version=? AND gw BETWEEN ? AND ? "
+            f"AND player_id NOT IN ({placeholders})",
+            (MODEL_VERSION, next_gw, last_gw, *sorted(joined_ids)))
+    else:
+        conn.execute(
+            "DELETE FROM xp WHERE model_version=? AND gw BETWEEN ? AND ?",
+            (MODEL_VERSION, next_gw, last_gw))
+    conn.commit()
     repository.upsert_xp(conn, rows)
     return len(rows)
