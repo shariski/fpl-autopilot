@@ -1,215 +1,78 @@
-# FPL Autopilot — Session Handoff (2026-05-24)
+# FPL Autopilot — Session Handoff (2026-08-14)
 
-Resume point for continuing on another machine. Everything below is in git (pushed to
-`github.com:shariski/fpl-autopilot`); your local auto-memory and secrets do **not** transfer.
+Resume point for the next session. Everything below is in git (pushed to
+`github.com:shariski/fpl-autopilot`, auto-deployed to the VPS `jumbo` by CI on
+push to main). This handoff supersedes the 2026-05-24 one.
 
 ## Where we are
 
-- **Phase 1 (Insight Engine) — COMPLETE.** Data layer (FPL + Understat clients, cache, sqlite),
-  Analytics (FDR, xP v1, DGW), Decisions (captain, transfers, chips), Interface (FastAPI + SvelteKit
-  PWA), scheduler.
-- **Phase 2 (Decision Automation) — auth + execution + routing + Telegram + deadguard (captain/vice) DONE:**
-  - 2.1 Auth — **token-capture with OAuth refresh** (see "Auth reality"). `init-master-password`,
-    `init-fpl` (paste refresh token), `auth-status`. `src/auth/{crypto,master,session}.py`.
-  - 2.2 Action Executor — `src/execution/{executor,lineup,transfer}.py`; CLIs `execute-lineup`,
-    `execute-transfer` (dry-run default, `--live` + typed confirm).
-  - 2.3 Mode Router — `src/decisions/confidence.py`, `src/execution/router.py`; CLI `route-gameweek`;
-    unattended scheduling in `src/scheduler.py` (`auto_execute_job`, `_maybe_load_key`).
-  - 2.4a Telegram outbound notifier — `src/interface/telegram.py` (`is_configured`, `send_message`,
-    `notify`, `notify_plan`); wired into `auto_execute_job` (post-exec + pending-info + auth alert).
-    Env vars `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (silent no-op when unset). Outbound only.
-  - 2.4b Telegram interactive confirm — `src/interface/telegram_interactive.py` (`send_pending`,
-    `notify_plan`, `poll_once`, `handle_callback`); `pending_decisions` + `telegram_state` tables;
-    `get_updates`/`answer_callback_query` transport. One-tap Confirm/Reject via getUpdates poll in the
-    daemon; re-run+verify (re-notify if changed); chat whitelist + status-gate + durable offset +
-    deadline guard. Opt-in `telegram.interactive` (loads master key + registers `telegram_poll` job).
-  - 2.5a Deadguard state machine + captain/vice safety net — `src/interface/deadguard.py` (pure
-    `evaluate` + `user_acted`/`send_warning`/`handle_keep`/`run_deadguard_job`); `gameweeks.state`
-    machine (PENDING/USER_ACTED/SYSTEM_ACTED/DEADGUARD_ACTIVE/EXECUTED/SKIPPED) + `deadguard_warned_at`
-    column. H-120 warning (Keep-as-is button, routed via `poll_once`), H-30 trigger → captain/vice via
-    `run_lineup`. USER_ACTED from Keep tap / 2.4b confirm-reject / manual CLI execute. Opt-in
-    `deadguard.enabled` (default true) → `deadguard_job`. Captain/vice ONLY (B8).
-  - 2.5b Deadguard bench-order + transfer-if-flagged — `decisions/bench.py` (`rank_bench` 13/14/15 by
-    xP), `run_lineup(optimize_bench=True)` (captain/vice + bench in one write), `deadguard._pick_flagged_transfer`
-    (targeted, free, ep≥3.0, conf≥75, ≤1) wired into `_run_trigger` (lineup → lock → best-effort transfer).
-    `deadguard.scope` config accessors. Bench reorder → FPL native auto-sub. B8 (no chips/hits/multi/formation).
-  - 2.7 Emergency Override — **persisted freeze / kill-switch + B7 auto-freeze DONE.** New `system_state`
-    table; `src/execution/override.py` gate; `auto_execute_job` + `run_deadguard_job` short-circuit when
-    frozen (explicit Confirm NOT gated); `ensure_session` counts refresh failures → freeze at 2; Telegram
-    🛑/▶️ + CLI `freeze`/`unfreeze`/`freeze-status`. (See "2.7" section below.)
-  - 2.5c-1 Deadguard late-news re-evaluation — after DEADGUARD_EXECUTED, `evaluate` returns `reeval`/`lockout`;
-    `_run_reevaluate` force-refreshes FPL + re-checks the lineup, auto-applying a material captain/bench change
-    (>15 min out) or alert-only in the ≤15-min lockout. Lineup-only (B8). decision-engine.md v0.11. (See "2.5c-1".)
-  - 2.5c-2 Deadguard undo (transfer) — deadguard records its transfer; one-tap ↩️ Undo (Telegram `z:` + CLI
-    `undo-transfer`) reverses it before the deadline → USER_ACTED; refuses safely if too late / squad changed.
-  - 2.5c-3 Dashboard deadguard/freeze banner + controls — `get_status` returns `frozen` + populated `banners`
-    (`Header.svelte` renders them + a Freeze/Unfreeze toggle + a warning-window Keep button); POST `/api/freeze`,
-    `/api/unfreeze`, `/api/deadguard/keep` (DB-state only, no key); `serve` binds 127.0.0.1 by default; dashboard
-    polls `/api/status` (~30s + focus) → multi-device. No dashboard live FPL write (Undo stays Telegram/CLI).
-- **PHASE 2 (Decision Automation) — COMPLETE.** **Test suite: 404 pytest + 50 vitest passing**, all merged to
-  `main` and pushed to origin.
+- **Phase 1 + Phase 2: complete and live.** Phase 3 (AI layer) is partially built.
+- **Season 26/27 rollover: done.** Pre-season GW1 (deadline 2026-08-21), team 3122849
+  registered but **no squad picked yet** (user must save their GW1 squad; hourly refresh
+  will then snapshot it automatically).
+- **Deployed:** container on `jumbo` runs `fpl-autopilot serve` (FastAPI + SPA + scheduler),
+  healthy, `DEEPSEEK_API_KEY` set in `.env` on the host. Dashboard: `https://server1.taila3964c.ts.net`
+  (tailnet only). CI: push to main → GHCR build → auto pull+restart on jumbo.
+- **Tests:** 693 pytest + 71 vitest green. Full suite: `.venv/bin/pytest -q`, `cd frontend && npm test`.
 
-## Auth reality (don't re-derive this — it cost a lot to find)
+## What was built today (2026-08-14)
 
-Programmatic email+password login is **dead**: `users.premierleague.com` is decommissioned; PL uses
-**PingOne (DaVinci) behind Cloudflare**. The working mechanism is **token-capture with refresh**:
-- The FPL API authenticates with `X-Api-Authorization: Bearer <access_token>` (RS256 JWT, ~8h TTL).
-- Refresh: `POST https://account.premierleague.com/as/token`, form body
-  `grant_type=refresh_token&refresh_token=<rt>&client_id=bfcbaf69-aade-4c1b-8f00-c1cb8a193030`
-  (client_id ends **a193030**). Refresh token lasts ~180 days; rotates on use. Verified live.
-- `init-fpl` pastes the **refresh token** (from DevTools → the `/as/token` response or localStorage).
-- **The agent never runs live login/execution (R3).** The user runs `init-*` and any `--live`/daemon.
+1. **Season rollover fixes** (live-tested): pre-season GW resolution (`is_next=1`), picks-404
+   skip, prior-season understat **rematch** to new player ids (348 rows), stale
+   `player_gw_stats`/`my_team` purge, stale xp-row purge. All in `src/cli.py` refresh path.
+2. **DeepSeek provider** (`src/ai/provider.py`): `DeepSeekProvider` via OpenAI SDK,
+   `build_provider(cfg, conn)` factory, `DEEPSEEK_API_KEY` env var, `ai.provider: deepseek`
+   default. ClaudeProvider dropped. Resolves risks.md D2.
+3. **Player insight deep-dive** (`src/ai/insight/`): digest → analysis prompt → grounded
+   JSON → cache. Endpoint `GET /api/players/{id}/insight`, page `/players/[id]`.
+4. **AI squad builder + apply** (`src/ai/squad/`, `src/decisions/squad_validator.py`,
+   `src/execution/squad.py`): deterministic candidate pool → **AI speculation layer**
+   (spike/drop signals, edge-data gate) → budget-aware optimizer (bonus constants
+   `SPIKE_BONUS`/`DROP_BONUS` in decision-engine.md §S-B) → `apply-squad` CLI (dry-run
+   default, `--live` typed confirm). Page `/squad-builder`.
+5. **SPA fallback** (200.html) for client-side routes; empty-squad state; dark-theme fixes.
+6. **Ops:** kerf's stale GHCR credential removed from jumbo (anonymous pulls work);
+   insight + speculation verified live on jumbo.
 
-## Working conventions (followed all session)
+## The new direction (user's vision — brainstorm + spec in the next session)
 
-- **Superpowers flow per slice:** brainstorming → spec (`docs/superpowers/specs/`) → writing-plans
-  (`docs/superpowers/plans/`) → subagent-driven-development (fresh subagent per task, TDD, commit
-  each) → final review (opus for security/exec slices) → finishing-a-development-branch.
-- **Per-slice branch** `feat/<slice>`; merge to `main` locally; push only when asked.
-- **Dry-run first; the agent never executes live writes (R3).** All tests are fixtures-only (fake
-  session/ranker/suggester/route_fn; no network/getpass/live).
-- **NEVER `git add -A`** here — it sweeps in `.claude/worktrees/` gitlinks. Stage explicit paths.
-- **B-rules in `CLAUDE.md` are binding** (B4 decision-engine is "sacred" — document changes there;
-  B7 secrets encrypted/never-logged; B8 no auto chips/hits/multi; B11 dry-run first-class).
-- Decision logic lives in `docs/decision-engine.md` (changelog up to v0.11).
-- A `code-review-graph` MCP is available (use it before Grep per the user's global CLAUDE.md).
+**CLI-first, agent-operable contract.** The project's big concept: the CLI is the
+agent interface — a well-defined, documented surface (`fpl-autopilot <cmd> --json`)
+that any AI agent can operate, so the user can swap agents freely (Claude/DeepSeek/future)
+and let the agent orchestrate: refresh → read outputs → judge → `apply-squad --live`
+(human confirms). In-app AI (insight/speculation) becomes optional display; the
+decision-grade reasoning should be able to live agent-side.
 
-## 2.4 Telegram — DONE (a + b; pushed)
+User approved options **1 + 2**: CLI-first data surface **and** keep the in-app AI.
 
-Specs/plans under `docs/superpowers/{specs,plans}/2026-05-23-telegram-*`. **2.4a** (outbound): env-var
-storage decoupled from the master key, caller-driven from `auto_execute_job` (router stays pure, B2),
-post-exec ✅ / pending-info 📊 / auth-failure ❌ + failure-to-send logging. **2.4b** (interactive):
-`pending_decisions` + `telegram_state` tables; `telegram_interactive.{send_pending,notify_plan,
-poll_once,handle_callback}`; one-tap Confirm/Reject via a `telegram_poll` getUpdates job in the daemon;
-**re-run + verify** on confirm (execute only if the recompute still matches what was shown, else
-re-notify); chat-id whitelist + status-gate idempotency + durable update offset + deadline guard; B8
-keeps it to a single captain/transfer via the existing executors. Opt-in `telegram.interactive`
-(default false) → `_maybe_load_key` loads the key + `build_scheduler` registers the poll job. No
-`decision-engine.md` change. Both slices reviewed (per-task spec ✅/quality + final opus; review fixes
-applied: send_message json-hardening, scheduler notify exception-safety, poll_once poison-loop guard,
-no telegram session into FPL executors). 272 tests green.
-- **Deferred → 2.4c (future):** the "Modify" button (cycle transfer rank / pick vice) + its stateful
-  multi-message flow.
+**Concrete gaps to close (brainstorm these):**
+- Data-side commands with `--json`: `squad --candidates --json` (pool + projections),
+  `squad --json` (built squad incl. speculation), `insight <player> --json`,
+  `speculate --json` (spike/drop signals), `captain --json`, `transfers --json`.
+- An **agent contract doc** (`docs/agent-contract.md`): every command, JSON shape,
+  exit codes, dry-run semantics, R3 rules (agent never runs `--live`; user drives).
+- Possibly an MCP server (kerf's "BYO-LLM via MCP" tier) later — defer.
+- In-app AI stays (display), flagged as optional.
 
-## 2.5 Deadguard — DONE (a + b; 2.5a pushed, 2.5b merged to main locally, not pushed)
+**Out of scope until discussed:** auto-execution beyond current rules (B3/B8), Telegram
+one-tap apply-confirm, wildcard-aware rebuild, speculation quality feedback loop.
 
-Specs/plans under `docs/superpowers/{specs,plans}/2026-05-23-deadguard-*`. **2.5a** (state machine):
-pure `evaluate` (system_acted/user_acted/warn/trigger/noop), `user_acted` (Keep tap / 2.4b confirm-reject
-/ manual CLI execute), H-120 `send_warning` (Keep button via `poll_once` `k:`), H-30 `_run_trigger` →
-captain/vice via `run_lineup` (checks `result.ok`, EXECUTED/SKIPPED/retryable, always notifies);
-`deadguard_job` (every 5 min when key + `deadguard.enabled`); `gameweeks.deadguard_warned_at`.
-**2.5b** (bench + transfer): `decisions/bench.py` `rank_bench` (13/14/15 by xP → FPL native auto-sub),
-`run_lineup(optimize_bench=True)` (captain/vice + bench, one write), `_pick_flagged_transfer` (targeted
-at the flagged player, free only, ep≥3.0, conf≥75, ≤1) → best-effort in `_run_trigger` after the lineup
-lock. `deadguard.scope` config accessors. decision-engine.md v0.9 + v0.10. Both reviewed (per-task +
-final; B8 holds — no chips/hits/multi/formation; bench reorder only touches 13/14/15). 329 tests green.
-- **Deferred (deadguard):** `transfer_if_underperform` (sell a healthy underperformer; default off);
-  explicit pre-deadline formation-valid starter→bench swaps (rely on FPL native auto-sub instead).
+## Working conventions (binding)
 
-## 2.7 Emergency Override — DONE (merged to main, pushed)
+- **B-rules in CLAUDE.md** (B4 decision-engine sacred — doc before changing thresholds;
+  B7 no secrets logged; B8 deadguard scope; B11 dry-run first-class; B13 docs = truth).
+- Superpowers flow: brainstorm → spec (`docs/superpowers/specs/`) → plan
+  (`docs/superpowers/plans/`) → TDD tasks, commit each → merge to main when green.
+- **Never commit without running the full suite first** (this was violated twice today —
+  enforce it).
+- **Never `git add -A`** (worktree gitlinks). Stage explicit paths.
+- The agent (this project's assistant) never runs `--live` FPL writes; the user does.
+- Dry-run is the default everywhere.
 
-Specs/plans under `docs/superpowers/{specs,plans}/2026-05-23-emergency-override*`. A persisted freeze
-(new `system_state` key/value table; row present = frozen, holds `{since, reason, source}`) halts
-autonomous FPL writes: `auto_execute_job` (auto mode) and the ENTIRE `run_deadguard_job` short-circuit
-when frozen (deadguard **fully dormant** — no H-120 warning, no H-30 trigger, no state change). The user's
-explicit Telegram **Confirm** (`handle_callback`) is intentionally NOT gated (autonomous-only). The gate is
-`src/execution/override.py` (`is_frozen`/`status`/`freeze`/`unfreeze`/`maybe_auto_freeze`, Data-Layer-only
-per B2 — no Telegram import; callers send the copy). **B7 wired:** `ensure_session` increments
-`credentials.relogin_failures` on a `TokenRefreshError` (network blips don't count); the orchestrators call
-`override.maybe_auto_freeze` → freeze (`source="auto"`) at 2 consecutive failures + alert once; success
-resets the counter via `mark_session_ok`. Telegram `f:`/`u:` callbacks: 🛑 Freeze on the deadguard warning
-+ auto-mode notice, ▶️ Unfreeze on the freeze confirmation (chat-whitelisted). CLI `freeze`/`unfreeze`/
-`freeze-status` (no master password — freeze is plaintext operational state) + `frozen:`/`relogin_failures:`
-lines in `auth-status`. No `decision-engine.md` change (execution gate, not decision logic, so B4 untouched);
-`deadguard.md` + `runbook.md` updated. Built via 10 TDD subagent tasks + two-stage reviews + a final opus
-review (clean: B2 intact, no secrets logged, every autonomous write path gated, confirm-while-frozen
-regression-tested). 361 tests green.
-- **Deferred (noted in review, non-blocking):** the `_run_trigger` transfer step's `SessionExpired` is
-  caught by the generic handler (unreachable for auth failures — the lineup write fails first); a stale
-  `DEADGUARD_ACTIVE` can linger after a SessionExpired-aborted trigger (pre-existing from 2.5a, benign —
-  not a RESOLVED state, so it re-runs cleanly).
+## Pending user-side items (before GW1)
 
-## 2.5c-1 / 2.5c-2 — DONE (merged to main, pushed)
-
-2.5c was decomposed into three sub-slices (late-news re-eval / undo / dashboard). Two are done:
-- **2.5c-1 late-news re-evaluation** — specs/plans `docs/superpowers/{specs,plans}/2026-05-23-deadguard-late-news-reeval*`.
-  `evaluate` gains `reeval`/`lockout` directives for DEADGUARD_EXECUTED (gated by `reeval_if_late_news`, default on;
-  `reeval_lockout_minutes` 15). `_run_reevaluate` force-refreshes FPL bootstrap (cache-bypassed) + recomputes the
-  lineup; on a material captain/vice/bench change it auto-applies via `run_lineup` when >15 min out, else alert-only
-  (once, via `gameweeks.deadguard_reeval_alerted_at`). Lineup-only (B8); frozen → dormant (2.7). decision-engine.md v0.11.
-- **2.5c-2 undo (transfer)** — specs/plans `.../2026-05-24-deadguard-undo-transfer*`. `_run_trigger` records the
-  transfer (`gameweeks.deadguard_transfer_json`) + sends a ↩️ Undo button; `transfer.run_undo_transfer` reverses it
-  (sell bought, buy back sold; free pre-deadline); `deadguard.run_undo` guards (recorded / not-undone / before-deadline)
-  → reverse → `mark_deadguard_transfer_undone` + USER_ACTED + notify; Telegram `z:` handler + CLI `undo-transfer`
-  (dry-run/`--live`). Not freeze-gated (user action). No decision-engine.md change. Both reviewed (per-task + final opus).
-
-## 2.5c-3 — DONE (merged to main, pushed)
-
-Specs/plans `docs/superpowers/{specs,plans}/2026-05-24-dashboard-deadguard-controls*`. `get_status` →
-`frozen` + `banners` (with optional `action`); POST `/api/freeze`/`/api/unfreeze`/`/api/deadguard/keep`
-(DB-state only, no master key, no FPL call); `serve` binds 127.0.0.1 by default (the API now mutates state —
-use `--host 0.0.0.0` for LAN). Frontend: `Status.frozen`/`Banner.action?` types, `client.postAction`/`fetchStatus`,
-presentational `Header` (`onaction` callback: Freeze/Unfreeze toggle + banner Keep button), `+page.svelte` owns
-postAction + ~30s status polling (multi-device). 8 TDD tasks (pytest + vitest), final opus review clean (web
-layer holds no key, makes no FPL call). api-contract.md/deadguard.md/runbook.md updated.
-
-## Live e2e against the real account — DONE (2026-05-24, GW38, team 3122849)
-
-First real-account run (user drove all live steps; agent ran only read-only `refresh` + local analytics, R3).
-**Validated live, end to end:** `refresh` (bootstrap-static 840 players / 380 fixtures / understat 523-matched —
-no B6 schema drift) → local fdr/xp compute → read-only decisions (captain Haaland, 1 transfer suggestion) →
-`init-master-password`/`init-fpl`/`auth-status` (live `/as/token` OAuth refresh + `/me` team check → `active`) →
-dry-run `route-gameweek`/`execute-lineup`/`execute-transfer` → **live `execute-transfer` HTTP 200** (João Pedro →
-Calvert-Lewin) → **live `execute-lineup` HTTP 200** (Haaland C, Thiaw VC) → dashboard (Freeze toggle works).
-
-**Bug found + fixed (live-verified): transfers POST endpoint.** `execute-transfer --live` returned **405** —
-`TRANSFERS_URL` was `/api/entry/{entry}/transfers/` (read-only history) instead of the submit endpoint
-`/api/transfers/` (entry in body). Fixed in `executor.py` + 3 tests that had enshrined the wrong URL (commit
-`3ac4f98`); retried live → **200**. `MY_TEAM_URL` was already correct (lineup POST 200).
-
-**Findings / backlog (for Phase 3):**
-- ~~**Dashboard read-model is public + one-GW-behind.**~~ **RESOLVED 2026-05-26 in `feat/authed-read-model-wiring`** — scheduler (`refresh_and_recompute(key=...)`) and the new `refresh-my-team` CLI now write an authed `/my-team` row at `gw=next_gw`. All readers (`get_squad`, `_latest_squad`, captain, chips) already `ORDER BY gw DESC LIMIT 1` so the authed row wins automatically; public-picks row stays as fallback. No schema change. See `docs/superpowers/specs/2026-05-26-authed-read-model-wiring-design.md`.
-- **No standalone `recompute` CLI** — a bare `refresh` fetches data but leaves `fdr`/`xp` stale (only the
-  scheduler's `refresh_and_recompute` recomputes). Add a `recompute` command (or have `refresh` recompute).
-- **`serve` doesn't serve the SPA** — it's the API only; the dashboard needs `cd frontend && npm run dev`
-  (Vite proxies `/api`). `client.ts` intends same-origin in prod, but no static mount exists in `api.py`. Wire it.
-- ~~**`free_transfers` still unknown to the executor.**~~ **RESOLVED 2026-05-26 in same slice** — `run_transfer` now preflights on `free_transfers` (refuses a live `-4` hit unless `--allow-hit`); deadguard's `_pick_flagged_transfer` refuses on `FT=0` or unknown per B8. Audit trail in `activity_log.inputs.free_transfers`.
-
-After these (or straight to) → **Phase 3 (AI Layer)** — LLM reasoning, mini-league context, personalization, conversational interface.
-
-## Phase 2 status — COMPLETE
-- **DONE:** 2.1 auth · 2.2 executor · 2.3 router · 2.4a/b Telegram · 2.5a/b deadguard · 2.7 override · 2.5c-1/2.5c-2/2.5c-3.
-- 2.6 Dry-Run — satisfied (every executor + the router is dry-run-first).
-
-## Tech debt / cleanup (small, non-blocking — flagged in 2.5 reviews)
-- `src/decisions/bench.py` imports the private `transfers._next_gw` (captain.py does the same) — extract
-  to a public Data-Layer helper (e.g. `repository.next_gw`) and update both call sites. Note: `scheduler._next_gw_id`
-  (added 2026-05-26) uses the FPL-canonical `is_next=1` semantic — more accurate than `MIN(id) WHERE finished=0`.
-  When extracting, prefer the `is_next=1` form with the MIN-unfinished fallback.
-- The executors (`run_lineup`, `run_transfer`) hardcode `mode="manual"` in their internal `log_activity`,
-  so a deadguard/auto executor-level log row is mislabeled (the *decision* IS logged correctly with
-  `mode="deadguard"`/router mode by the orchestrator's own summary entry). Thread a `mode` param through both.
-- **From the 2026-05-26 final opus review of `feat/authed-read-model-wiring`:**
-  - `run_transfer`'s refusal returns `ExecResult(dry_run=True, ok=False, request.note="refused...")`. Matches the
-    pre-existing user-abort convention but is semantically misleading. Consider adding an explicit `ExecResult.refused: bool`
-    field (or status enum) in a follow-up. No current consumer makes a `dry_run`-dependent decision that misclassifies, so non-blocking.
-  - Deadguard `_pick_flagged_transfer` gate uses `isinstance(free_transfers, int)`. `isinstance(True, int)` is True
-    (bool subclasses int), so a `bool` slipping through would bypass the gate. Unreachable from current data flow
-    (sqlite3 INTEGER → Python int; no bool coercion anywhere). Tighten to `type(x) is int and not isinstance(x, bool)`
-    if a config-driven override is ever added.
-  - **Asymmetry on `free_transfers is None`:** `run_transfer` proceeds with a warning (user has agency); deadguard
-    refuses (autonomous safety net per B8). Intentional but worth documenting in `docs/api-contract.md`.
-  - `_refresh_authed_my_team` in scheduler logs `log.warning("authed my-team snapshot failed: %s", exc)`. Operator
-    diagnostics are thin (no traceback). Consider `exc_info=True` gated by a debug flag.
-
-## Machine setup (Mac mini)
-```bash
-git clone git@github.com:shariski/fpl-autopilot.git    # or git pull
-cd fpl-autopilot
-python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # python3.14 also works (this machine)
-.venv/bin/pytest -q          # expect 432 passed (was 404 before authed-read-model-wiring)
-cd frontend && npm install && npm test   # frontend (vitest): expect 50 passed  (npm install needed once)
-```
-Local-only (re-create if you want live runs): `data/.salt` + `data/.verify` (run
-`init-master-password` then `init-fpl`), and the `~/.claude` auto-memory (this file replaces it for
-continuity). `config.yaml` is in git (team_id 3122849, mode: manual, unattended.enabled: false).
+1. Save the GW1 squad on fantasy.premierleague.com (tool then snapshots it hourly).
+2. Optional: review `/squad-builder`, run `apply-squad --live` on jumbo to auto-apply
+   the AI squad (pre-season = unlimited transfers).
+3. FPL team strengths are 0 pre-season → FDR is flat (documented caveat, decision-engine.md);
+   self-corrects near GW1.
