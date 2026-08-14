@@ -95,8 +95,19 @@ def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
         logger.warning("ai.squad.attempt_rejected",
                        extra={"gw": gw, "attempt": attempt, "problems": problems[:5]})
         if attempt < MAX_ATTEMPTS - 1:
+            budget_hint = ""
+            budget_probs = [p for p in problems if "budget exceeded" in p]
+            if budget_probs:
+                try:
+                    over = float(budget_probs[0].split(":")[1].split("m")[0].strip())
+                    budget_hint = (f" You are over budget by "
+                                   f"{max(0.1, round(over - 100.0, 1))}m — "
+                                   f"remove that much price from your picks.")
+                except (IndexError, ValueError):
+                    pass
             prompt = f"{prompt}\n\nPrevious proposal was rejected by the validator: " \
-                     f"{'; '.join(problems[:5])}. Output ONLY the JSON with a legal squad."
+                     f"{'; '.join(problems[:5])}.{budget_hint} " \
+                     f"Output ONLY the JSON with a legal squad."
     # Deterministic budget repair of the last AI proposal (legal except budget)
     last_payload = locals().get("payload")
     if last_payload is not None and isinstance(last_payload.get("picks"), list):
@@ -110,7 +121,11 @@ def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
                  picks=[p["player_id"] for p in repaired],
                  extra={"problems": problems[:5]})
             return last_payload
-    picks = optimize_squad(pool)
+    try:
+        picks = optimize_squad(pool)
+    except Exception:
+        logger.exception("ai.squad.optimizer_failed", extra={"gw": gw})
+        return None
     fallback = {"picks": picks, "template_rationale": "Deterministic fallback: greedy "
                 "value-optimized selection.", "risks": [], "source": "optimizer"}
     cache.put(conn, gw, PANE_TYPE, rec_hash, json.dumps(fallback, sort_keys=True), model_id)
