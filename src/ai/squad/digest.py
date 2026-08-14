@@ -47,6 +47,17 @@ def build_squad_digest(conn, pool=None, next_gw=None):
             "xg90": round(prior["xg_per_90"], 3) if prior else None,
             "xa90": round(prior["xa_per_90"], 3) if prior else None,
             "ownership_pct": p["ownership_pct"], "form": p["form"],
+            "transfers_in": p.get("transfers_in"),
+            "transfers_out": p.get("transfers_out"),
+            "net_momentum": p.get("net_momentum"),
+            "recent_gws": _recent_gws(conn, p["player_id"]),
             "fixtures_3": fxs,
         })
     return {"next_gw": next_gw, "budget": 100, "players": players}
+
+
+def _recent_gws(conn, player_id):
+    """Last 3 settled GW points (mid-season; [] pre-season)."""
+    return [r["total_points"] for r in conn.execute(
+        "SELECT total_points FROM player_gw_stats WHERE player_id=? "
+        "ORDER BY gw DESC LIMIT 3", (player_id,))]

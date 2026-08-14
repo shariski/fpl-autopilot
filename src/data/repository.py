@@ -28,17 +28,19 @@ def upsert_players(conn, elements, element_types):
     now = _now()
     conn.executemany(
         """INSERT INTO players (id, name, web_name, team_id, position, price,
-             status, ownership, form, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?)
+             status, ownership, form, transfers_in, transfers_out, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(id) DO UPDATE SET
              name=excluded.name, web_name=excluded.web_name,
              team_id=excluded.team_id, position=excluded.position,
              price=excluded.price, status=excluded.status,
              ownership=excluded.ownership, form=excluded.form,
+             transfers_in=excluded.transfers_in, transfers_out=excluded.transfers_out,
              updated_at=excluded.updated_at""",
         [(e.id, f"{e.first_name} {e.second_name}", e.web_name, e.team,
           pos[e.element_type], e.now_cost / 10.0, e.status,
-          e.selected_by_percent, e.form, now) for e in elements],
+          e.selected_by_percent, e.form, e.transfers_in, e.transfers_out, now)
+         for e in elements],
     )
     conn.commit()
 

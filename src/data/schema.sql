@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS players (
   status TEXT,
   ownership REAL,
   form REAL,
+  transfers_in INTEGER,
+  transfers_out INTEGER,
   updated_at TIMESTAMP
 );
 

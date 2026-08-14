@@ -18,7 +18,7 @@ def build_candidate_pool(conn, next_gw=None):
         return []
     rows = conn.execute(
         """SELECT p.id AS player_id, p.web_name, p.position, p.price, p.status,
-                  p.ownership, p.form,
+                  p.ownership, p.form, p.transfers_in, p.transfers_out,
                   t.short_name AS team_short,
                   x1.xp AS xp_next,
                   SUM(x.xp) AS xp_6gw
@@ -43,6 +43,9 @@ def build_candidate_pool(conn, next_gw=None):
             "value": round(xp6 / price, 4) if price else None,
             "ownership_pct": round(r["ownership"], 1) if r["ownership"] is not None else None,
             "form": round(r["form"], 1) if r["form"] is not None else None,
+            "transfers_in": r["transfers_in"],
+            "transfers_out": r["transfers_out"],
+            "net_momentum": (r["transfers_in"] or 0) - (r["transfers_out"] or 0),
         })
     pool = []
     for pos in ("GKP", "DEF", "MID", "FWD"):

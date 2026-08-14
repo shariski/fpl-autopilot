@@ -31,15 +31,35 @@ def _per_player_text(digest):
     return {p["player_id"]: json.dumps(p, sort_keys=True) for p in digest.get("players", [])}
 
 
+# Fields the optimizer already sorts on — a reason citing ONLY these is a
+# restatement, not speculation (the AI's edge must come from market/trend data).
+_STAT_FIELDS = {"xp_next", "xp_6gw", "xg90", "xa90", "price", "value"}
+_EDGE_FIELDS = {"transfers_in", "transfers_out", "net_momentum", "ownership_pct",
+                "form", "recent_gws", "fixtures_3"}
+
+
+def _split_blocks(digest):
+    """player_id -> (edge_text, stat_text) for the restatement gate."""
+    edge, stat = {}, {}
+    for p in digest.get("players", []):
+        full = json.dumps(p, sort_keys=True)
+        edge[p["player_id"]] = json.dumps({k: p[k] for k in _EDGE_FIELDS if k in p},
+                                          sort_keys=True)
+        stat[p["player_id"]] = json.dumps({k: p[k] for k in _STAT_FIELDS if k in p},
+                                          sort_keys=True)
+    return edge, stat
+
+
 def validate_signals(payload, pool, digest):
     """Return problems; empty = valid. ids ∈ pool, levels bounded, reasons
-    grounded against the DIGEST the AI saw (per-player), no player twice."""
+    grounded against the DIGEST the AI saw (per-player), no player twice, and
+    each reason must cite at least one edge-field number (restatements of the
+    projection are rejected — the AI's edge is market/trend evidence)."""
     problems = []
     if not isinstance(payload, dict):
         return ["not an object"]
     players = {p["player_id"] for p in pool}
-    per_player = {p["player_id"]: json.dumps(p, sort_keys=True)
-                  for p in digest.get("players", [])}
+    edge_text, stat_text = _split_blocks(digest)
     seen = set()
     for kind in ("spikes", "drops"):
         items = payload.get(kind)
@@ -54,9 +74,19 @@ def validate_signals(payload, pool, digest):
             if pid in seen:
                 problems.append(f"player {pid} appears twice")
             seen.add(pid)
-            ok, bad = grounding.is_grounded(s.get("reason") or "", per_player.get(pid, ""))
+            reason = s.get("reason") or ""
+            ok, bad = grounding.is_grounded(reason, edge_text.get(pid, ""))
             if not ok:
-                problems.append(f"{kind}[{i}]: reason cites {sorted(bad)} not in player data")
+                # grounded only in projection stats = restatement, not a call
+                ok2, _ = grounding.is_grounded(reason, stat_text.get(pid, ""))
+                if ok2:
+                    problems.append(
+                        f"{kind}[{i}]: restatement — cite market/trend evidence "
+                        f"(transfers, ownership, form, recent_gws, fixtures), "
+                        f"not the projection")
+                else:
+                    problems.append(f"{kind}[{i}]: reason cites {sorted(bad)} "
+                                    f"not in player data")
     if not isinstance(payload.get("market_read"), str) or not payload["market_read"].strip():
         problems.append("market_read missing")
     return problems

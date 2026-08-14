@@ -40,8 +40,18 @@ def _migrate_gameweeks(conn):
         conn.execute("ALTER TABLE gameweeks ADD COLUMN deadguard_transfer_undone_at TIMESTAMP")
 
 
+def _migrate_players(conn):
+    """Add the market-momentum columns to an existing players table (idempotent)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(players)")}
+    if "transfers_in" not in cols:
+        conn.execute("ALTER TABLE players ADD COLUMN transfers_in INTEGER")
+    if "transfers_out" not in cols:
+        conn.execute("ALTER TABLE players ADD COLUMN transfers_out INTEGER")
+
+
 def init_db(conn):
     conn.executescript(SCHEMA_PATH.read_text())
     _migrate_credentials(conn)
     _migrate_gameweeks(conn)
+    _migrate_players(conn)
     conn.commit()

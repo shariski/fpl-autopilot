@@ -21,7 +21,10 @@ def _pool():
         {"player_id": i, "web_name": f"P{i}", "team_short": f"T{i % 5}",
          "position": pos, "price": price, "status": "a", "xp_next": 5.0,
          "xp_6gw": 30.0 - i, "value": (30.0 - i) / price,
-         "ownership_pct": 10.0, "form": 3.0}
+         "ownership_pct": 10.0, "form": 3.0, "transfers_in": 100000 - i,
+         "transfers_out": 5000 + i, "net_momentum": 95000 - 2 * i,
+         "recent_gws": [6, 7, 8], "fixtures_3": [{"opponent": "HUL", "venue": "H",
+         "fdr_attack": 1, "fdr_defense": 1}]}
         for i, (pos, price) in enumerate(
             [("GKP", 5.0)] * 3 + [("DEF", 5.0)] * 7 + [("MID", 7.0)] * 7 + [("FWD", 9.0)] * 5)
     ]
@@ -29,9 +32,9 @@ def _pool():
 
 def _signals_json():
     return json.dumps({
-        "spikes": [{"player_id": 0, "level": "high", "reason": "clean fixtures at 30.0 xP"},
-                   {"player_id": 1, "level": "medium", "reason": "steady 29.0 xP"}],
-        "drops": [{"player_id": 2, "level": "high", "reason": "fades at 28.0 xP"}],
+        "spikes": [{"player_id": 0, "level": "high", "reason": "100000 transfers in with 8 recent form"},
+                   {"player_id": 1, "level": "medium", "reason": "94998 net momentum"}],
+        "drops": [{"player_id": 2, "level": "high", "reason": "net momentum 94996 fading"}],
         "market_read": "Midfield-heavy slate.",
     })
 

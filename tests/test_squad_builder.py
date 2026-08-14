@@ -39,7 +39,8 @@ def test_pool_shape_and_spread():
     for p in pool:
         assert set(p.keys()) == {"player_id", "web_name", "team_short", "position",
                                  "price", "status", "xp_next", "xp_6gw", "value",
-                                 "ownership_pct", "form"}
+                                 "ownership_pct", "form", "transfers_in",
+                                 "transfers_out", "net_momentum"}
         by_pos.setdefault(p["position"], 0)
         by_pos[p["position"]] += 1
     for pos in ("GKP", "DEF", "MID", "FWD"):

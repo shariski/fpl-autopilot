@@ -38,6 +38,8 @@ class Element(_Base):
     status: str
     selected_by_percent: float
     form: float
+    transfers_in: int | None = None
+    transfers_out: int | None = None
 
 
 class ElementType(_Base):

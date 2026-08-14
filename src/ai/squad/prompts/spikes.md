@@ -24,13 +24,19 @@ Output ONLY valid JSON matching this schema:
 
 Rules:
 1. Up to 10 spikes and up to 5 drops. Label at most 15 players total.
-2. Look for real patterns: fixture runs against weak defences (fdr), xP vs
-   price divergence, ownership swings, form vs projection mismatch, minutes
-   security. Speculate boldly but only on digest evidence.
-3. level: "high" = confident spike call; "medium" = leans that way.
-4. Every number in a reason must come from THAT player's digest entry.
-5. reasons are 1 sentence, specific, no hype words.
-6. No player may appear twice (spike and drop at once is a contradiction).
+2. Your edge is NOT the projection. xp_next / xp_6gw / xg90 / xa90 already
+   drive the deterministic ranking — restating them is a FAILED call. To earn a
+   label you must cite market or trend evidence from the digest:
+   transfers_in / transfers_out / net_momentum (ownership swings),
+   ownership_pct (bandwagon vs differential), form, recent_gws (form trend),
+   fixtures_3 (fixture shape vs the player's style).
+3. Speculate boldly but only on digest evidence: a player being bought by
+   hundreds of thousands, a fixture run that suits their profile, a form spike
+   the projection has not caught up to.
+4. level: "high" = confident call; "medium" = leans that way.
+5. Every number in a reason must come from THAT player's digest entry.
+6. reasons are 1 sentence, specific, no hype words.
+7. No player may appear twice (spike and drop at once is a contradiction).
 
 ## user
 

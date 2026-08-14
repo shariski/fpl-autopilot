@@ -39,7 +39,8 @@ def test_digest_shape():
     p0 = d["players"][0]
     assert set(p0.keys()) == {"player_id", "web_name", "team", "position", "price",
                               "xp_next", "xp_6gw", "xg90", "xa90", "ownership_pct",
-                              "form", "fixtures_3"}
+                              "form", "transfers_in", "transfers_out",
+                              "net_momentum", "recent_gws", "fixtures_3"}
     assert 0 < len(p0["fixtures_3"]) <= 3
     f0 = p0["fixtures_3"][0]
     assert set(f0.keys()) == {"opponent", "venue", "fdr_attack", "fdr_defense"}
