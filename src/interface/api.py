@@ -109,12 +109,18 @@ def player_insight(player_id: int, conn=Depends(get_db)):
         status = "generated"
     return {
         "status": status, "player_id": player_id, "gw": gw,
+        "player_name": _player_name(conn, player_id),
         "insights": payload.get("insights", []),
         "summary": payload.get("summary", ""),
         "data_limits": payload.get("data_limits", []),
         "model_id": config.ai_deepseek_model(),
         "generated_at": hit["generated_at"] if hit is not None else None,
     }
+
+
+def _player_name(conn, player_id):
+    row = conn.execute("SELECT web_name FROM players WHERE id=?", (player_id,)).fetchone()
+    return row["web_name"] if row else None
 
 
 @app.get("/api/audit/{gw}")

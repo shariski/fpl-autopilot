@@ -5,6 +5,7 @@ import Page from './+page.svelte';
 const insight = {
 	status: 'generated',
 	player_id: 1,
+	player_name: 'Hall',
 	gw: 38,
 	insights: [
 		{
@@ -26,11 +27,12 @@ afterEach(() => {
 });
 
 describe('players/[id] page', () => {
-	it('renders insight cards with evidence and limits', async () => {
+	it('renders player name, insight cards with evidence and limits', async () => {
 		const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => insight });
 		vi.stubGlobal('fetch', fetchMock);
 		render(Page, { props: { data: { playerId: 1 } } });
 		await waitFor(() => screen.getByText('Strong fixture run.'));
+		expect(screen.getByText('Hall')).toBeInTheDocument();
 		expect(screen.getByText('fixture_alignment')).toBeInTheDocument();
 		expect(screen.getByText('high')).toBeInTheDocument();
 		expect(screen.getByText(/no current-season minutes/)).toBeInTheDocument();

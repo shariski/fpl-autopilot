@@ -186,6 +186,7 @@ export interface Insight {
 export interface PlayerInsight {
 	status: 'cached' | 'generated' | 'unavailable';
 	player_id: number;
+	player_name: string | null;
 	gw: number | null;
 	insights: Insight[];
 	summary: string;
