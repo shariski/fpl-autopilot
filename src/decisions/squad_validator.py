@@ -119,6 +119,64 @@ def optimize_squad(pool, bonus_map=None):
     return picked
 
 
+def optimize_squad(pool, bonus_map=None):
+    """Greedy fill by (xp_6gw + speculation bonus) desc, budget-aware: a pick is
+    only taken when the remaining budget still covers the cheapest legal option
+    for every slot yet to fill. bonus_map: player_id -> xp adjustment from the
+    AI speculation layer (SPIKE_BONUS/DROP_BONUS); None/{} = no speculation.
+    Always legal when the pool can fill each slot."""
+    bonus_map = bonus_map or {}
+
+    def _key(p):
+        return (p["xp_6gw"] + bonus_map.get(p["player_id"], 0.0), p["value"] or 0)
+
+    by_pos = {pos: sorted([p for p in pool if p["position"] == pos],
+                          key=_key, reverse=True)
+              for pos in SLOTS}
+
+    def _cheapest_unused(pos, picked_ids):
+        cheapest = None
+        for p in by_pos[pos]:
+            if p["player_id"] in picked_ids:
+                continue
+            if cheapest is None or p["price"] < cheapest:
+                cheapest = p["price"]
+        return cheapest
+
+    order = [(pos, n) for pos, n in SLOTS.items()]
+    remaining_per_pos = dict(SLOTS)
+    picked, clubs, budget = [], Counter(), 0.0
+    for pos, n in order:
+        for slot_n in range(1, n + 1):
+            chosen = None
+            picked_ids = {x["player_id"] for x in picked}
+            # minimum budget to reserve for every slot that comes after this one
+            reserve = 0.0
+            for pos2, n2 in order:
+                need = remaining_per_pos[pos2] - (1 if pos2 == pos else 0)
+                if need > 0:
+                    c = _cheapest_unused(pos2, picked_ids)
+                    reserve += (c if c is not None else 4.0) * need
+            for p in by_pos[pos]:
+                if p["player_id"] in picked_ids:
+                    continue
+                if clubs[p["team_short"]] >= MAX_PER_CLUB:
+                    continue
+                if budget + p["price"] > MAX_BUDGET + EPS:
+                    continue
+                if budget + p["price"] + reserve > MAX_BUDGET + EPS:
+                    continue  # would strand a later slot
+                chosen = p
+                break
+            if chosen is None:
+                raise ValueError(f"pool cannot fill slot {pos}{slot_n}")
+            picked.append({"player_id": chosen["player_id"], "slot": f"{pos}{slot_n}"})
+            clubs[chosen["team_short"]] += 1
+            budget += chosen["price"]
+            remaining_per_pos[pos] -= 1
+    return picked
+
+
 def normalize_squad(picks, pool):
     """Deterministic normalization of an AI proposal (observed 2026-08-14: the
     LLM invented DEF6/DEF7, mismatched positions, breached club limit and
