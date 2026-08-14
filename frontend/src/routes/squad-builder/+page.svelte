@@ -20,6 +20,13 @@
 
 	const row = (pos: string) => builder?.picks.filter((p) => p.position === pos) ?? [];
 
+	const POS_LABELS: Record<string, string> = {
+		GKP: 'Goalkeepers',
+		DEF: 'Defenders',
+		MID: 'Midfielders',
+		FWD: 'Forwards'
+	};
+
 	const pickCard = (pk: SquadPick): SquadPlayer => ({
 		id: pk.player_id,
 		web_name: pk.web_name,
@@ -51,14 +58,17 @@
 			{builder.template_rationale}
 		</p>
 		{#each ['GKP', 'DEF', 'MID', 'FWD'] as pos}
-			<section class="line">
-				{#each row(pos) as pk}
-					<div class="pick">
-						<PlayerCard player={pickCard(pk)} />
-						<span class="slot">{pk.slot} · {pk.xp_6gw} xP</span>
-						<p class="reason">{pk.reason}</p>
-					</div>
-				{/each}
+			<section class="line-block">
+				<h2 class="pos-label">{POS_LABELS[pos]}</h2>
+				<div class="line">
+					{#each row(pos) as pk}
+						<div class="pick">
+							<PlayerCard player={pickCard(pk)} />
+							<span class="slot">{pk.slot} · {pk.xp_6gw} xP</span>
+							<p class="reason">{pk.reason}</p>
+						</div>
+					{/each}
+				</div>
 			</section>
 		{/each}
 		<p class="budget">Budget: {builder.budget_used}m used / 100m</p>
@@ -72,8 +82,6 @@
 <style>
 	.builder-page {
 		padding: 1.25rem 0 2rem;
-		max-width: 680px;
-		margin: 0 auto;
 	}
 	h1 {
 		font-size: 1.5rem;
@@ -87,27 +95,35 @@
 		border-left: 3px solid var(--accent);
 		padding: 0.75rem 1rem;
 		border-radius: 0 var(--radius) var(--radius) 0;
-		margin-bottom: 1rem;
+		margin-bottom: 1.25rem;
+		line-height: 1.5;
 	}
 	.chip {
+		flex-shrink: 0;
 		font-size: 0.72rem;
 		font-weight: 600;
 		padding: 0.15rem 0.5rem;
 		border-radius: 999px;
 		background: var(--surface-2);
 		color: var(--accent);
+		align-self: flex-start;
+		margin-top: 0.2rem;
+	}
+	.pos-label {
+		font-size: 0.72rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--text-dim);
+		margin: 1.1rem 0 0.4rem;
 	}
 	.line {
 		display: grid;
-		grid-auto-flow: column;
-		grid-auto-columns: minmax(120px, 1fr);
-		gap: 8px;
-		overflow-x: auto;
-		padding: 10px 0;
-		border-bottom: 1px dashed var(--border);
+		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+		gap: 10px;
 	}
 	.pick {
-		min-width: 120px;
+		min-width: 0;
 	}
 	.slot {
 		display: block;
@@ -120,21 +136,27 @@
 	.reason {
 		font-size: 0.78rem;
 		color: var(--text-dim);
-		margin: 0.3rem 0 0;
+		margin: 0.25rem 0 0;
 		line-height: 1.35;
 	}
 	.budget {
-		margin-top: 1rem;
+		margin-top: 1.25rem;
 		font-weight: 600;
 	}
 	.risks {
 		color: var(--text-dim);
 		font-size: 0.85rem;
+		padding-left: 1.1rem;
+		line-height: 1.5;
+	}
+	.hint {
+		margin-top: 1.25rem;
 	}
 	.hint code {
 		background: var(--surface-2);
 		padding: 0.1rem 0.3rem;
 		border-radius: 4px;
+		word-break: break-all;
 	}
 	.muted {
 		color: var(--text-dim);
