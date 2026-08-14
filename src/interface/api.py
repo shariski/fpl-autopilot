@@ -140,9 +140,30 @@ def audit_for_gw(gw: int):
 # @app.get/@app.post decorators above so the /api/* route table is
 # registered first and is not shadowed by StaticFiles.
 from pathlib import Path
-from fastapi.staticfiles import StaticFiles
+from starlette.responses import FileResponse
+from starlette.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException
 
 _FRONTEND_BUILD = Path("/app/frontend_build")
+
+
+class SpaStaticFiles(StaticFiles):
+    """StaticFiles with SPA fallback: unknown paths serve 200.html.
+
+    SvelteKit's adapter-static emits 200.html (fallback: '200.html'); client-side
+    routes like /players/449 have no real file, so we serve the fallback instead
+    of 404ing, letting the SPA router render the page.
+    """
+
+    async def get_response(self, path, scope):
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                fallback = Path(self.directory) / "200.html"
+                if fallback.is_file():
+                    return FileResponse(fallback)
+            raise
 
 
 def _mount_frontend(target_app, build_dir=None):
@@ -151,7 +172,7 @@ def _mount_frontend(target_app, build_dir=None):
     build_dir = build_dir or _FRONTEND_BUILD
     if build_dir.is_dir():
         target_app.mount("/",
-                         StaticFiles(directory=build_dir, html=True),
+                         SpaStaticFiles(directory=build_dir, html=True),
                          name="frontend")
 
 

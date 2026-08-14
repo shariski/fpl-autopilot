@@ -46,3 +46,28 @@ def test_api_routes_not_shadowed_by_mount(tmp_path):
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/json")
     assert resp.json() == {"ok": True}
+
+
+def test_spa_fallback_serves_200_html(tmp_path):
+    """Client-side routes (e.g. /players/449) must get the SPA fallback, not a 404."""
+    d = _make_static_dir(tmp_path)
+    (d / "200.html").write_text("<!doctype html><title>spa-fallback</title>")
+    test_app = FastAPI()
+    _mount_frontend(test_app, build_dir=d)
+    client = TestClient(test_app)
+    resp = client.get("/players/449")
+    assert resp.status_code == 200
+    assert "spa-fallback" in resp.text
+    # real files still win over the fallback
+    (d / "robots.txt").write_text("User-agent: *")
+    resp = client.get("/robots.txt")
+    assert resp.status_code == 200
+    assert "User-agent" in resp.text
+
+
+def test_spa_fallback_404_without_200_html(tmp_path):
+    """No 200.html in the build -> unknown paths stay 404 (honest)."""
+    test_app = FastAPI()
+    _mount_frontend(test_app, build_dir=_make_static_dir(tmp_path))
+    resp = TestClient(test_app).get("/players/449")
+    assert resp.status_code == 404
