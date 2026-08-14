@@ -7,7 +7,7 @@ produces the squad, flagged source="optimizer". Never raises.
 import json
 import logging
 
-from src.ai import cache
+from src.ai import cache, grounding
 from src.ai.insight.runner import extract_json_object
 from src.ai.squad.digest import build_squad_digest
 from src.ai.squad.prompt import build_squad_prompt
@@ -29,6 +29,28 @@ def _log(conn, gw, model_id, *, result, picks=None, extra=None):
         payload.update(extra)
     repository.log_activity(conn, decision_type="squad", mode="ai",
                             action_taken="squad generate", inputs=payload, executed=True)
+
+
+def _per_player_text(digest):
+    """player_id -> JSON text of that player's digest entry (for per-pick grounding)."""
+    return {p["player_id"]: json.dumps(p, sort_keys=True) for p in digest.get("players", [])}
+
+
+def _reason_problems(payload, digest):
+    """Every number in a pick's reason must appear in THAT player's digest entry —
+    otherwise the AI misattributed another player's stats (observed 2026-08-14:
+    'Evanilson ... 39.12' was Haaland's projection)."""
+    per_player = _per_player_text(digest)
+    problems = []
+    for pick in payload.get("picks", []):
+        pid = pick.get("player_id")
+        reason = pick.get("reason") or ""
+        block = per_player.get(pid, "")
+        ok, bad = grounding.is_grounded(reason, block)
+        if not ok:
+            problems.append(f"reason for player {pid} cites numbers not in their data: "
+                            f"{sorted(bad)}")
+    return problems
 
 
 def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
@@ -61,6 +83,8 @@ def generate_squad(conn, *, provider, model_id, max_tokens: int = 3000,
             picks = payload.get("picks")
             problems = validate_squad(picks, pool) if isinstance(picks, list) else \
                 ["picks missing or not a list"]
+            if not problems:
+                problems = _reason_problems(payload, digest)
         if not problems:
             payload["source"] = "ai"
             cache.put(conn, gw, PANE_TYPE, rec_hash, json.dumps(payload, sort_keys=True),

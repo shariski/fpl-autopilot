@@ -29,7 +29,7 @@ def _legal_picks_json():
     # pool positions: 0-2 GKP, 3-9 DEF, 10-16 MID, 17-21 FWD
     ids = [0, 1, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 19]
     return json.dumps({
-        "picks": [{"player_id": pid, "slot": slots[i], "reason": f"r{i}"}
+        "picks": [{"player_id": pid, "slot": slots[i], "reason": "solid pick " + chr(97 + i)}
                   for i, pid in enumerate(ids)],
         "template_rationale": "Balanced template.",
         "risks": ["Fixture rotation risk."],
@@ -114,3 +114,30 @@ def test_runner_budget_repair_on_over_budget_proposal(db, monkeypatch):
                      " ORDER BY rowid DESC LIMIT 1").fetchone()
     import json as _json
     assert _json.loads(row["inputs_json"])["result"] == "budget_repaired"
+
+
+def test_runner_rejects_reason_with_foreign_number(db, monkeypatch):
+    """A pick whose reason cites another player's number (misattribution) is
+    rejected — retried with feedback, then repaired/fallback if unrecoverable."""
+    _seed(db)
+    pool = _pool()
+    monkeypatch.setattr(runner, "build_squad_digest",
+                        lambda c, pool=None, next_gw=None: {"next_gw": 1, "budget": 100,
+                                                            "players": pool})
+    monkeypatch.setattr(runner, "build_candidate_pool", lambda c, next_gw=None: pool)
+    # GKP1's reason cites 30.0 — which is player 0's OWN xp_6gw... use a foreign one:
+    # player 0 (GKP1) reason cites "28.0" (player 3's xp_6gw) -> must be rejected.
+    import json as _json
+    slots = ["GKP1", "GKP2", "DEF1", "DEF2", "DEF3", "DEF4", "DEF5",
+             "MID1", "MID2", "MID3", "MID4", "MID5", "FWD1", "FWD2", "FWD3"]
+    ids = [0, 1, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 19]
+    bad = _json.dumps({
+        "picks": [{"player_id": pid, "slot": slots[i],
+                   "reason": "best value at 28.0 xP" if pid == 0 else f"r{i}"}
+                  for i, pid in enumerate(ids)],
+        "template_rationale": "T", "risks": []})
+    good = _legal_picks_json()
+    prov = _Seq([bad, bad, bad, good])
+    out = runner.generate_squad(db, provider=prov, model_id="m")
+    assert out is not None and out["source"] == "ai"
+    assert "cites numbers" in prov.calls[1].lower() or "not in their data" in prov.calls[1].lower()
