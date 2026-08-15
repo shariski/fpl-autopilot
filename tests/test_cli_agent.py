@@ -184,3 +184,86 @@ def test_refresh_report_collects_warnings(load, capsys, monkeypatch):
     assert report["warnings"] == ["understat prior rematch failed (rematch exploded)"]
     assert capsys.readouterr().out == ""
     conn.close()
+
+
+def _seed_decision_data(db, load):
+    """Full deterministic seed: teams/players/gameweeks/fixtures/understat/fdr/xp."""
+    from src.analytics import fdr, xp
+    from src.data import name_resolver, repository
+    from src.data.models import BootstrapStatic, Fixture, UnderstatPlayersResponse
+
+    from src.data.models import EntryPicks
+
+    bs = BootstrapStatic.model_validate(load("bootstrap-static.json"))
+    repository.upsert_teams(db, bs.teams)
+    repository.upsert_players(db, bs.elements, bs.element_types)
+    repository.upsert_gameweeks(db, bs.events)
+    db.execute("UPDATE gameweeks SET is_next=0, is_current=0, finished=0 WHERE 1")
+    db.execute("UPDATE gameweeks SET is_next=1 WHERE id=1")
+    repository.snapshot_my_team(db, 1, EntryPicks.model_validate(load("picks.json")))
+    repository.upsert_fixtures(db, [Fixture.model_validate(f) for f in load("fixtures.json")])
+    us = UnderstatPlayersResponse.model_validate(
+        load("understat-players.json")).players
+    fpl_players = [dict(r) for r in db.execute("SELECT id, name, web_name, team_id FROM players")]
+    fpl_teams = [dict(r) for r in db.execute("SELECT id, name, short_name FROM teams")]
+    res = name_resolver.resolve_players(fpl_players, fpl_teams, us)
+    repository.upsert_understat_players(db, us, res, "2026")
+    fdr.compute_and_store(db)
+    xp.compute_and_store(db)
+    db.commit()
+
+
+def test_captain_json(load, db, capsys):
+    _seed_decision_data(db, load)
+    cli._cmd_captain_cli(conn=db, cfg=_cfg())
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is True and out["command"] == "captain"
+    assert out["data"]["picks"] and "data_basis" in out["data"]
+    assert out["data"]["data_basis"]["xp_model_version"] == "v1"
+
+
+def test_transfers_json(load, db, capsys):
+    _seed_decision_data(db, load)
+    cli._cmd_transfers_cli(conn=db, cfg=_cfg())
+    out = json.loads(capsys.readouterr().out)
+    assert out["command"] == "transfers"
+    assert set(out["data"]) == {"suggestions", "empty_reason", "free_transfers", "data_basis"}
+    for s in out["data"]["suggestions"]:
+        assert set(s["out"]) == {"player_id", "web_name", "price"}
+        assert set(s["in"]) == {"player_id", "web_name", "price"}
+
+
+def test_chips_json(load, db, capsys):
+    _seed_decision_data(db, load)
+    cli._cmd_chips_cli(conn=db, cfg=_cfg())
+    out = json.loads(capsys.readouterr().out)
+    assert out["command"] == "chips"
+    assert "recommendation" in out["data"] and "data_basis" in out["data"]
+
+
+def test_freeze_status_json(db, capsys):
+    db.execute("INSERT INTO system_state (key, value) VALUES "
+               "('freeze', '{\"since\": \"2026-08-15T07:00:00Z\", \"source\": \"user\", \"reason\": \"travel\"}')")
+    db.commit()
+    cli._cmd_freeze_status_cli(conn=db, cfg=_cfg(), json_out=True)
+    out = json.loads(capsys.readouterr().out)
+    assert out["data"]["frozen"] == {"is_frozen": True, "since": "2026-08-15T07:00:00Z",
+                                     "source": "user", "reason": "travel"}
+    db.execute("DELETE FROM system_state")
+    db.commit()
+    cli._cmd_freeze_status_cli(conn=db, cfg=_cfg(), json_out=True)
+    out = json.loads(capsys.readouterr().out)
+    assert out["data"]["frozen"] == {"is_frozen": False}
+
+
+def test_auth_status_json(db, capsys):
+    cli._cmd_auth_status_cli(conn=db, cfg=_cfg(), json_out=True)
+    out = json.loads(capsys.readouterr().out)
+    assert out["data"]["auth"] is None
+    db.execute("INSERT INTO credentials (id, auth_state, relogin_failures) VALUES (1, 'active', 0)")
+    db.commit()
+    cli._cmd_auth_status_cli(conn=db, cfg=_cfg(), json_out=True)
+    out = json.loads(capsys.readouterr().out)
+    assert out["data"]["auth"]["state"] == "active"
+    assert out["data"]["auth"]["relogin_failures"] == 0
+    assert all(k not in out["data"]["auth"] for k in ("password", "token", "cookie"))

@@ -531,6 +531,91 @@ def _cmd_log_cli(conn=None, cfg=None, tail=10, gw=None, mode=None, decision_type
             conn.close()
 
 
+def _cmd_captain_cli(conn=None, cfg=None):
+    from .interface.queries import get_captain_picks
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        data = get_captain_picks(conn)
+        data["data_basis"] = _data_basis(conn, cfg)
+        _json_ok("captain", data)
+    finally:
+        if owns:
+            conn.close()
+
+
+def _cmd_transfers_cli(conn=None, cfg=None):
+    from .interface.queries import get_transfer_suggestions
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        data = get_transfer_suggestions(conn)
+        data["data_basis"] = _data_basis(conn, cfg)
+        _json_ok("transfers", data)
+    finally:
+        if owns:
+            conn.close()
+
+
+def _cmd_chips_cli(conn=None, cfg=None):
+    from .interface.queries import get_chip_recommendation
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        data = get_chip_recommendation(conn)
+        data["data_basis"] = _data_basis(conn, cfg)
+        _json_ok("chips", data)
+    finally:
+        if owns:
+            conn.close()
+
+
+def _cmd_freeze_status_cli(conn=None, cfg=None, json_out=False):
+    from .execution import override
+    if not json_out:
+        return _freeze_status_cli(conn=conn)
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        frozen = override.status(conn)
+        data = {"frozen": ({"is_frozen": True, **frozen}) if frozen else {"is_frozen": False}}
+        _json_ok("freeze-status", data)
+    finally:
+        if owns:
+            conn.close()
+
+
+def _cmd_auth_status_cli(conn=None, cfg=None, json_out=False):
+    from .data import repository
+    if not json_out:
+        return _auth_status_cli(conn=conn)
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        state = repository.get_auth_state(conn)
+        auth = None
+        if state is not None:
+            row = conn.execute("SELECT session_last_refreshed FROM credentials WHERE id=1").fetchone()
+            auth = {"state": state,
+                    "access_token_expires_at": repository.get_access_expiry(conn),
+                    "session_last_refreshed": row["session_last_refreshed"] if row else None,
+                    "relogin_failures": repository.get_relogin_failures(conn)}
+        _json_ok("auth-status", {"auth": auth})
+    finally:
+        if owns:
+            conn.close()
+
+
 
 def _cmd_review_cli(*, gw=None, last=4, ai_override=None, format_="text", conn=None):
     """Audit past decisions and print results. Window: --gw N (single) OR --last N (last N
@@ -911,7 +996,9 @@ def main(argv=None):
     sub.add_parser("scheduler", help="run the background refresh scheduler (blocking)")
     sub.add_parser("init-master-password", help="set the master password that encrypts stored credentials")
     sub.add_parser("init-fpl", help="log in to FPL and store the encrypted session")
-    sub.add_parser("auth-status", help="show stored FPL session state (no secrets)")
+    p_auth_status = sub.add_parser("auth-status", help="show stored FPL session state (no secrets)")
+    p_auth_status.add_argument("--json", action="store_true",
+                               help="output the JSON envelope (agent contract)")
     p_exec = sub.add_parser("execute-lineup", help="set captain & vice from the ranker (dry-run unless --live)")
     p_exec.add_argument("--live", action="store_true", help="actually submit to FPL (requires typed confirmation)")
     p_xfer = sub.add_parser("execute-transfer", help="make one free transfer from the suggestions (dry-run unless --live)")
@@ -928,7 +1015,9 @@ def main(argv=None):
     p_freeze = sub.add_parser("freeze", help="halt all autonomous FPL execution (auto + deadguard)")
     p_freeze.add_argument("--reason", default="frozen from CLI")
     sub.add_parser("unfreeze", help="resume autonomous FPL execution")
-    sub.add_parser("freeze-status", help="show whether autonomous execution is frozen")
+    p_freeze_status = sub.add_parser("freeze-status", help="show whether autonomous execution is frozen")
+    p_freeze_status.add_argument("--json", action="store_true",
+                                 help="output the JSON envelope (agent contract)")
     p_status = sub.add_parser("status", help="one-shot state: mode, frozen, freshness, next GW, pending decisions")
     p_status.add_argument("--json", action="store_true", help="output the JSON envelope (agent contract)")
     p_resume = sub.add_parser("resume", help="session continuity: status + activity tail + operating rules")
@@ -941,6 +1030,12 @@ def main(argv=None):
     p_log.add_argument("--mode", default=None, help="filter by mode (e.g. manual, deadguard, auto)")
     p_log.add_argument("--decision-type", dest="decision_type", default=None,
                        help="filter by decision type (e.g. transfer, captain)")
+    for _name, _help in (("captain", "captain ranker output (JSON)"),
+                         ("transfers", "transfer suggestions (JSON)"),
+                         ("chips", "chip recommendation (JSON)")):
+        p = sub.add_parser(_name, help=_help)
+        p.add_argument("--json", action="store_true", required=True,
+                       help="output the JSON envelope (agent contract)")
     p_review = sub.add_parser("review", help="audit past decisions vs outcomes")
     review_window = p_review.add_mutually_exclusive_group()
     review_window.add_argument("--gw", type=int, default=None,
@@ -969,7 +1064,13 @@ def main(argv=None):
     elif args.command == "init-fpl":
         _init_fpl_cli()
     elif args.command == "auth-status":
-        _auth_status_cli()
+        _cmd_auth_status_cli(json_out=args.json)
+    elif args.command == "captain":
+        _cmd_captain_cli()
+    elif args.command == "transfers":
+        _cmd_transfers_cli()
+    elif args.command == "chips":
+        _cmd_chips_cli()
     elif args.command == "status":
         _cmd_status_cli(json_out=args.json)
     elif args.command == "resume":
@@ -994,7 +1095,7 @@ def main(argv=None):
     elif args.command == "unfreeze":
         _unfreeze_cli()
     elif args.command == "freeze-status":
-        _freeze_status_cli()
+        _cmd_freeze_status_cli(json_out=args.json)
     elif args.command == "review":
         _cmd_review_cli(gw=args.gw, last=args.last,
                         ai_override=args.ai, format_=args.format_)
