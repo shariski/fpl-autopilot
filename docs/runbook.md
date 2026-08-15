@@ -673,3 +673,36 @@ wildcard). API refusals abort with a per-pair report in the `squad` activity-log
 **Squad builder speculation missing:** the squad still builds (pure xP optimization) — the
 AI spike/drop signals failed. Check `ai.squad.spikes.attempt_rejected` /
 `spikes.provider_error` logs and the `squad` activity rows (`spikes_failed`).
+
+## Agent operating notes
+
+The tool is agent-operable via `fpl-autopilot <cmd> --json` (contract: `docs/agent-contract.md`).
+
+**Boot a session:** `docker compose run --rm -T app resume --json` — state, freshness,
+next GW + deadline, pending decisions, and the operating rules in one call.
+
+**Read-safe (agents may run these):** `status`, `resume`, `log`, `captain`, `transfers`,
+`chips`, `squad`, `squad --candidates`, `insight <player_id>`, `speculate`, `refresh`,
+`freeze-status`, `auth-status`, `review` — always with `--json` where offered.
+
+**Human-only (writes or secrets):** `execute-lineup`, `execute-transfer`, `apply-squad`,
+`route-gameweek`, `undo-transfer`, `refresh-my-team`, `init-master-password`, `init-fpl`,
+`freeze`, `unfreeze`. `--live` refuses non-TTY stdin, so an agent session can never pass it.
+
+**Stale data:** run `docker compose run --rm -T app refresh --json` before judging;
+`data_basis.as_of_utc` in every decision payload tells you how stale things are.
+
+**Useful one-liners on jumbo:**
+
+```bash
+docker compose run --rm -T app status --json
+docker compose run --rm -T app resume --json
+docker compose run --rm -T app refresh --json
+docker compose run --rm -T app captain --json
+docker compose run --rm -T app transfers --json
+docker compose run --rm -T app squad --json
+docker compose run --rm -T app squad --candidates --json
+docker compose run --rm -T app insight 234 --json
+docker compose run --rm -T app speculate --json
+docker compose run --rm -T app log --json --tail 20
+```
