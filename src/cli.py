@@ -166,37 +166,40 @@ def _load_name_overrides():
 
 
 def _refresh_fpl(conn, client, tid, full):
+    out = {"bootstrap_static": None, "fixtures": None,
+           "my_team": None, "my_team_skipped": None}
     if full or cache.is_stale(conn, "bootstrap-static"):
         bs = client.bootstrap_static()
         repository.upsert_teams(conn, bs.teams)
         repository.upsert_players(conn, bs.elements, bs.element_types)
         repository.upsert_gameweeks(conn, bs.events)
         cache.mark_fetched(conn, "bootstrap-static")
-        print(f"bootstrap-static OK ({len(bs.elements)} players, {len(bs.teams)} teams)")
+        out["bootstrap_static"] = {"players": len(bs.elements), "teams": len(bs.teams)}
     if full or cache.is_stale(conn, "fixtures"):
         fx = client.fixtures()
         repository.upsert_fixtures(conn, fx)
         cache.mark_fetched(conn, "fixtures")
-        print(f"fixtures OK ({len(fx)} fixtures)")
+        out["fixtures"] = len(fx)
     gw = _current_gw_from_db(conn)
     if gw is not None and (full or cache.is_stale(conn, "my_team")):
         try:
             picks = client.picks(tid, gw)
         except requests.exceptions.HTTPError as exc:
             if exc.response is not None and exc.response.status_code == 404:
-                print(f"my_team skipped: no squad saved yet for GW{gw} (404)")
-                return
+                out["my_team_skipped"] = gw
+                return out
             raise
         repository.snapshot_my_team(conn, gw, picks)
         cache.mark_fetched(conn, "my_team")
-        print(f"my_team OK (GW{gw}, {len(picks.picks)} picks)")
+        out["my_team"] = {"gw": gw, "picks": len(picks.picks)}
+    return out
 
 
-def _refresh_understat(conn, understat_client, cfg, full):
+def _refresh_understat(conn, understat_client, cfg, full, report=False):
     # Supplementary data: a failure must NOT break the FPL refresh (R2).
     try:
         if not (full or cache.is_stale(conn, "understat")):
-            return
+            return None
         season = cfg.get("understat", {}).get("season", "2025")
         resp = understat_client.players_stats(season)
         fpl_players = [dict(r) for r in conn.execute("SELECT id, name, web_name, team_id FROM players")]
@@ -204,10 +207,13 @@ def _refresh_understat(conn, understat_client, cfg, full):
         res = name_resolver.resolve_players(fpl_players, fpl_teams, resp.players, _load_name_overrides())
         repository.upsert_understat_players(conn, resp.players, res, season)
         cache.mark_fetched(conn, "understat")
-        print(f"understat OK (matched {len(res.matched)}/{len(resp.players)}, "
-              f"{len(res.unmatched)} unmatched, {len(res.unmapped_teams)} unmapped teams)")
+        return {"total": len(resp.players), "matched": len(res.matched),
+                "unmatched": len(res.unmatched), "unmapped_teams": len(res.unmapped_teams)}
     except Exception as exc:  # noqa: BLE001 - supplementary source degrades gracefully
+        if report:
+            return {"warning": str(exc)}
         print(f"WARNING: understat refresh failed ({exc}); keeping last data")
+        return None
 
 
 def _rematch_prior_understat(conn, current_season, overrides=None):
@@ -268,7 +274,8 @@ def _clear_stale_season_rows(conn):
     return n_gw, n_team
 
 
-def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None, sources=None):
+def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None,
+            sources=None, report=False):
     cfg = cfg or load_config()
     if sources is None:  # explicit: an empty tuple means "no sources", not "both"
         sources = ("fpl", "understat")
@@ -276,30 +283,63 @@ def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None,
     conn = conn or connect(cfg_db_path(cfg))
     init_db(conn)
 
+    fpl_out = {}
     if "fpl" in sources:
-        _refresh_fpl(conn, client or FPLClient(), cfg_team_id(cfg), full)
+        fpl_out = _refresh_fpl(conn, client or FPLClient(), cfg_team_id(cfg), full)
+        if not report:
+            bs = fpl_out["bootstrap_static"]
+            if bs:
+                print(f"bootstrap-static OK ({bs['players']} players, {bs['teams']} teams)")
+            if fpl_out["fixtures"] is not None:
+                print(f"fixtures OK ({fpl_out['fixtures']} fixtures)")
+            if fpl_out["my_team"] is not None:
+                print(f"my_team OK (GW{fpl_out['my_team']['gw']}, "
+                      f"{fpl_out['my_team']['picks']} picks)")
+            elif fpl_out["my_team_skipped"] is not None:
+                print(f"my_team skipped: no squad saved yet for "
+                      f"GW{fpl_out['my_team_skipped']} (404)")
+    understat_out = None
     if "understat" in sources:
-        _refresh_understat(conn, understat_client or UnderstatClient(), cfg, full)
+        understat_out = _refresh_understat(conn, understat_client or UnderstatClient(),
+                                           cfg, full, report=report)
+        if not report and understat_out is not None and "warning" not in understat_out:
+            print(f"understat OK (matched {understat_out['matched']}/{understat_out['total']}, "
+                  f"{understat_out['unmatched']} unmatched, "
+                  f"{understat_out['unmapped_teams']} unmapped teams)")
 
     # Season rollover: re-link prior-season understat rows to the current players
     # table (player ids change every season; stale pointers silently feed the wrong
     # player's stats into xP and insights). Always runs — also on fpl-only refreshes.
+    rematch = 0
+    cleanup = {"gw_stats": 0, "my_team": 0}
+    warnings = []
     try:
         current_season = cfg.get("understat", {}).get("season", "2025")
-        n = _rematch_prior_understat(conn, current_season)
-        if n:
-            print(f"understat prior rematch: {n} rows re-linked to current player ids")
+        rematch = _rematch_prior_understat(conn, current_season)
+        if rematch and not report:
+            print(f"understat prior rematch: {rematch} rows re-linked to current player ids")
     except Exception as exc:  # noqa: BLE001 - data hygiene must not break refresh
-        print(f"WARNING: understat prior rematch failed ({exc})")
+        if report:
+            warnings.append(f"understat prior rematch failed ({exc})")
+        else:
+            print(f"WARNING: understat prior rematch failed ({exc})")
     try:
         n_gw, n_team = _clear_stale_season_rows(conn)
-        if n_gw or n_team:
-            print(f"season rollover cleanup: {n_gw} gw_stats rows, {n_team} my_team rows cleared")
+        cleanup = {"gw_stats": n_gw, "my_team": n_team}
+        if (n_gw or n_team) and not report:
+            print(f"season rollover cleanup: {n_gw} gw_stats rows, "
+                  f"{n_team} my_team rows cleared")
     except Exception as exc:  # noqa: BLE001 - data hygiene must not break refresh
-        print(f"WARNING: season rollover cleanup failed ({exc})")
+        if report:
+            warnings.append(f"season rollover cleanup failed ({exc})")
+        else:
+            print(f"WARNING: season rollover cleanup failed ({exc})")
 
     if owns_conn:
         conn.close()
+    if report:
+        return {"fpl": fpl_out, "understat": understat_out, "rematch": rematch,
+                "cleanup": cleanup, "warnings": warnings}
 
 
 def _init_master_password_cli(salt_path=None, verify_path=None):
@@ -861,6 +901,8 @@ def main(argv=None):
     p_refresh.add_argument("--full", action="store_true", help="ignore cache, fetch everything")
     p_refresh.add_argument("--source", choices=["fpl", "understat"], default=None,
                            help="restrict to one source (default: both)")
+    p_refresh.add_argument("--json", action="store_true",
+                           help="output the JSON envelope (agent contract)")
     p_serve = sub.add_parser("serve", help="run the FastAPI server")
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=None)
@@ -912,7 +954,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == "refresh":
         sources = (args.source,) if args.source else ("fpl", "understat")
-        refresh(full=args.full, sources=sources)
+        if args.json:
+            report = refresh(full=args.full, sources=sources, report=True)
+            _json_ok("refresh", report)
+        else:
+            refresh(full=args.full, sources=sources)
     elif args.command == "serve":
         serve(host=args.host, port=args.port, scheduler=not args.no_scheduler)
     elif args.command == "scheduler":

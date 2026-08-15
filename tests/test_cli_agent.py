@@ -106,3 +106,81 @@ def test_status_text_mode(db, capsys):
     cli._cmd_status_cli(conn=db, cfg=_cfg(), json_out=False)
     text = capsys.readouterr().out
     assert "mode: manual" in text and "next GW: 1" in text and "frozen" in text
+
+
+from src.data.models import BootstrapStatic, EntryPicks, Fixture
+import requests
+
+
+class _FakeClient:
+    def __init__(self, bs, fx, picks):
+        self._bs, self._fx, self._picks = bs, fx, picks
+
+    def bootstrap_static(self):
+        return self._bs
+
+    def fixtures(self, event=None):
+        return self._fx
+
+    def picks(self, team_id, gw):
+        return self._picks
+
+
+class _NoSquadClient(_FakeClient):
+    def picks(self, team_id, gw):
+        resp = requests.Response()
+        resp.status_code = 404
+        resp.url = "https://fantasy.premierleague.com/api/entry/1/event/1/picks/"
+        raise requests.exceptions.HTTPError("404 Client Error", response=resp)
+
+
+def _refresh_cfg():
+    return {"fpl": {"team_id": 3122849}, "storage": {"db_path": ":memory:"},
+            "mode": {"current": "manual"}, "xp_model": {"version": "v1"},
+            "understat": {"season": "2026"}}
+
+
+def test_refresh_report_json_shape(load, capsys):
+    conn = connect(":memory:")
+    init_db(conn)
+    bs = BootstrapStatic.model_validate(load("bootstrap-static.json"))
+    fx = [Fixture.model_validate(f) for f in load("fixtures.json")]
+    picks = EntryPicks.model_validate(load("picks.json"))
+    report = cli.refresh(full=True, cfg=_refresh_cfg(), conn=conn,
+                         client=_FakeClient(bs, fx, picks), sources=("fpl",), report=True)
+    assert report["fpl"]["bootstrap_static"]["players"] == len(bs.elements)
+    assert report["fpl"]["fixtures"] == len(fx)
+    # The frozen fixture marks GW38 is_next (pre-season fixtures have no GW1 flags).
+    assert report["fpl"]["my_team"]["gw"] == 38
+    assert report["fpl"]["my_team_skipped"] is None
+    assert capsys.readouterr().out == ""
+    conn.close()
+
+
+def test_refresh_report_skipped_squad_no_stdout(load, capsys):
+    conn = connect(":memory:")
+    init_db(conn)
+    bs = BootstrapStatic.model_validate(load("bootstrap-static.json"))
+    fx = [Fixture.model_validate(f) for f in load("fixtures.json")]
+    report = cli.refresh(full=True, cfg=_refresh_cfg(), conn=conn,
+                         client=_NoSquadClient(bs, fx, None), sources=("fpl",), report=True)
+    assert report["fpl"]["my_team_skipped"] == 38
+    assert report["fpl"]["my_team"] is None
+    assert capsys.readouterr().out == ""
+
+
+def test_refresh_report_collects_warnings(load, capsys, monkeypatch):
+    conn = connect(":memory:")
+    init_db(conn)
+    bs = BootstrapStatic.model_validate(load("bootstrap-static.json"))
+    fx = [Fixture.model_validate(f) for f in load("fixtures.json")]
+    picks = EntryPicks.model_validate(load("picks.json"))
+
+    def boom(*a, **k):
+        raise RuntimeError("rematch exploded")
+    monkeypatch.setattr(cli, "_rematch_prior_understat", boom)
+    report = cli.refresh(full=True, cfg=_refresh_cfg(), conn=conn,
+                         client=_FakeClient(bs, fx, picks), sources=("fpl",), report=True)
+    assert report["warnings"] == ["understat prior rematch failed (rematch exploded)"]
+    assert capsys.readouterr().out == ""
+    conn.close()
