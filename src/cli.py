@@ -716,6 +716,68 @@ def _cmd_speculate_cli(conn=None, cfg=None):
             conn.close()
 
 
+def _player_identity(conn, player_id):
+    row = conn.execute(
+        "SELECT p.name, p.web_name, p.position, p.price, t.short_name AS team "
+        "FROM players p JOIN teams t ON t.id = p.team_id WHERE p.id=?",
+        (player_id,)).fetchone()
+    if row is None:
+        return None
+    return {"name": row["name"], "web_name": row["web_name"],
+            "position": row["position"], "team": row["team"], "price": row["price"]}
+
+
+def _cmd_insight_cli(player_id, conn=None, cfg=None):
+    from .ai import cache as ai_cache
+    from .ai.insight import runner as insight_runner
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        exists = conn.execute("SELECT id FROM players WHERE id=?", (player_id,)).fetchone()
+        if exists is None:
+            _json_err("insight", "E_NO_DATA", f"unknown player {player_id}",
+                      "look up player ids via squad --candidates --json")
+        if not config.ai_enabled():
+            _json_err("insight", "E_RUNTIME", "AI disabled (config ai.enabled=false)")
+        digest = insight_runner.build_player_digest(conn, player_id)
+        if digest is None:
+            _json_err("insight", "E_NO_DATA", f"no digest for player {player_id}",
+                      "run refresh --json first")
+        nxt = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
+        gw = nxt["gw"]
+        rec_hash = ai_cache.recommendation_hash(digest)
+        hit = ai_cache.get(conn, gw, insight_runner.PANE_TYPE, rec_hash)
+        if hit is not None:
+            payload = insight_runner.extract_json_object(hit["prose"])
+            status = "cached"
+        else:
+            from .ai.provider import build_provider
+            payload = insight_runner.generate_player_insight(
+                conn, player_id, provider=build_provider(config.load_config()),
+                model_id=config.ai_deepseek_model())
+            if payload is None:
+                _json_err("insight", "E_RUNTIME",
+                          "provider error or quality gate rejected",
+                          "retry later")
+            status = "generated"
+        data = {
+            "status": status, "player_id": player_id, "gw": gw,
+            "player": _player_identity(conn, player_id),
+            "insights": payload.get("insights", []),
+            "summary": payload.get("summary", ""),
+            "data_limits": payload.get("data_limits", []),
+            "model_id": config.ai_deepseek_model(),
+            "generated_at": hit["generated_at"] if hit is not None else None,
+            "data_basis": _data_basis(conn, cfg),
+        }
+        _json_ok("insight", data)
+    finally:
+        if owns:
+            conn.close()
+
+
 
 def _cmd_review_cli(*, gw=None, last=4, ai_override=None, format_="text", conn=None):
     """Audit past decisions and print results. Window: --gw N (single) OR --last N (last N
@@ -1144,6 +1206,10 @@ def main(argv=None):
     p_speculate = sub.add_parser("speculate", help="AI spike/drop signals (JSON)")
     p_speculate.add_argument("--json", action="store_true", required=True,
                              help="output the JSON envelope (agent contract)")
+    p_insight = sub.add_parser("insight", help="per-player AI deep-dive (JSON)")
+    p_insight.add_argument("player_id", type=int, help="FPL player id")
+    p_insight.add_argument("--json", action="store_true", required=True,
+                           help="output the JSON envelope (agent contract)")
     p_review = sub.add_parser("review", help="audit past decisions vs outcomes")
     review_window = p_review.add_mutually_exclusive_group()
     review_window.add_argument("--gw", type=int, default=None,
@@ -1183,6 +1249,8 @@ def main(argv=None):
         _cmd_squad_cli(candidates_only=args.candidates)
     elif args.command == "speculate":
         _cmd_speculate_cli()
+    elif args.command == "insight":
+        _cmd_insight_cli(args.player_id)
     elif args.command == "status":
         _cmd_status_cli(json_out=args.json)
     elif args.command == "resume":

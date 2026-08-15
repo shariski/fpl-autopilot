@@ -373,3 +373,52 @@ def test_speculate_json_failure(load, db, capsys, monkeypatch):
     assert exc.value.code == 1
     out = json.loads(capsys.readouterr().out)
     assert out["ok"] is False and out["error"]["code"] == "E_RUNTIME"
+
+
+def test_insight_json_generated(load, db, capsys, monkeypatch):
+    _seed_decision_data(db, load)
+    from src.ai.insight import runner as insight_runner
+    pid = db.execute("SELECT id FROM players LIMIT 1").fetchone()["id"]
+    payload = {"insights": [{"category": "value_market", "claim": "In 48.1", "evidence_used": ["48.1"],
+                             "confidence": "high"}], "summary": "solid", "data_limits": []}
+    monkeypatch.setattr("src.ai.provider.build_provider", lambda cfg: None)
+    monkeypatch.setattr(insight_runner, "generate_player_insight",
+                        lambda conn, player_id, **k: payload)
+    cli._cmd_insight_cli(pid, conn=db, cfg=_cfg())
+    out = json.loads(capsys.readouterr().out)
+    assert out["command"] == "insight" and out["data"]["status"] == "generated"
+    assert out["data"]["player_id"] == pid
+    assert out["data"]["insights"][0]["category"] == "value_market"
+    assert out["data"]["player"]["web_name"]
+    assert out["data"]["data_basis"]["xp_model_version"] == "v1"
+
+
+def test_insight_json_cached(load, db, capsys, monkeypatch):
+    _seed_decision_data(db, load)
+    import json as _json
+    from src.ai import cache as ai_cache
+    from src.ai.insight import runner as insight_runner
+    pid = db.execute("SELECT id FROM players LIMIT 1").fetchone()["id"]
+    digest = insight_runner.build_player_digest(db, pid)
+    rec_hash = ai_cache.recommendation_hash(digest)
+    payload = _json.dumps({"insights": [{"category": "fixture_alignment", "claim": "In 48.1",
+                                         "evidence_used": ["48.1"], "confidence": "high"}],
+                           "summary": "cached summary", "data_limits": []}, sort_keys=True)
+    db.execute("INSERT INTO ai_reasoning_cache (gw, pane_type, recommendation_hash, prose, "
+               "model_id, generated_at) VALUES (?, 'insight', ?, ?, 'deepseek-chat', "
+               "'2026-08-15T08:00:00Z')", (1, rec_hash, payload))
+    db.commit()
+    monkeypatch.setattr(insight_runner, "generate_player_insight",
+                        lambda conn, player_id, **k: (_ for _ in ()).throw(AssertionError("cache hit expected")))
+    cli._cmd_insight_cli(pid, conn=db, cfg=_cfg())
+    out = json.loads(capsys.readouterr().out)
+    assert out["data"]["status"] == "cached"
+    assert out["data"]["summary"] == "cached summary"
+
+
+def test_insight_json_unknown_player(db, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli._cmd_insight_cli(999999, conn=db, cfg=_cfg())
+    assert exc.value.code == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False and out["error"]["code"] == "E_NO_DATA"
