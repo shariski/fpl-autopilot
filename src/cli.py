@@ -1,6 +1,8 @@
 import argparse
 import json
 import pathlib
+import sys
+from datetime import datetime, timezone
 import yaml
 import requests
 from . import config
@@ -11,6 +13,32 @@ from .data.understat_client import UnderstatClient
 from .data import repository, cache, name_resolver
 
 NAME_RESOLUTION_PATH = pathlib.Path(__file__).resolve().parent.parent / "data" / "name_resolution.yaml"
+
+
+def _print_json(payload):
+    print(json.dumps(payload, default=str))
+
+
+def _json_ok(command, data):
+    _print_json({"ok": True, "contract_version": "1", "command": command,
+                 "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+                 "data": data})
+
+
+def _json_err(command, code, message, hint=None, exit_code=1):
+    error = {"code": code, "message": message}
+    if hint:
+        error["hint"] = hint
+    _print_json({"ok": False, "contract_version": "1", "command": command,
+                 "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+                 "error": error})
+    raise SystemExit(exit_code)
+
+
+def _data_basis(conn, cfg):
+    fresh = conn.execute("SELECT MAX(last_fetched_utc) AS m FROM cache_meta").fetchone()
+    return {"as_of_utc": fresh["m"] if fresh else None,
+            "xp_model_version": cfg.get("xp_model", {}).get("version", "v1")}
 
 
 def _current_gw_from_db(conn):
@@ -25,6 +53,107 @@ def _current_gw_from_db(conn):
         return row["id"]
     row = conn.execute("SELECT MAX(id) AS id FROM gameweeks").fetchone()
     return row["id"] if row else None
+
+
+def _status_data(conn, cfg, limit_actions=5):
+    from .execution import override
+    cur = conn.execute("SELECT id, deadline_utc FROM gameweeks WHERE is_current=1").fetchone()
+    nxt = conn.execute("SELECT id, deadline_utc, state FROM gameweeks WHERE is_next=1").fetchone()
+    resources = ["bootstrap-static", "fixtures", "my_team", "understat"]
+    freshness = {r: None for r in resources}
+    for row in conn.execute(
+            "SELECT resource, last_fetched_utc FROM cache_meta "
+            "WHERE resource IN (%s)" % ",".join("?" * len(resources)), resources).fetchall():
+        freshness[row["resource"]] = row["last_fetched_utc"]
+    frozen = override.status(conn)
+    auth_state = repository.get_auth_state(conn)
+    now = datetime.now(timezone.utc)
+    nxt_gw = None
+    if nxt is not None:
+        hours = None
+        if nxt["deadline_utc"]:
+            hours = round((datetime.fromisoformat(nxt["deadline_utc"]) - now).total_seconds() / 3600, 1)
+        nxt_gw = {"id": nxt["id"], "deadline_utc": nxt["deadline_utc"],
+                  "state": nxt["state"], "hours_until_deadline": hours}
+    pending = [dict(r) for r in conn.execute(
+        "SELECT decision_type, summary, created_at FROM pending_decisions "
+        "WHERE status='pending' ORDER BY created_at")]
+    actions = [dict(r) for r in conn.execute(
+        "SELECT ts_utc, gw, mode, decision_type, action_taken, executed "
+        "FROM activity_log ORDER BY id DESC LIMIT ?", (limit_actions,))]
+    auth = None
+    if auth_state is not None:
+        row = conn.execute("SELECT session_last_refreshed FROM credentials WHERE id=1").fetchone()
+        auth = {"state": auth_state,
+                "access_token_expires_at": repository.get_access_expiry(conn),
+                "session_last_refreshed": row["session_last_refreshed"] if row else None,
+                "relogin_failures": repository.get_relogin_failures(conn)}
+    n_players = conn.execute("SELECT COUNT(*) c FROM players").fetchone()["c"]
+    n_teams = conn.execute("SELECT COUNT(*) c FROM teams").fetchone()["c"]
+    return {
+        "mode": cfg.get("mode", {}).get("current", "manual"),
+        "frozen": ({"is_frozen": True, **frozen}) if frozen else {"is_frozen": False},
+        "auth": auth,
+        "data_freshness": freshness,
+        "current_gameweek": {"id": cur["id"], "deadline_utc": cur["deadline_utc"]} if cur else None,
+        "next_gameweek": nxt_gw,
+        "pending_decisions": pending,
+        "last_system_actions": actions,
+        "health": {"db_ok": True, "players": n_players, "teams": n_teams},
+        "data_basis": _data_basis(conn, cfg),
+    }
+
+
+def _operating_rules():
+    return {
+        "agent_never_live": "Agent sessions must never pass --live. All FPL writes are "
+                            "human-only (R3); --live refuses non-TTY stdin.",
+        "dry_run_default": "Every contract command is read-only or local-DB-only; "
+                           "nothing writes to FPL.",
+        "boot_ritual": ["resume --json — boot context",
+                        "refresh --json — pull latest data when stale",
+                        "captain/transfers/chips/squad --json — decision inputs",
+                        "insight <player_id> --json / speculate --json — player analysis",
+                        "propose a plan; the human executes writes (--live) via the CLI"],
+        "agent_safe_commands": ["status", "resume", "log", "captain", "transfers", "chips",
+                                "squad", "insight", "speculate", "refresh",
+                                "freeze-status", "auth-status", "review"],
+        "human_only_commands": ["execute-lineup", "execute-transfer", "apply-squad",
+                                "route-gameweek", "undo-transfer", "refresh-my-team",
+                                "init-master-password", "init-fpl", "freeze", "unfreeze"],
+    }
+
+
+def _activity_entries(conn, limit, *, gw=None, mode=None, decision_type=None):
+    sql = ("SELECT ts_utc, gw, mode, decision_type, action_taken, executed, "
+           "exec_outcome_json FROM activity_log")
+    clauses, params = [], []
+    if gw is not None:
+        clauses.append("gw = ?")
+        params.append(gw)
+    if mode is not None:
+        clauses.append("mode = ?")
+        params.append(mode)
+    if decision_type is not None:
+        clauses.append("decision_type = ?")
+        params.append(decision_type)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    entries = []
+    for r in conn.execute(sql, params).fetchall():
+        e = {"ts_utc": r["ts_utc"], "gw": r["gw"], "mode": r["mode"],
+             "decision_type": r["decision_type"], "action_taken": r["action_taken"],
+             "executed": bool(r["executed"])}
+        outcome = r["exec_outcome_json"]
+        if outcome is not None:
+            try:
+                e["outcome"] = json.loads(outcome)
+            except ValueError:
+                e["outcome"] = {"raw": outcome}
+        entries.append(e)
+    return entries
 
 
 def _load_name_overrides():
@@ -293,6 +422,73 @@ def _freeze_status_cli(conn=None):
         print(f"FROZEN since {st['since']} (source: {st['source']}) — {st['reason']}")
     if owns:
         conn.close()
+
+
+def _print_status_text(data):
+    nxt = data["next_gameweek"]
+    print(f"mode: {data['mode']} | frozen: {data['frozen']['is_frozen']}")
+    if nxt:
+        print(f"next GW: {nxt['id']} (deadline {nxt['deadline_utc']}, "
+              f"{nxt['hours_until_deadline']}h)")
+    print(f"data fresh as of: {data['data_basis']['as_of_utc']}")
+    print(f"pending decisions: {len(data['pending_decisions'])}")
+
+
+def _cmd_status_cli(conn=None, cfg=None, json_out=False):
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        data = _status_data(conn, cfg)
+        if json_out:
+            _json_ok("status", data)
+        else:
+            _print_status_text(data)
+    finally:
+        if owns:
+            conn.close()
+
+
+def _cmd_resume_cli(conn=None, cfg=None, tail=10, json_out=False):
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        data = _status_data(conn, cfg)
+        data["activity"] = {"entries": _activity_entries(conn, tail)}
+        data["operating_rules"] = _operating_rules()
+        if json_out:
+            _json_ok("resume", data)
+        else:
+            _print_status_text(data)
+            for e in data["activity"]["entries"]:
+                print(f"  {e['ts_utc']} GW{e['gw']} [{e['mode']}] {e['decision_type']}: "
+                      f"{e['action_taken']} ({'done' if e['executed'] else 'skip'})")
+    finally:
+        if owns:
+            conn.close()
+
+
+def _cmd_log_cli(conn=None, cfg=None, tail=10, gw=None, mode=None, decision_type=None,
+                 json_out=False):
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        entries = _activity_entries(conn, tail, gw=gw, mode=mode,
+                                    decision_type=decision_type)
+        if json_out:
+            _json_ok("log", {"entries": entries})
+        else:
+            for e in entries:
+                print(f"{e['ts_utc']} GW{e['gw']} [{e['mode']}] {e['decision_type']}: "
+                      f"{e['action_taken']} ({'done' if e['executed'] else 'skip'})")
+    finally:
+        if owns:
+            conn.close()
 
 
 
@@ -691,6 +887,18 @@ def main(argv=None):
     p_freeze.add_argument("--reason", default="frozen from CLI")
     sub.add_parser("unfreeze", help="resume autonomous FPL execution")
     sub.add_parser("freeze-status", help="show whether autonomous execution is frozen")
+    p_status = sub.add_parser("status", help="one-shot state: mode, frozen, freshness, next GW, pending decisions")
+    p_status.add_argument("--json", action="store_true", help="output the JSON envelope (agent contract)")
+    p_resume = sub.add_parser("resume", help="session continuity: status + activity tail + operating rules")
+    p_resume.add_argument("--json", action="store_true", help="output the JSON envelope (agent contract)")
+    p_resume.add_argument("--tail", type=int, default=10, help="activity entries to include (default 10)")
+    p_log = sub.add_parser("log", help="filterable activity tail")
+    p_log.add_argument("--json", action="store_true", help="output the JSON envelope (agent contract)")
+    p_log.add_argument("--tail", type=int, default=10, help="max entries (default 10)")
+    p_log.add_argument("--gw", type=int, default=None, help="filter by gameweek")
+    p_log.add_argument("--mode", default=None, help="filter by mode (e.g. manual, deadguard, auto)")
+    p_log.add_argument("--decision-type", dest="decision_type", default=None,
+                       help="filter by decision type (e.g. transfer, captain)")
     p_review = sub.add_parser("review", help="audit past decisions vs outcomes")
     review_window = p_review.add_mutually_exclusive_group()
     review_window.add_argument("--gw", type=int, default=None,
@@ -716,6 +924,13 @@ def main(argv=None):
         _init_fpl_cli()
     elif args.command == "auth-status":
         _auth_status_cli()
+    elif args.command == "status":
+        _cmd_status_cli(json_out=args.json)
+    elif args.command == "resume":
+        _cmd_resume_cli(tail=args.tail, json_out=args.json)
+    elif args.command == "log":
+        _cmd_log_cli(tail=args.tail, gw=args.gw, mode=args.mode,
+                     decision_type=args.decision_type, json_out=args.json)
     elif args.command == "execute-lineup":
         _execute_lineup_cli(live=args.live)
     elif args.command == "execute-transfer":
