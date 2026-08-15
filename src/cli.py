@@ -616,6 +616,106 @@ def _cmd_auth_status_cli(conn=None, cfg=None, json_out=False):
             conn.close()
 
 
+def _cmd_squad_cli(conn=None, cfg=None, candidates_only=False):
+    from .ai import cache as ai_cache
+    from .ai.squad import runner as squad_runner
+    from .decisions.squad_builder import build_candidate_pool
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        pool = build_candidate_pool(conn)
+        if not pool:
+            _json_err("squad", "E_NO_DATA", "no upcoming gameweek with xP data",
+                      "run refresh --json first")
+        nxt = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
+        gw = nxt["gw"] if nxt else None
+        if candidates_only:
+            _json_ok("squad", {"gw": gw, "count": len(pool), "pool": pool,
+                               "data_basis": _data_basis(conn, cfg)})
+            return
+        if not config.ai_enabled():
+            _json_err("squad", "E_RUNTIME", "AI disabled (config ai.enabled=false)",
+                      "squad --json requires the AI squad builder")
+        digest = squad_runner.build_squad_digest(conn, pool=pool)
+        rec_hash = ai_cache.recommendation_hash(digest)
+        hit = ai_cache.get(conn, gw, squad_runner.PANE_TYPE, rec_hash)
+        if hit is not None:
+            result = squad_runner.extract_json_object(hit["prose"])
+            status = "cached"
+        else:
+            from .ai.provider import build_provider
+            result = squad_runner.generate_squad(
+                conn, provider=build_provider(config.load_config()),
+                model_id=config.ai_deepseek_model())
+            if result is None:
+                _json_err("squad", "E_RUNTIME",
+                          "squad builder gate rejected or provider failed",
+                          "check AI provider config and retry")
+            status = "generated"
+        by_id = {p["player_id"]: p for p in pool}
+        picks = []
+        for pk in result["picks"]:
+            p = by_id.get(pk["player_id"])
+            if p is None:
+                continue
+            picks.append({"player_id": pk["player_id"], "web_name": p["web_name"],
+                          "team": p["team_short"], "position": p["position"],
+                          "price": p["price"], "xp_6gw": p["xp_6gw"],
+                          "slot": pk["slot"], "reason": pk.get("reason", "")})
+        budget_used = round(sum(p["price"] for p in picks), 1)
+        spec = result.get("speculation")
+        if spec:
+            for kind in ("spikes", "drops", "differentials"):
+                for s in spec.get(kind, []):
+                    p = by_id.get(s["player_id"])
+                    s["web_name"] = p["web_name"] if p else f"#{s['player_id']}"
+                    s["team"] = p["team_short"] if p else None
+        _json_ok("squad", {
+            "status": status, "gw": gw, "source": result.get("source", "ai"),
+            "picks": picks, "template_rationale": result.get("template_rationale", ""),
+            "risks": result.get("risks", []), "budget_used": budget_used,
+            "speculation": spec, "model_id": config.ai_deepseek_model(),
+            "generated_at": hit["generated_at"] if hit is not None else None,
+            "data_basis": _data_basis(conn, cfg),
+        })
+    finally:
+        if owns:
+            conn.close()
+
+
+def _cmd_speculate_cli(conn=None, cfg=None):
+    from .ai.squad import spikes
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        from .ai.provider import build_provider
+        signals = spikes.generate_spike_signals(
+            conn, provider=build_provider(config.load_config()),
+            model_id=config.ai_deepseek_model())
+        if signals is None:
+            _json_err("speculate", "E_RUNTIME",
+                      "speculation unavailable (provider error or gate rejected)",
+                      "retry later; the squad builder runs without speculation")
+        nxt = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
+        gw = nxt["gw"] if nxt else None
+        in_squad = set()
+        snap = conn.execute("SELECT picks_json FROM my_team ORDER BY gw DESC LIMIT 1").fetchone()
+        if snap is not None:
+            in_squad = {pk["element"] for pk in json.loads(snap["picks_json"])}
+        differentials = [s for s in signals.get("spikes", [])
+                         if s["player_id"] not in in_squad]
+        _json_ok("speculate", {"gw": gw, "signals": signals,
+                               "differentials": differentials,
+                               "data_basis": _data_basis(conn, cfg)})
+    finally:
+        if owns:
+            conn.close()
+
+
 
 def _cmd_review_cli(*, gw=None, last=4, ai_override=None, format_="text", conn=None):
     """Audit past decisions and print results. Window: --gw N (single) OR --last N (last N
@@ -1036,6 +1136,14 @@ def main(argv=None):
         p = sub.add_parser(_name, help=_help)
         p.add_argument("--json", action="store_true", required=True,
                        help="output the JSON envelope (agent contract)")
+    p_squad = sub.add_parser("squad", help="AI-built squad (JSON; --candidates for the pool)")
+    p_squad.add_argument("--json", action="store_true", required=True,
+                         help="output the JSON envelope (agent contract)")
+    p_squad.add_argument("--candidates", action="store_true",
+                         help="output the deterministic candidate pool instead of the built squad")
+    p_speculate = sub.add_parser("speculate", help="AI spike/drop signals (JSON)")
+    p_speculate.add_argument("--json", action="store_true", required=True,
+                             help="output the JSON envelope (agent contract)")
     p_review = sub.add_parser("review", help="audit past decisions vs outcomes")
     review_window = p_review.add_mutually_exclusive_group()
     review_window.add_argument("--gw", type=int, default=None,
@@ -1071,6 +1179,10 @@ def main(argv=None):
         _cmd_transfers_cli()
     elif args.command == "chips":
         _cmd_chips_cli()
+    elif args.command == "squad":
+        _cmd_squad_cli(candidates_only=args.candidates)
+    elif args.command == "speculate":
+        _cmd_speculate_cli()
     elif args.command == "status":
         _cmd_status_cli(json_out=args.json)
     elif args.command == "resume":

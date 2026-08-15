@@ -267,3 +267,109 @@ def test_auth_status_json(db, capsys):
     assert out["data"]["auth"]["state"] == "active"
     assert out["data"]["auth"]["relogin_failures"] == 0
     assert all(k not in out["data"]["auth"] for k in ("password", "token", "cookie"))
+
+
+def test_squad_candidates_json(load, db, capsys):
+    _seed_decision_data(db, load)
+    cli._cmd_squad_cli(conn=db, cfg=_cfg(), candidates_only=True)
+    out = json.loads(capsys.readouterr().out)
+    assert out["command"] == "squad" and out["data"]["gw"] == 1
+    assert out["data"]["count"] == len(out["data"]["pool"]) > 0
+    p = out["data"]["pool"][0]
+    assert {"player_id", "web_name", "team_short", "position", "price", "xp_next",
+            "xp_6gw", "value", "ownership_pct", "form", "transfers_in",
+            "transfers_out", "net_momentum"} <= set(p)
+
+
+def test_squad_candidates_no_data(db, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli._cmd_squad_cli(conn=db, cfg=_cfg(), candidates_only=True)
+    assert exc.value.code == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False and out["error"]["code"] == "E_NO_DATA"
+
+
+def test_squad_json_built(load, db, capsys, monkeypatch):
+    _seed_decision_data(db, load)
+    from src.ai import cache as ai_cache
+    from src.ai.squad import runner as squad_runner
+    from src.decisions.squad_builder import build_candidate_pool
+
+    pid = build_candidate_pool(db)[0]["player_id"]
+    result = {"source": "ai", "picks": [{"player_id": pid, "slot": "GKP1", "reason": "good"}],
+              "template_rationale": "template", "risks": ["rotation"], "speculation": None}
+    monkeypatch.setattr("src.ai.provider.build_provider", lambda cfg: None)
+    monkeypatch.setattr(squad_runner, "generate_squad", lambda conn, **k: result)
+    cli._cmd_squad_cli(conn=db, cfg=_cfg())
+    out = json.loads(capsys.readouterr().out)
+    assert out["data"]["status"] == "generated"
+    assert out["data"]["gw"] == 1 and out["data"]["source"] == "ai"
+    assert out["data"]["picks"][0]["player_id"] == pid
+    assert out["data"]["picks"][0]["web_name"]  # enriched from the pool
+    assert out["data"]["budget_used"] >= 0
+    assert out["data"]["data_basis"]["xp_model_version"] == "v1"
+
+
+def test_squad_json_cached(load, db, capsys, monkeypatch):
+    _seed_decision_data(db, load)
+    import json as _json
+    from src.ai import cache as ai_cache
+    from src.ai.squad import runner as squad_runner
+
+    pool = __import__("src.decisions.squad_builder", fromlist=["build_candidate_pool"]).build_candidate_pool(db)
+    digest = squad_runner.build_squad_digest(db, pool=pool)
+    rec_hash = ai_cache.recommendation_hash(digest)
+    payload = _json.dumps({"source": "ai",
+                           "picks": [{"player_id": pool[0]["player_id"], "slot": "GKP1",
+                                      "reason": "cached"}],
+                           "template_rationale": "t", "risks": [], "speculation": None},
+                          sort_keys=True)
+    db.execute("INSERT INTO ai_reasoning_cache (gw, pane_type, recommendation_hash, prose, "
+               "model_id, generated_at) VALUES (?, 'squad', ?, ?, 'deepseek-chat', "
+               "'2026-08-15T08:00:00Z')", (1, rec_hash, payload))
+    db.commit()
+    monkeypatch.setattr(squad_runner, "generate_squad",
+                        lambda conn, **k: (_ for _ in ()).throw(AssertionError("must be cache hit")))
+    cli._cmd_squad_cli(conn=db, cfg=_cfg())
+    out = json.loads(capsys.readouterr().out)
+    assert out["data"]["status"] == "cached"
+    assert out["data"]["picks"][0]["reason"] == "cached"
+
+
+def test_squad_json_ai_disabled(load, db, capsys, monkeypatch):
+    _seed_decision_data(db, load)
+    from src import config
+    monkeypatch.setattr(config, "ai_enabled", lambda: False)
+    with pytest.raises(SystemExit) as exc:
+        cli._cmd_squad_cli(conn=db, cfg=_cfg())
+    assert exc.value.code == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False and out["error"]["code"] == "E_RUNTIME"
+
+
+def test_speculate_json(load, db, capsys, monkeypatch):
+    _seed_decision_data(db, load)
+    from src.ai.squad import spikes
+    signals = {"spikes": [{"player_id": 234, "level": "high", "reason": "in 48.1"}],
+               "drops": [], "market_read": "market quiet"}
+    monkeypatch.setattr("src.ai.provider.build_provider", lambda cfg: None)
+    monkeypatch.setattr(spikes, "generate_spike_signals",
+                        lambda conn, **k: signals)
+    cli._cmd_speculate_cli(conn=db, cfg=_cfg())
+    out = json.loads(capsys.readouterr().out)
+    assert out["data"]["gw"] == 1
+    assert out["data"]["signals"]["spikes"][0]["player_id"] == 234
+    # no my_team snapshot -> every spike is a differential
+    assert [s["player_id"] for s in out["data"]["differentials"]] == [234]
+
+
+def test_speculate_json_failure(load, db, capsys, monkeypatch):
+    _seed_decision_data(db, load)
+    from src.ai.squad import spikes
+    monkeypatch.setattr("src.ai.provider.build_provider", lambda cfg: None)
+    monkeypatch.setattr(spikes, "generate_spike_signals", lambda conn, **k: None)
+    with pytest.raises(SystemExit) as exc:
+        cli._cmd_speculate_cli(conn=db, cfg=_cfg())
+    assert exc.value.code == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False and out["error"]["code"] == "E_RUNTIME"
