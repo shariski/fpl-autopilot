@@ -645,9 +645,9 @@ def _cmd_squad_cli(conn=None, cfg=None, candidates_only=False):
             result = squad_runner.extract_json_object(hit["prose"])
             status = "cached"
         else:
-            from .ai.provider import build_provider
             result = squad_runner.generate_squad(
-                conn, provider=build_provider(config.load_config()),
+                conn, provider=_ai_provider_or_err(
+                    "squad", "check AI provider config and retry"),
                 model_id=config.ai_deepseek_model())
             if result is None:
                 _json_err("squad", "E_RUNTIME",
@@ -692,9 +692,9 @@ def _cmd_speculate_cli(conn=None, cfg=None):
     conn = conn or connect(cfg_db_path(cfg))
     init_db(conn)
     try:
-        from .ai.provider import build_provider
         signals = spikes.generate_spike_signals(
-            conn, provider=build_provider(config.load_config()),
+            conn, provider=_ai_provider_or_err(
+                "speculate", "retry later; the squad builder runs without speculation"),
             model_id=config.ai_deepseek_model())
         if signals is None:
             _json_err("speculate", "E_RUNTIME",
@@ -753,9 +753,9 @@ def _cmd_insight_cli(player_id, conn=None, cfg=None):
             payload = insight_runner.extract_json_object(hit["prose"])
             status = "cached"
         else:
-            from .ai.provider import build_provider
             payload = insight_runner.generate_player_insight(
-                conn, player_id, provider=build_provider(config.load_config()),
+                conn, player_id, provider=_ai_provider_or_err(
+                    "insight", "retry later"),
                 model_id=config.ai_deepseek_model())
             if payload is None:
                 _json_err("insight", "E_RUNTIME",
@@ -849,6 +849,16 @@ def _live_requires_tty(live):
         print("Error: --live requires an interactive terminal (stdin TTY). "
               "Agent sessions can never pass --live (R3).", file=sys.stderr)
         raise SystemExit(2)
+
+
+def _ai_provider_or_err(command, hint=None):
+    """Build the AI provider; on failure emit an error envelope and exit (1)."""
+    try:
+        from .ai.provider import build_provider
+        return build_provider(config.load_config())
+    except Exception as exc:  # noqa: BLE001 - any provider start failure -> E_RUNTIME
+        _json_err(command, "E_RUNTIME", f"AI provider unavailable: {exc}",
+                  hint or "check DEEPSEEK_API_KEY / ai.provider config")
 
 
 def _cmd_apply_squad(conn=None, salt_path=None, verify_path=None, live=False,

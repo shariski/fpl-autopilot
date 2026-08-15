@@ -451,3 +451,18 @@ def test_dry_run_never_needs_tty(monkeypatch, capsys):
     monkeypatch.setattr(master, "is_initialized", lambda **k: False)
     cli.main(["execute-lineup"])
     assert "Master password not set" in capsys.readouterr().out
+
+
+def test_insight_json_provider_unavailable(load, db, capsys):
+    """Provider start failure must produce an E_RUNTIME envelope, not a traceback."""
+    import os
+    if os.environ.get("DEEPSEEK_API_KEY"):
+        pytest.skip("DEEPSEEK_API_KEY set; the provider would start")
+    _seed_decision_data(db, load)
+    pid = db.execute("SELECT id FROM players LIMIT 1").fetchone()["id"]
+    with pytest.raises(SystemExit) as exc:
+        cli._cmd_insight_cli(pid, conn=db, cfg=_cfg())
+    assert exc.value.code == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False and out["error"]["code"] == "E_RUNTIME"
+    assert "provider" in out["error"]["message"]
