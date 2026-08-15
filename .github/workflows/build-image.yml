@@ -76,6 +76,7 @@ jobs:
           script: |
             set -e
             cd /opt/fpl-autopilot
+            docker compose pull
             export IMAGE_TAG="${IMAGE_TAG}"
             docker compose pull
             docker compose up -d
