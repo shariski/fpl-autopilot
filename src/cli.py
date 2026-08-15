@@ -844,6 +844,13 @@ def _resolve_audit_provider_choice():
     return cfg.get("ai", {}).get("audit", {}).get("provider", "none")
 
 
+def _live_requires_tty(live):
+    if live and not sys.stdin.isatty():
+        print("Error: --live requires an interactive terminal (stdin TTY). "
+              "Agent sessions can never pass --live (R3).", file=sys.stderr)
+        raise SystemExit(2)
+
+
 def _cmd_apply_squad(conn=None, salt_path=None, verify_path=None, live=False,
                      session=None, provider=None, confirm_fn=None):
     """Apply the AI-built squad (dry-run default; --live = master key + typed confirm)."""
@@ -1221,6 +1228,9 @@ def main(argv=None):
     p_review.add_argument("--format", choices=["text", "json"], default="text",
                           dest="format_", help="output format (default: text)")
     args = parser.parse_args(argv)
+    if args.command in ("execute-lineup", "execute-transfer", "apply-squad",
+                        "route-gameweek", "undo-transfer"):
+        _live_requires_tty(args.live)
     if args.command == "refresh":
         sources = (args.source,) if args.source else ("fpl", "understat")
         if args.json:

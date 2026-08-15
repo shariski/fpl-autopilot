@@ -422,3 +422,32 @@ def test_insight_json_unknown_player(db, capsys):
     assert exc.value.code == 1
     out = json.loads(capsys.readouterr().out)
     assert out["ok"] is False and out["error"]["code"] == "E_NO_DATA"
+
+
+from types import SimpleNamespace
+
+
+def test_live_refuses_non_tty(monkeypatch, capsys):
+    import src.auth.master as master
+    monkeypatch.setattr(cli.sys, "stdin", SimpleNamespace(isatty=lambda: False))
+    monkeypatch.setattr(master, "is_initialized", lambda **k: True)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["execute-lineup", "--live"])
+    assert exc.value.code == 2
+    assert "--live" in capsys.readouterr().err
+
+
+def test_live_ok_with_tty(monkeypatch, capsys):
+    import src.auth.master as master
+    monkeypatch.setattr(cli.sys, "stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr(master, "is_initialized", lambda **k: False)
+    cli.main(["execute-lineup", "--live"])
+    assert "Master password not set" in capsys.readouterr().out
+
+
+def test_dry_run_never_needs_tty(monkeypatch, capsys):
+    import src.auth.master as master
+    monkeypatch.setattr(cli.sys, "stdin", SimpleNamespace(isatty=lambda: False))
+    monkeypatch.setattr(master, "is_initialized", lambda **k: False)
+    cli.main(["execute-lineup"])
+    assert "Master password not set" in capsys.readouterr().out
