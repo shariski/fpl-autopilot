@@ -193,7 +193,7 @@ Not "the linter passes." Not "I think it works."
 The agent operates the tool exclusively through `fpl-autopilot <cmd> --json`
 (documented surface: `docs/agent-contract.md`). Transport on jumbo:
 
-    ssh jumbo 'docker compose run --rm -T app <cmd> --json'
+    ssh jumbo 'docker compose --project-directory /opt/fpl-autopilot run --rm -T app <cmd> --json'
 
 **Boot ritual:** `resume --json` (state, freshness, next GW + deadline, pending decisions,
 operating rules) → `refresh --json` if `data_basis.as_of_utc` is stale → decision reads →

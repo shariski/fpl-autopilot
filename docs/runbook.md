@@ -678,7 +678,7 @@ AI spike/drop signals failed. Check `ai.squad.spikes.attempt_rejected` /
 
 The tool is agent-operable via `fpl-autopilot <cmd> --json` (contract: `docs/agent-contract.md`).
 
-**Boot a session:** `docker compose run --rm -T app resume --json` — state, freshness,
+**Boot a session:** `docker compose --project-directory /opt/fpl-autopilot run --rm -T app resume --json` — state, freshness,
 next GW + deadline, pending decisions, and the operating rules in one call.
 
 **Read-safe (agents may run these):** `status`, `resume`, `log`, `captain`, `transfers`,
@@ -689,20 +689,20 @@ next GW + deadline, pending decisions, and the operating rules in one call.
 `route-gameweek`, `undo-transfer`, `refresh-my-team`, `init-master-password`, `init-fpl`,
 `freeze`, `unfreeze`. `--live` refuses non-TTY stdin, so an agent session can never pass it.
 
-**Stale data:** run `docker compose run --rm -T app refresh --json` before judging;
+**Stale data:** run `docker compose --project-directory /opt/fpl-autopilot run --rm -T app refresh --json` before judging;
 `data_basis.as_of_utc` in every decision payload tells you how stale things are.
 
 **Useful one-liners on jumbo:**
 
 ```bash
-docker compose run --rm -T app status --json
-docker compose run --rm -T app resume --json
-docker compose run --rm -T app refresh --json
-docker compose run --rm -T app captain --json
-docker compose run --rm -T app transfers --json
-docker compose run --rm -T app squad --json
-docker compose run --rm -T app squad --candidates --json
-docker compose run --rm -T app insight 234 --json
-docker compose run --rm -T app speculate --json
-docker compose run --rm -T app log --json --tail 20
+docker compose --project-directory /opt/fpl-autopilot run --rm -T app status --json
+docker compose --project-directory /opt/fpl-autopilot run --rm -T app resume --json
+docker compose --project-directory /opt/fpl-autopilot run --rm -T app refresh --json
+docker compose --project-directory /opt/fpl-autopilot run --rm -T app captain --json
+docker compose --project-directory /opt/fpl-autopilot run --rm -T app transfers --json
+docker compose --project-directory /opt/fpl-autopilot run --rm -T app squad --json
+docker compose --project-directory /opt/fpl-autopilot run --rm -T app squad --candidates --json
+docker compose --project-directory /opt/fpl-autopilot run --rm -T app insight 234 --json
+docker compose --project-directory /opt/fpl-autopilot run --rm -T app speculate --json
+docker compose --project-directory /opt/fpl-autopilot run --rm -T app log --json --tail 20
 ```

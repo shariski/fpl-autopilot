@@ -19,7 +19,7 @@ or run the CLI. Never skip this when the task touches the live system.
    `next_gameweek` id + `hours_until_deadline`, `pending_decisions`, and the
    `operating_rules` block. This is the session's context anchor.
    - Locally: `.venv/bin/fpl-autopilot resume --json`
-   - On jumbo: `ssh jumbo 'docker compose run --rm -T app resume --json'`
+   - On jumbo: `ssh jumbo 'docker compose --project-directory /opt/fpl-autopilot run --rm -T app resume --json'`
 4. If data is stale (`as_of_utc` older than ~1 hour, or pre-season and never refreshed):
    run `refresh --json` (agent-safe — FPL reads + local DB writes only).
 

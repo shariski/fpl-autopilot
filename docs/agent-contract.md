@@ -6,7 +6,7 @@ text commands, the dashboard, and Telegram.
 
 **Transport:** on jumbo, run one-shot commands in the deployed container:
 
-    ssh jumbo 'docker compose run --rm -T app <cmd> --json'
+    ssh jumbo 'docker compose --project-directory /opt/fpl-autopilot run --rm -T app <cmd> --json'
 
 (`-T` disables pty allocation so read commands are deterministic over non-interactive
 SSH. Locally, run `.venv/bin/fpl-autopilot <cmd> --json` against the dev DB.)
