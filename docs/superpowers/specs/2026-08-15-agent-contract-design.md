@@ -77,9 +77,10 @@ fpl-autopilot <cmd> --json        (src/cli.py — argparse)
    │
    ├─ status / resume / log       new queries over activity_log, pending_decisions,
    │                              system_state, gameweeks, cache_meta, credentials
-   ├─ captain / transfers / chips / squad
-   │                              reuse src/interface/queries.py getters (same shapes
+   ├─ captain / transfers / chips  reuse src/interface/queries.py getters (same shapes
    │                              as the dashboard API — one read-model, two surfaces)
+   ├─ squad / squad --candidates   reuse src/ai/squad runner + build_candidate_pool (same
+   │                              cache-first behavior as /api/squad/builder)
    ├─ insight                     reuse src/ai/insight runner (same cache-first
    │                              behavior as /api/players/{id}/insight)
    ├─ speculate                   reuse src/ai/squad/spikes.generate_spike_signals
