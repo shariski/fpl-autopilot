@@ -141,6 +141,42 @@ def test_apply_squad_refuses_when_no_diff(monkeypatch):
     conn.close()
 
 
+def test_apply_squad_orders_swaps_by_bank_delta(monkeypatch):
+    """FPL checks per-swap affordability (bank + selling >= purchase). Swaps that
+    build bank must go first, or an affordable squad fails on an early swap
+    (2026-08-16: Kinsky -> Donnarumma, insufficient_balance)."""
+    conn = _seed_conn()
+    for pid, name, price in [(20, "New1", 4.5), (21, "New2", 6.0), (22, "New3", 4.5)]:
+        conn.execute("INSERT INTO players (id, web_name, team_id, position, price, status, "
+                     "ownership, form) VALUES (?, ?, 1, 'DEF', ?, 'a', 10.0, 3.0)",
+                     (pid, name, price))
+    # bad order on purpose: bank-losing swap first (sell 40 -> buy 60), then bank-gaining
+    monkeypatch.setattr("src.execution.squad.plan_squad_transfers",
+                        lambda c, target: [
+                            {"element_out": 10, "element_in": 21,
+                             "out_name": "Old1", "in_name": "New2"},
+                            {"element_out": 11, "element_in": 22,
+                             "out_name": "Old2", "in_name": "New3"}])
+    monkeypatch.setattr("src.execution.executor.fetch_current_picks",
+                        lambda s, e: [{"element": 10, "selling_price": 40},
+                                      {"element": 11, "selling_price": 90}])
+    submitted = []
+    monkeypatch.setattr("src.execution.executor.apply_transfers",
+                        lambda session, entry, payload, dry_run: (
+                            submitted.append(payload["transfers"][0]["element_in"]) or
+                            type("R", (), {"ok": True, "status": 200, "error": None})()))
+    monkeypatch.setattr("src.auth.session.ensure_session", lambda conn, key: object())
+    monkeypatch.setattr("src.ai.squad.runner.generate_squad",
+                        lambda c, *, provider, model_id, **kw: {
+                            "picks": [{"player_id": 10}], "source": "ai"})
+    out = squad.apply_squad(conn, b"key", live=True, confirm_fn=lambda d: True,
+                            provider=None)
+    assert out["applied"] and len(out["applied"]) == 2
+    # the bank-gaining swap (sell 90 -> buy 45) must be submitted first
+    assert submitted == [22, 21]
+    conn.close()
+
+
 def test_apply_squad_aborts_on_api_refusal(monkeypatch):
     conn = _seed_conn()
 

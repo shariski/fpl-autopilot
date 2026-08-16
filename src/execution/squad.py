@@ -91,11 +91,20 @@ def apply_squad(conn, key, *, live=False, confirm_fn=None, session=None, provide
                                 executed=False)
         return {"applied": [], "failed": ["no changes to apply"], "dry_run": not live,
                 "pairs": []}
+    session = session or auth_session.ensure_session(conn, key)
+    entry = config.team_id()
+    # FPL checks per-swap affordability (bank + selling >= purchase). With total funds
+    # sufficient, ordering swaps by descending (selling - purchase) keeps the running
+    # balance >= 0 — bank-building swaps first (2026-08-16: Kinsky -> Donnarumma was
+    # refused with insufficient_balance, while a later swap would have funded it).
+    sell = {p["element"]: p["selling_price"]
+            for p in executor.fetch_current_picks(session, entry)}
+    pairs = sorted(pairs, key=lambda pair: (
+        sell.get(pair["element_out"], 0) - (_purchase_price(conn, pair["element_in"]) or 0)),
+        reverse=True)
     if live and (confirm_fn is None or not confirm_fn(f"{len(pairs)} transfers to apply")):
         return {"applied": [], "failed": ["aborted by user"], "dry_run": False,
                 "pairs": pairs}
-    session = session or auth_session.ensure_session(conn, key)
-    entry = config.team_id()
     event = _next_gw(conn)
     applied, failed = [], []
     for pair in pairs:
