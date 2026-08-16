@@ -70,6 +70,7 @@ def test_parses_gw_csv_rows():
     assert haaland["value"] == pytest.approx(13.0)   # databank 130 (tenths) -> £13.0
     assert haaland["was_home"] is True
     assert haaland["team"] == "Man City"
+    assert haaland["opponent_team"] == 15
 
 
 def test_missing_dc_column_defaults_zero_for_old_season():

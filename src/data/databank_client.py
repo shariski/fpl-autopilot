@@ -99,6 +99,7 @@ class DatabankClient:
                 "dc": int(raw["defensive_contribution"] or 0) if has_dc else 0,
                 "value": int(raw["value"] or 0) / 10.0,  # databank tenths of £m
                 "was_home": str(raw["was_home"]).lower() == "true",
+                "opponent_team": int(raw["opponent_team"] or 0),
             })
         return rows
 
