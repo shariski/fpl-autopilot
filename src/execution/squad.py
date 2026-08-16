@@ -16,24 +16,41 @@ from src.data import repository
 
 
 def plan_squad_transfers(conn, target_picks):
-    """Pure: current my_team snapshot vs target player ids -> out/in pairs."""
+    """Pure: current my_team snapshot vs target player ids -> out/in pairs.
+
+    FPL requires same-type swaps, so outs and ins are paired WITHIN position
+    (GK/DEF/MID/FWD) — positional zipping broke when the current squad's pick
+    order differed from the target's (2026-08-16: Guéhi -> Donnarumma refused
+    with transfer_element_type_mismatch). Pairs are capped at the smaller side
+    per position; an unbalanced position silently drops the extras (a legal
+    2-5-5-3 validator makes this impossible in practice).
+    """
     snap = conn.execute("SELECT picks_json FROM my_team ORDER BY gw DESC LIMIT 1").fetchone()
     current = [pk["element"] for pk in json.loads(snap["picks_json"])] if snap else []
     target = [pk["player_id"] for pk in target_picks]
     ids = current + target
+    pos = {r["id"]: r["position"] for r in conn.execute(
+        "SELECT id, position FROM players WHERE id IN (%s)" % ",".join("?" * len(ids)), ids)}
     names = {r["id"]: r["web_name"] for r in conn.execute(
-        "SELECT id, web_name FROM players WHERE id IN (%s)"
-        % ",".join("?" * len(ids)), ids)}
+        "SELECT id, web_name FROM players WHERE id IN (%s)" % ",".join("?" * len(ids)), ids)}
     keep = set(target) & set(current)
-    outs = [pid for pid in current if pid not in keep]
-    ins = [pid for pid in target if pid not in keep]
+
+    def _by_position(elements):
+        groups = {}
+        for pid in elements:
+            groups.setdefault(pos.get(pid), []).append(pid)
+        return groups
+
+    outs = _by_position([pid for pid in current if pid not in keep])
+    ins = _by_position([pid for pid in target if pid not in keep])
     pairs = []
-    for i, out_id in enumerate(outs):
-        in_id = ins[i] if i < len(ins) else None
-        if in_id is None:
-            break
-        pairs.append({"element_out": out_id, "element_in": in_id,
-                      "out_name": names.get(out_id), "in_name": names.get(in_id)})
+    for position in ("GKP", "DEF", "MID", "FWD"):
+        out_list, in_list = outs.get(position, []), ins.get(position, [])
+        for i, out_id in enumerate(out_list):
+            if i >= len(in_list):
+                break
+            pairs.append({"element_out": out_id, "element_in": in_list[i],
+                          "out_name": names.get(out_id), "in_name": names.get(in_list[i])})
     return pairs
 
 
