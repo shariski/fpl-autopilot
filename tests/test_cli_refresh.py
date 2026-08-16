@@ -289,8 +289,7 @@ def test_refresh_my_team_writes_authed_row(db, monkeypatch, capsys):
     from src.execution import executor
     from src import config as cfg_mod
 
-    monkeypatch.setattr(master, "load_key", lambda pw: b"key")
-    monkeypatch.setattr("getpass.getpass", lambda *a, **k: "pw")
+    monkeypatch.setattr(master, "get_master_key", lambda: b"key")
     monkeypatch.setattr(auth_session, "ensure_session", lambda conn, key: object())
     monkeypatch.setattr(cfg_mod, "team_id", lambda: 12345)
     monkeypatch.setattr(executor, "fetch_my_team_authed",
@@ -317,8 +316,7 @@ def test_refresh_my_team_surfaces_session_expired(db, monkeypatch, capsys):
     """If ensure_session raises, the command surfaces the error and exits non-zero."""
     from src.auth import master, session as auth_session
 
-    monkeypatch.setattr(master, "load_key", lambda pw: b"key")
-    monkeypatch.setattr("getpass.getpass", lambda *a, **k: "pw")
+    monkeypatch.setattr(master, "get_master_key", lambda: b"key")
 
     class SessionExpired(Exception):
         pass

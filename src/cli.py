@@ -1195,7 +1195,7 @@ def refresh_my_team(*, conn=None, cfg=None):
         init_db(conn)
 
     try:
-        key = master.load_key(getpass.getpass("Master password: "))
+        key = master.get_master_key()  # MASTER_PASSWORD env var first, then getpass prompt
     except Exception as exc:
         print(f"could not unlock master key: {exc}", file=sys.stderr)
         if owns_conn:

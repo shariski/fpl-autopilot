@@ -43,14 +43,14 @@ def test_init_fpl_stores_tokens(tmp_path, monkeypatch, db, capsys):
     s, v = _setup_master(tmp_path, monkeypatch)
     monkeypatch.setenv("FPL_REFRESH_TOKEN", "refresh-paste-xyz")
     tok = _FakeTokenSession(payload={"access_token": "access-xyz", "expires_in": 28800, "refresh_token": "refresh-rot-xyz"})
-    me = _FakeMeSession(me_payload={"player": {"entry": 3122849}})
+    me = _FakeMeSession(me_payload={"player": {"entry": 4835628}})
     cli._init_fpl_cli(conn=db, salt_path=s, verify_path=v, refresh_session=tok, me_session=me)
     key = master.load_key("throwaway-master-12", s, v)
     assert crypto.decrypt(key, repository.get_encrypted(db, "access_token_encrypted")) == "access-xyz"
     assert crypto.decrypt(key, repository.get_encrypted(db, "refresh_token_encrypted")) == "refresh-rot-xyz"
     assert repository.get_auth_state(db) == "active"
     out = capsys.readouterr().out
-    assert "3122849" in out
+    assert "4835628" in out
     assert "refresh-paste-xyz" not in out and "access-xyz" not in out
 
 
