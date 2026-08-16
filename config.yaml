@@ -1,5 +1,5 @@
 fpl:
-  team_id: 3122849
+  team_id: 4835628
 
 storage:
   db_path: data/fpl_autopilot.db
@@ -40,7 +40,7 @@ notifications:
     final_reminder_hours_before: 2
 
 xp_model:
-  version: v1
+  version: v2
 
 unattended:
   enabled: false

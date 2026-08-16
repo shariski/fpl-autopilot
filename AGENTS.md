@@ -186,7 +186,7 @@ Not "the linter passes." Not "I think it works."
 - **Local dev:** `.venv/bin/fpl-autopilot <cmd>` against `data/fpl_autopilot.db`
   (config.yaml). Full suite: `.venv/bin/pytest -q` (693+ tests) and
   `cd frontend && npm test` (71 vitest).
-- **Live FPL team:** 3122849. Current season 2026/27; GW1 deadline 2026-08-21.
+- **Live FPL team:** 4835628. Current season 2026/27; GW1 deadline 2026-08-21.
 
 ## How to drive the CLI (agent contract)
 
