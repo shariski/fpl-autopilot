@@ -966,6 +966,9 @@ def _cmd_apply_squad(conn=None, salt_path=None, verify_path=None, live=False,
     owns_conn = conn is None
     conn = conn or connect(cfg_db_path())
     init_db(conn)
+    if provider is None:
+        provider = _ai_provider_or_err(
+            "apply-squad", "retry later; the squad builder runs without speculation")
     try:
         result = squad_mod.apply_squad(conn, key, live=live, confirm_fn=confirm_fn,
                                        session=session, provider=provider)

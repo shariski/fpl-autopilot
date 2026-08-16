@@ -51,6 +51,17 @@ def apply_squad(conn, key, *, live=False, confirm_fn=None, session=None, provide
                 model_id="deepseek-chat"):
     from src.ai.squad import runner
 
+    # Pre-season the snapshot is usually absent (my_team 404) — no current squad to
+    # diff against; "no changes to apply" would be misleading. Fail actionably.
+    snap = conn.execute("SELECT picks_json FROM my_team ORDER BY gw DESC LIMIT 1").fetchone()
+    if snap is None:
+        repository.log_activity(conn, decision_type="squad", mode="manual",
+                                action_taken="refused: no current squad snapshot",
+                                inputs={"live": live}, executed=False)
+        return {"applied": [], "failed": ["no current squad snapshot — "
+                                          "save a squad on FPL first (pre-season)"],
+                "dry_run": not live, "pairs": []}
+
     result = runner.generate_squad(conn, provider=provider, model_id=model_id)
     if result is None:
         return {"applied": [], "failed": ["squad builder produced no result"],
