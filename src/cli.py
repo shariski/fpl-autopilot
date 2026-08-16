@@ -1242,10 +1242,10 @@ def serve(host="127.0.0.1", port=None, scheduler=True):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="fpl-autopilot")
     sub = parser.add_subparsers(dest="command", required=True)
-    p_refresh = sub.add_parser("refresh", help="fetch FPL + Understat data into the local DB")
+    p_refresh = sub.add_parser("refresh", help="fetch FPL + Understat + databank data into the local DB")
     p_refresh.add_argument("--full", action="store_true", help="ignore cache, fetch everything")
-    p_refresh.add_argument("--source", choices=["fpl", "understat"], default=None,
-                           help="restrict to one source (default: both)")
+    p_refresh.add_argument("--source", choices=["fpl", "understat", "databank"], default=None,
+                           help="restrict to one source (default: all three)")
     p_refresh.add_argument("--json", action="store_true",
                            help="output the JSON envelope (agent contract)")
     p_serve = sub.add_parser("serve", help="run the FastAPI server")
@@ -1323,7 +1323,7 @@ def main(argv=None):
                         "route-gameweek", "undo-transfer"):
         _live_requires_tty(args.live)
     if args.command == "refresh":
-        sources = (args.source,) if args.source else ("fpl", "understat")
+        sources = (args.source,) if args.source else ("fpl", "understat", "databank")
         if args.json:
             report = refresh(full=args.full, sources=sources, report=True)
             _json_ok("refresh", report)

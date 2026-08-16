@@ -249,6 +249,24 @@ def test_refresh_understat_failure_degrades_gracefully(load, capsys):
     conn.close()
 
 
+def test_cli_refresh_default_sources_include_databank(monkeypatch):
+    """The CLI refresh command must pull the databank by default (v0.12 wiring) —
+    not just FPL + Understat, or the deployed manual/agent refresh skips ingestion."""
+    import src.cli as cli
+
+    captured = {}
+
+    def fake_refresh(**kw):
+        captured.update(kw)
+        return {"fpl": None, "understat": None, "databank": None,
+                "rematch": 0, "cleanup": {}, "warnings": []}
+
+    monkeypatch.setattr(cli, "refresh", fake_refresh)
+    cli.main(["refresh", "--json"])
+    assert "databank" in captured["sources"]
+    assert captured["sources"] == ("fpl", "understat", "databank")
+
+
 def test_refresh_source_filter_fpl_only_skips_understat(load):
     conn = connect(":memory:")
     init_db(conn)
