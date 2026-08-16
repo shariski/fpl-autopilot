@@ -95,7 +95,10 @@ def apply_squad(conn, key, *, live=False, confirm_fn=None, session=None, provide
                 selling_price=selling_price, purchase_price=purchase_price)
             res = executor.apply_transfers(session, entry, payload, dry_run=not live)
             if res is None or getattr(res, "ok", True) is False:
-                raise executor.ExecutorError("transfer refused by API")
+                status = getattr(res, "status", None)
+                body = getattr(res, "error", None)
+                raise executor.ExecutorError(
+                    f"transfer refused by API (HTTP {status}: {body})")
             applied.append(pair)
         except Exception as exc:
             failed.append(f"{pair['out_name']} -> {pair['in_name']}: {exc}")

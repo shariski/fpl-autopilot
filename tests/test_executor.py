@@ -32,19 +32,21 @@ def test_build_lineup_payload_captain_not_in_squad():
 
 
 class _Resp:
-    def __init__(self, status_code=200, payload=None):
+    def __init__(self, status_code=200, payload=None, text=""):
         self.status_code = status_code
         self._payload = payload
+        self.text = text
 
     def json(self):
         return self._payload
 
 
 class _FakeSession:
-    def __init__(self, *, me=None, me_status=200, post_status=200):
+    def __init__(self, *, me=None, me_status=200, post_status=200, post_text=""):
         self._me = me
         self._me_status = me_status
         self._post_status = post_status
+        self._post_text = post_text
         self.posted = None
 
     def get(self, url, timeout=None):
@@ -52,7 +54,15 @@ class _FakeSession:
 
     def post(self, url, json=None, timeout=None):
         self.posted = {"url": url, "json": json}
-        return _Resp(self._post_status, {})
+        return _Resp(self._post_status, {}, text=self._post_text)
+
+
+def test_apply_transfers_surfaces_api_error_body():
+    """B6: a refused transfer must carry FPL's response body, not fail silently."""
+    sess = _FakeSession(post_status=400, post_text='{"error": "Event is closed"}')
+    res = executor.apply_transfers(sess, 4835628, {"chip": None}, dry_run=False)
+    assert res.ok is False and res.status == 400
+    assert "Event is closed" in res.error
 
 
 def test_fetch_current_picks_ok():

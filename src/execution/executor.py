@@ -18,6 +18,7 @@ class ExecResult:
     request: dict       # {"method", "url", "body"} — the exact (would-be) request
     status: int | None  # HTTP status for live; None for dry-run
     ok: bool
+    error: str | None = None  # FPL's response body on failure (B6: fail loudly, never silently)
 
 
 def build_lineup_payload(current_picks, captain_id, vice_id, bench_order=None):
@@ -68,7 +69,10 @@ def _post_json(session, url, payload, *, dry_run):
     if dry_run:
         return ExecResult(dry_run=True, request=request, status=None, ok=True)
     resp = session.post(url, json=payload, timeout=TIMEOUT)
-    return ExecResult(dry_run=False, request=request, status=resp.status_code, ok=resp.status_code == 200)
+    body = (getattr(resp, "text", "") or "")[:500]
+    return ExecResult(dry_run=False, request=request, status=resp.status_code,
+                      ok=resp.status_code == 200,
+                      error=body if resp.status_code != 200 else None)
 
 
 def apply_lineup(session, entry_id, payload, *, dry_run):
