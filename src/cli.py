@@ -952,13 +952,12 @@ def _cmd_apply_squad(conn=None, salt_path=None, verify_path=None, live=False,
         mkw["salt_path"] = salt_path
     if verify_path is not None:
         mkw["verify_path"] = verify_path
-    if live:
-        if not master.is_initialized(**mkw):
-            print("Master password not set — run `fpl-autopilot init-master-password` first.")
-            return
-        key = master.get_master_key(**mkw)
-    else:
-        key = None
+    if not master.is_initialized(**mkw):
+        print("Master password not set — run `fpl-autopilot init-master-password` first.")
+        return
+    # The dry-run needs the session too (fetch_current_picks for the diff), so the
+    # master key is unlocked regardless of --live.
+    key = master.get_master_key(**mkw)
     if confirm_fn is None:
         def confirm_fn(diff):
             print(f"Planned: {diff}")

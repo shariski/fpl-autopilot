@@ -17,6 +17,10 @@ def _seed(conn):
 
 def test_apply_squad_dry_run_prints_plan(monkeypatch, capsys):
     from src.execution import squad
+    from src.auth import master
+
+    monkeypatch.setattr(master, "is_initialized", lambda **kw: True)
+    monkeypatch.setattr(master, "get_master_key", lambda **kw: b"key")
     conn = connect(":memory:")
     _seed(conn)
     monkeypatch.setattr(squad, "plan_squad_transfers",
@@ -33,6 +37,9 @@ def test_apply_squad_dry_run_prints_plan(monkeypatch, capsys):
 
 def test_apply_squad_live_requires_confirm(monkeypatch, capsys):
     from src.execution import squad
+    from src.auth import master
+
+    monkeypatch.setattr(master, "get_master_key", lambda **kw: b"key")
     conn = connect(":memory:")
     _seed(conn)
     monkeypatch.setattr(squad, "plan_squad_transfers",
@@ -50,11 +57,40 @@ def test_apply_squad_live_requires_confirm(monkeypatch, capsys):
     conn.close()
 
 
+def test_apply_squad_dry_run_unlocks_master_key(monkeypatch, capsys):
+    """Even a dry-run needs the session (to fetch current picks) — key must be
+    unlocked regardless of --live; key=None previously crashed ensure_session."""
+    from src.execution import squad
+    from src.auth import master
+
+    calls = []
+    monkeypatch.setattr(master, "is_initialized", lambda **kw: True)
+    monkeypatch.setattr(master, "get_master_key", lambda **kw: calls.append(1) or b"key")
+    monkeypatch.setattr("src.ai.provider.build_provider", lambda cfg: object())
+    captured = {}
+
+    def fake_apply(conn, key, **kw):
+        captured["key"] = key
+        return {"applied": [], "failed": [], "dry_run": True, "pairs": []}
+
+    monkeypatch.setattr(squad, "plan_squad_transfers", lambda c, target: [])
+    monkeypatch.setattr(squad, "apply_squad", fake_apply)
+    conn = connect(":memory:")
+    _seed(conn)
+    cli._cmd_apply_squad(conn=conn, live=False)
+    assert calls == [1]
+    assert captured["key"] == b"key"
+    conn.close()
+
+
 def test_apply_squad_builds_ai_provider_when_none(monkeypatch, capsys):
     """apply-squad must build the AI provider like every other AI CLI path —
     provider=None previously crashed inside spikes.generate_spike_signals."""
     from src.execution import squad
+    from src.auth import master
 
+    monkeypatch.setattr(master, "is_initialized", lambda **kw: True)
+    monkeypatch.setattr(master, "get_master_key", lambda **kw: b"key")
     sentinel = object()
     monkeypatch.setattr("src.ai.provider.build_provider", lambda cfg: sentinel)
     captured = {}
