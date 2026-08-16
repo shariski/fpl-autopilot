@@ -10,6 +10,7 @@ on:
     paths:
       - "src/**"
       - "frontend/**"
+      - "config.yaml"
       - "pyproject.toml"
       - "requirements.txt"
       - "Dockerfile"
