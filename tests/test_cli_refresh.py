@@ -407,6 +407,33 @@ def test_refresh_rematches_prior_understat_after_rollover(load):
     conn.close()
 
 
+def test_clear_stale_season_rows_keeps_pre_season_snapshot(load):
+    """A my_team snapshot fetched AFTER the new-season bootstrap (pre-GW1) is
+    current data — the timestamp-only cleanup wrongly deleted it (2026-08-16:
+    the pre-season apply-squad flow lost its snapshot every refresh)."""
+    from src.cli import _clear_stale_season_rows
+
+    db = connect(":memory:")
+    init_db(db)
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, finished, is_current, is_next) "
+               "VALUES (1, '2026-08-21T17:30:00+00:00', 0, 0, 1)")
+    db.execute("INSERT INTO players (id, name, web_name, team_id, position, price, status, "
+               "ownership, form) VALUES (529, 'Roefs', 'Roefs', 20, 'GKP', 4.8, 'a', 3.9, 0.0)")
+    # current-season snapshot (ids exist in players) written before the GW1 deadline
+    db.execute("INSERT INTO my_team (gw, picks_json, snapshot_at) "
+               "VALUES (1, '[{\"element\": 529}]', '2026-08-16T08:00:00+00:00')")
+    # stale snapshot referencing a dead id
+    db.execute("INSERT INTO my_team (gw, picks_json, snapshot_at) "
+               "VALUES (38, '[{\"element\": 999}]', '2026-05-27T08:00:00+00:00')")
+    db.commit()
+
+    n_gw, n_team = _clear_stale_season_rows(db)
+    assert n_team == 1  # only the dead-id row
+    rows = db.execute("SELECT gw FROM my_team").fetchall()
+    assert [r["gw"] for r in rows] == [1]
+    db.close()
+
+
 def test_clear_stale_season_rows_clears_pre_season_data(db):
     """Rows written before the current season's GW1 deadline are last season's data
     (player ids change every season) — drop them; keep anything settled after."""

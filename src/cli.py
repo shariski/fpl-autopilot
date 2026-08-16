@@ -257,10 +257,16 @@ def _clear_stale_season_rows(conn):
     """Season rollover hygiene: drop rows keyed by last season's player ids.
 
     player_gw_stats and my_team carry no season column — their player_id/gw keys
-    only mean something while the players table belongs to the same season. Rows
-    written before the current season's GW1 deadline are previous-season data
-    (settlement and snapshots re-populate them fresh as the season progresses).
+    only mean something while the players table belongs to the same season.
     Observed 2026-08-14: Lewis Hall's digest showed Bruno Fernandes' 25/26 points.
+
+    player_gw_stats: rows settled before the current season's GW1 deadline are
+    previous-season data (settlement re-populates them fresh as the season runs).
+
+    my_team: the timestamp test alone is NOT enough — a snapshot fetched after the
+    new-season bootstrap but before GW1 is current data (2026-08-16: the pre-season
+    apply-squad flow lost its snapshot on every refresh). A row is stale only if it
+    references a player id that no longer exists in the players table (dead ids).
     """
     row = conn.execute("SELECT MIN(deadline_utc) AS d FROM gameweeks WHERE id=1").fetchone()
     if row is None or row["d"] is None:
@@ -268,8 +274,14 @@ def _clear_stale_season_rows(conn):
     gw1_deadline = row["d"]
     n_gw = conn.execute("DELETE FROM player_gw_stats WHERE settled_at < ?",
                         (gw1_deadline,)).rowcount
-    n_team = conn.execute("DELETE FROM my_team WHERE snapshot_at < ?",
-                          (gw1_deadline,)).rowcount
+    n_team = conn.execute(
+        """DELETE FROM my_team
+           WHERE snapshot_at < ?
+             AND ((picks_json IS NULL OR picks_json = '[]')
+                  OR EXISTS (SELECT 1 FROM json_each(my_team.picks_json) j
+                             WHERE CAST(j.value->>'element' AS INTEGER)
+                                   NOT IN (SELECT id FROM players)))""",
+        (gw1_deadline,)).rowcount
     conn.commit()
     return n_gw, n_team
 
