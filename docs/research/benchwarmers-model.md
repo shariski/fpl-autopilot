@@ -360,3 +360,24 @@ beats v1 on every average-prediction metric) and **v0.14 flipped the consumers t
 the GW1 live row lands automatically once the databank publishes it (run
 `docs/research/calibration/backtest.py` after the GW settles). v1 retires after that
 review.
+
+## 10a. Squad-composition policy backtest (2026-08-16)
+
+Question: does the optimizer's DEF-heavy 2-5-5-3 beat the "3-5-2, heavy midfield" idea?
+`docs/research/calibration/squad_policy.py` — per-GW selection under three position
+policies, scored on 25-26 ACTUAL points (GW3-38, no leakage, v2 xP):
+
+| Policy | squad15 (top-xP) | budget ≤100 (greedy) | starting XI (top-11) |
+|---|---|---|---|
+| A: 2-5-5-3 (5 DEFs, current) | **64.22** | **62.50** | **49.50** (4-4-2) |
+| B: 2-3-7-3 (heavy MID) | 63.53 | 59.50 | 49.00 (3-5-2) |
+| C: 2-4-6-3 | 63.19 | 60.94 | 48.14 (3-4-3) |
+
+- A beats B by **+0.69 pts/GW** (squad) and **+3.0 pts/GW** under budget — cheap
+  DEFs (CS + DC + appearance) are the best v2 value; the optimizer's 5-DEF choice is
+  vindicated by actuals.
+- The starting-XI shape barely matters (49.5 vs 49.0 vs 48.1): the squad depth is
+  what counts; "4-4-2 on the pitch" is a lineup setting, not a squad-builder decision.
+- Caveat: 25-26 data; the 26/27 bonus rebalance (full-backs/GK/attackers get slightly
+  better bonus odds — FPL "What's New") could narrow the DEF edge; re-run after GW1-4
+  of 26/27.
