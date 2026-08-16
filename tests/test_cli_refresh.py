@@ -102,6 +102,110 @@ def _understat_resp(load):
     return UnderstatPlayersResponse.model_validate(load("understat-players.json"))
 
 
+class FakeDatabankClient:
+    def __init__(self, gw_rows):
+        self._gw = gw_rows
+        self.calls = []
+
+    def fetch_gw(self, season, gw):
+        self.calls.append((season, gw))
+        return self._gw.get(gw, [])
+
+
+def _db_row(element, gw):
+    return {"element": element, "name": "x", "team": "T", "position": "P",
+            "minutes": 90, "expected_goals": 0.5, "expected_assists": 0.2,
+            "expected_goals_conceded": 1.4, "dc": 2, "saves": 1, "starts": 1,
+            "bps": 20, "bonus": 0, "total_points": 5,
+            "yellow_cards": 0, "red_cards": 0, "was_home": True, "value": 5.0}
+
+
+def test_refresh_databank_populates_player_stats(load):
+    conn = connect(":memory:")
+    init_db(conn)
+    bs = BootstrapStatic.model_validate(load("bootstrap-static.json"))
+    fx = [Fixture.model_validate(f) for f in load("fixtures.json")]
+    picks = EntryPicks.model_validate(load("picks.json"))
+    cfg = {"fpl": {"team_id": 3122849}, "storage": {"db_path": ":memory:"},
+           "databank": {"seasons": ["2025-26"]}}
+    dbc = FakeDatabankClient({1: [_db_row(e.id, 1) for e in bs.elements[:5]]})
+    cli.refresh(full=True, cfg=cfg, conn=conn, client=FakeClient(bs, fx, picks),
+                understat_client=FakeUnderstatClient(_understat_resp(load)),
+                databank_client=dbc)
+    n = conn.execute("SELECT COUNT(*) c FROM player_stats WHERE source='fpl_databank:2025-26'").fetchone()["c"]
+    assert n == 5
+    row = conn.execute("SELECT xg, dc, starts FROM player_stats LIMIT 1").fetchone()
+    assert row["xg"] == 0.5 and row["dc"] == 2 and row["starts"] == 1
+    conn.close()
+
+
+def test_refresh_databank_failure_degrades_gracefully(load, capsys):
+    conn = connect(":memory:")
+    init_db(conn)
+    bs = BootstrapStatic.model_validate(load("bootstrap-static.json"))
+    fx = [Fixture.model_validate(f) for f in load("fixtures.json")]
+    picks = EntryPicks.model_validate(load("picks.json"))
+    cfg = {"fpl": {"team_id": 3122849}, "storage": {"db_path": ":memory:"},
+           "databank": {"seasons": ["2025-26"]}}
+
+    class BoomDatabankClient:
+        def fetch_gw(self, season, gw):
+            raise RuntimeError("databank down")
+
+    cli.refresh(full=True, cfg=cfg, conn=conn, client=FakeClient(bs, fx, picks),
+                understat_client=FakeUnderstatClient(_understat_resp(load)),
+                databank_client=BoomDatabankClient())
+    assert conn.execute("SELECT COUNT(*) c FROM players").fetchone()["c"] == len(bs.elements)
+    assert "WARNING" in capsys.readouterr().out
+    conn.close()
+
+
+def test_remap_databank_elements_rematches_historical_ids(load):
+    """Historical databank rows carry last season's element ids, which change every
+    season. Rows must be re-pointed at current players by name+team, or dropped."""
+    from src.cli import _remap_databank_elements
+
+    conn = connect(":memory:")
+    init_db(conn)
+    conn.execute("INSERT INTO teams (id, name, short_name) VALUES (1, 'Man City', 'MCI')")
+    conn.execute("INSERT INTO players (id, name, web_name, team_id, position, price, status, "
+                 "ownership, form) VALUES (5000, 'Erling Haaland', 'Haaland', 1, 'FWD', 15.0, 'a', 50.0, 8.0)")
+    conn.commit()
+    rows = [
+        {"element": 999, "name": "Erling Haaland", "team": "Man City", "position": "FWD",
+         "minutes": 90, "expected_goals": 1.4, "expected_assists": 0.5,
+         "expected_goals_conceded": 0.35, "dc": 2, "saves": 0, "starts": 1, "bps": 35,
+         "bonus": 3, "total_points": 13, "yellow_cards": 0, "red_cards": 0,
+         "was_home": True, "value": 15.0},
+        {"element": 888, "name": "Gone Player", "team": "Old Team", "position": "MID",
+         "minutes": 0, "expected_goals": 0.0, "expected_assists": 0.0,
+         "expected_goals_conceded": 0.0, "dc": 0, "saves": 0, "starts": 0, "bps": 0,
+         "bonus": 0, "total_points": 0, "yellow_cards": 0, "red_cards": 0,
+         "was_home": True, "value": 5.0},
+    ]
+    remapped, unmatched = _remap_databank_elements(conn, rows)
+    assert unmatched == 1  # left the league; dropped, never mis-matched
+    assert len(remapped) == 1 and remapped[0]["element"] == 5000
+
+
+def test_remap_databank_elements_passthrough_current_ids(load):
+    """Current-season rows (ids already matching) pass through untouched."""
+    from src.cli import _remap_databank_elements
+
+    conn = connect(":memory:")
+    init_db(conn)
+    conn.execute("INSERT INTO players (id, name, web_name, team_id, position, price, status, "
+                 "ownership, form) VALUES (5000, 'Erling Haaland', 'Haaland', 1, 'FWD', 15.0, 'a', 50.0, 8.0)")
+    conn.commit()
+    row = {"element": 5000, "name": "Erling Haaland", "team": "Man City", "position": "FWD",
+           "minutes": 90, "expected_goals": 1.4, "expected_assists": 0.5,
+           "expected_goals_conceded": 0.35, "dc": 2, "saves": 0, "starts": 1, "bps": 35,
+           "bonus": 3, "total_points": 13, "yellow_cards": 0, "red_cards": 0,
+           "was_home": True, "value": 15.0}
+    remapped, unmatched = _remap_databank_elements(conn, [row])
+    assert unmatched == 0 and remapped[0]["element"] == 5000
+
+
 def test_refresh_populates_understat(load):
     conn = connect(":memory:")
     init_db(conn)
@@ -114,6 +218,7 @@ def test_refresh_populates_understat(load):
         full=True, cfg=cfg, conn=conn,
         client=FakeClient(bs, fx, picks),
         understat_client=FakeUnderstatClient(_understat_resp(load)),
+        sources=("fpl", "understat"),
     )
     n = conn.execute("SELECT COUNT(*) c FROM understat_players").fetchone()["c"]
     assert n == len(_understat_resp(load).players)
@@ -136,6 +241,7 @@ def test_refresh_understat_failure_degrades_gracefully(load, capsys):
         full=True, cfg=cfg, conn=conn,
         client=FakeClient(bs, fx, picks),
         understat_client=BoomUnderstatClient(),
+        sources=("fpl", "understat"),
     )
     assert conn.execute("SELECT COUNT(*) c FROM players").fetchone()["c"] == len(bs.elements)
     assert conn.execute("SELECT COUNT(*) c FROM understat_players").fetchone()["c"] == 0

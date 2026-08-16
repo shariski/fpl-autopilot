@@ -39,21 +39,36 @@ For a fixture `Home H vs Away A`, each team is rated from the opponent's venue-s
 > degenerate input, expected state, self-corrects. The AI insight feature may surface this as
 > a "flat fixture ratings" finding; treat it as data-quality noise, not an anomaly.
 
-### v2 (target) — xG-based
+### v2 (current, 2026-08-16) — xG-based continuous multipliers
 
-Deferred: blocked on team per-match xG ingestion (xG conceded/scored), unavailable from Understat as of 2026-05-22. The original xG-based definition:
+Unblocks the original v2 spec: team per-match xG was unavailable from Understat; the
+Vaastav databank (`player_stats` rows with `source='fpl_databank'`) now provides per-GW
+xG/xGC for every player. Ratings are venue-agnostic team aggregates (home/away venue
+split is a documented follow-up; interim venue factors ride on the xP v2 side).
 
-For each fixture `(team_a vs team_b)`:
+For a fixture `Home H vs Away A`, for each team the opponent difficulty is a continuous
+multiplier (not a 1–5 integer):
 
 ```
-fdr_attack[team_a, fixture] = f(xG_conceded_per_game[team_b, last 5 GW], home_away_factor)
-fdr_defense[team_a, fixture] = f(xG_scored_per_game[team_b, last 5 GW], home_away_factor)
+xgc_ratio[A] = damped( VS xGC/90[H]  ÷ LA xGC/90 )     # opponent defense, for A's attack
+xg_ratio[A]  = damped( VS xG/90[H]   ÷ LA xG/90 )      # opponent attack, for A's defense
+xgc_ratio[H] = damped( VS xGC/90[A]  ÷ LA xGC/90 )
+xg_ratio[H]  = damped( VS xG/90[A]   ÷ LA xG/90 )
+
+damped(x) = sign(x) × ( min(|x|, 1.55) + max(|x| − 1.55, 0) × 0.4 )
 ```
 
-- Output is a 1–5 integer per fixture.
-- Attack and defense are tracked separately. An attacking player and a defender on the same team can have different effective difficulties.
-- Home / away adjustment: ~0.3 xG per game advantage at home, applied as a multiplier.
-- Weighting: last 5 GW dominates; longer history used only for stability when a team has played < 5 GW.
+- `VS xG/90` = opponent's team xG per 90 (all opponents' players, databank),
+  `LF/SF blend = 0.8 × last 38 GW + 0.2 × last 6 GW`; `VS xGC/90` likewise from xGC.
+- `LA xG/90` = league-average team xG per 90 over the same window; `LA xGC/90` likewise.
+- Stored in `fdr` as `fdr_attack_mult` (opponent xGC ratio) and `fdr_defense_mult`
+  (opponent xG ratio) per `(team_id, gw)`; the v1 quintile columns are retained for v1
+  consumers (xP v1, chips v1).
+- Pre-season (no 26-27 databank rows yet): the window defaults to the most recent
+  completed season (25-26), so ratings are live at GW1 instead of flat — fixing the v1
+  degenerate state.
+- Promoted teams: no databank history; use manual xG/90 / xGC/90 overrides until the
+  team has ≥ 5 databank GWs (26-27: COV 1.9, IPS 1.72, HUL 1.3 attack; defense 1.55).
 
 ## Expected Points (xP) model
 
@@ -120,6 +135,48 @@ Inputs come from `understat_players` (per-90 rates, season minutes/games — a v
 - **xBonus.** Bonus points are hard to model. Phase 1 omits them. Phase 1.5 may add a BPS-history proxy.
 - **Save points (GK).** Proxied through expected shots-on-target faced.
 - **Defensive contributions / new scoring rules.** Update when the rule set changes.
+
+### v2 (current, 2026-08-16) — 11-component model
+
+Versioned per B5. v1 and v2 run in parallel in every refresh; v2 is not consumed by any
+decision until the B5 comparison window is reviewed. Full provenance, calibration data and
+the reverse-engineered reference model: `docs/research/benchwarmers-model.md`.
+
+```
+xP_v2[player, gw] =
+    [ start% × (1 + p60 + saves + yc + rc + bonus + assist + goal + cs + twogc + dc)
+      + (1 − start%) × sub_total ] × venue_mult
+
+start%   = min(1, chance_of_playing × starts ÷ squads_made)          # manual override allowed
+sub_total = (yc + rc + bonus + assist + goal + twogc) × 0.30         # Mn/Sub ÷ Mn/St league const
+
+venue_mult = attack 1.15 home / 0.87 away, defense 0.88 / 1.12,
+             saves 0.86 / 1.14, starts 1.00 / 1.00                   # interim component mults
+p60      = P(minutes ≥ 60 | minutes > 0), per player, LF window      # the 60+ appearance point
+saves    = saves_per_90 × xg_ratio                       (GK only)
+yc, rc   = per-90 rates (LF/SF blend); rc capped at 0 pre-season-ish (sparse)
+bonus    = 0.29 × opponent mult                          (per start; bps proxy is a refinement)
+assist   = xa_per_start × xgc_ratio × 1.38 × 3           (FA boost calibrated 1.38)
+goal     = xg_per_start × xgc_ratio × goal_pts[pos]
+cs       = min(1, e^(−λ) + 0.04) × cs_pts[pos],          λ = team_xgc_damped × xg_ratio
+twogc    = min(1, (1 − e^(−λ)(1+λ)) + 0.045) × −1        (GK/DEF)
+dc       = dc_per_start × dc_ratio × 2                    (DEF ≥10, MID/FWD ≥12 per FPL rules)
+xg_ratio = fdr columns: damped(opponent xG/90 ÷ LA xG/90)             (FDR v2)
+xgc_ratio= damped(opponent xGC/90 ÷ LA xGC/90)
+dc_ratio = damped(opponent DC/90 ÷ LA DC/90, team-level)
+```
+
+- **Rates** (xG/St, xA/St, DC/St, saves/90, YC/90, RC/90, starts, p60) come from
+  `player_stats` databank rows, `LF = last 38 GW`, `SF = last 6 GW`, blend 0.8/0.2.
+  Pre-season the windows span the last complete season (25-26). Per-start rates are
+  `Σ stat ÷ Σ starts` (per-90 for saves/YC/RC).
+- **squads_made** = the player's team's databank GW count in the window (one match per
+  team per GW).
+- **λ** uses the player's own team's LF/SF-blended xGC/90, damped. The +0.04/+0.045
+  corrections compensate Poisson over-dispersion vs real goals (calibrated 24-25/25-26).
+- **Status** multiplies start% (a=1.0, d=0.5, i/s/u=0.0) — unchanged from v1.
+- Stored in `xp` with `model_version='v2'` and component columns (`p_start`, `xbonus`,
+  `xdc`, `xcs_lambda`).
 
 ### Versioning
 
@@ -352,3 +409,5 @@ Every decision writes one row:
 | v0.9 | 2026-05-23 | Deadguard (Phase 2.5a) consumes the captain ranker for its captain/vice safety action when a Manual/Hybrid user goes silent (H-30 trigger). No threshold change — reuses existing captain selection. Transfer/bench scope deferred to 2.5b. |
 | v0.10 | 2026-05-23 | Deadguard 2.5b: bench-order optimization (rank positions 13/14/15 by next-GW xP, xMinutes tiebreaker; FPL native auto-sub does the swap); targeted transfer-if-flagged (OUT status not in a/d, free only, ep_delta_5gw >= 3.0, confidence >= 75, max 1). Captain + transfer engines reused unchanged. |
 | v0.11 | 2026-05-23 | Deadguard 2.5c-1 late-news re-evaluation: after DEADGUARD_EXECUTED, `evaluate` returns a `reeval` directive (>lockout) or `lockout` directive (<= `reeval_lockout_minutes`, default 15) until the deadline. Re-eval force-refreshes FPL availability + recomputes the lineup; a material change (captain/vice/bench differs from what is set) auto-applies via the existing captain/bench rankers when >15 min out, else alert-only. Lineup-only - no transfer (B8). Rankers reused unchanged (no threshold edits). |
+| v0.12 | 2026-08-16 | FDR v2 implemented: continuous xG-based opponent multipliers (opp xGC/90 ÷ league avg for attack; opp xG/90 ÷ league avg for defense), dampened (safe threshold 1.55, 40% beyond). Replaces quintile FDR v1 for xP v2 (v1 columns retained for v1 consumers). Fixes the pre-season degenerate state (v1 = flat when FPL publishes strength=0). Unblocked by databank ingestion (`source='fpl_databank'` in player_stats). Provenance: `docs/research/benchwarmers-model.md`. |
+| v0.13 | 2026-08-16 | xP v2: 11-component model (appearance, 60+ mins, 3×saves, YC, RC, bonus, assist, goal, CS, 2+GC, DC) with LF(38)/SF(6) 0.8/0.2 blends over the databank, P(start) = chance_of_playing × starts/squads-made, Poisson CS + 2+GC with calibrated bias corrections (+0.04 / +0.045), FA boost 1.38, DC thresholds DEF ≥10 / MID+FWD ≥12, bonus 0.29/start, component venue multipliers (attack 1.15/0.87, defense 0.88/1.12, saves 0.86/1.14, starts 1.00/1.00). Stored as `model_version='v2'` alongside v1; both run in every refresh (B5 parallel-run). All constants empirically calibrated on 24-25 + 25-26 databank data — see `docs/research/benchwarmers-model.md` §9.4. |

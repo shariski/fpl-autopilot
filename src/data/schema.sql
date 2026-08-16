@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS players (
   form REAL,
   transfers_in INTEGER,
   transfers_out INTEGER,
+  chance_of_playing REAL,
   updated_at TIMESTAMP
 );
 
@@ -32,6 +33,15 @@ CREATE TABLE IF NOT EXISTS player_stats (
   assists INTEGER,
   xg REAL,
   xa REAL,
+  xgc REAL,
+  dc INTEGER,
+  saves INTEGER,
+  starts INTEGER,
+  bps INTEGER,
+  yellow_cards INTEGER,
+  red_cards INTEGER,
+  was_home BOOLEAN,
+  value REAL,
   bonus INTEGER,
   total_points INTEGER,
   PRIMARY KEY (player_id, gw, source)
@@ -53,6 +63,8 @@ CREATE TABLE IF NOT EXISTS fdr (
   gw INTEGER,
   fdr_attack INTEGER,
   fdr_defense INTEGER,
+  fdr_attack_mult REAL,
+  fdr_defense_mult REAL,
   computed_at TIMESTAMP,
   PRIMARY KEY (team_id, gw)
 );
@@ -66,6 +78,10 @@ CREATE TABLE IF NOT EXISTS xp (
   xgoals REAL,
   xassists REAL,
   xcs REAL,
+  p_start REAL,
+  xbonus REAL,
+  xdc REAL,
+  xcs_lambda REAL,
   computed_at TIMESTAMP,
   PRIMARY KEY (player_id, gw, model_version)
 );

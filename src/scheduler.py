@@ -19,7 +19,8 @@ def _ping_healthcheck():
         log.warning("healthcheck ping failed")
 
 
-def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=None, key=None):
+def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=None,
+                          databank_client=None, key=None):
     """Public refresh + analytics recompute + settlement + healthcheck. With key, also authed snapshot.
 
     Public path always runs. Authed step is best-effort: failures are logged but do not crash the
@@ -27,6 +28,8 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
 
     Settlement (S-G T0) writes player_gw_stats for any finished-but-unsettled GW. Per-GW
     failures are swallowed inside settlement_run so they cannot block the rest of the refresh.
+
+    B5 parallel-run: FDR v2 + xP v2 run alongside v1; nothing consumes v2 yet.
     """
     from .cli import refresh  # lazy import: avoids a cycle (cli.serve imports this module)
     from .data import settlement
@@ -36,9 +39,12 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
     conn = conn or connect(db_path(cfg))
     init_db(conn)
     try:
-        refresh(cfg=cfg, conn=conn, client=client, understat_client=understat_client)
+        refresh(cfg=cfg, conn=conn, client=client, understat_client=understat_client,
+                databank_client=databank_client)
         fdr.compute_and_store(conn)
+        fdr.compute_and_store_v2(conn)
         xp.compute_and_store(conn)
+        xp.compute_and_store_v2(conn)
         try:
             settlement.settlement_run(conn, client or FPLClient())
         except Exception:

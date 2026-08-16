@@ -12,3 +12,9 @@ data/logs/*.log
 *.egg-info/
 data/.salt
 data/.verify
+
+# YouTube model workbooks (large binaries, source of truth is docs/research/)
+data/models-from-yt/
+
+# Vaastav databank raw CSVs (fetched on demand by ingestion)
+data/databank/

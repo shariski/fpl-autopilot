@@ -28,18 +28,21 @@ def upsert_players(conn, elements, element_types):
     now = _now()
     conn.executemany(
         """INSERT INTO players (id, name, web_name, team_id, position, price,
-             status, ownership, form, transfers_in, transfers_out, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+             status, ownership, form, transfers_in, transfers_out,
+             chance_of_playing, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(id) DO UPDATE SET
              name=excluded.name, web_name=excluded.web_name,
              team_id=excluded.team_id, position=excluded.position,
              price=excluded.price, status=excluded.status,
              ownership=excluded.ownership, form=excluded.form,
              transfers_in=excluded.transfers_in, transfers_out=excluded.transfers_out,
+             chance_of_playing=excluded.chance_of_playing,
              updated_at=excluded.updated_at""",
         [(e.id, f"{e.first_name} {e.second_name}", e.web_name, e.team,
           pos[e.element_type], e.now_cost / 10.0, e.status,
-          e.selected_by_percent, e.form, e.transfers_in, e.transfers_out, now)
+          e.selected_by_percent, e.form, e.transfers_in, e.transfers_out,
+          e.chance_of_playing_next_round, now)
          for e in elements],
     )
     conn.commit()
@@ -139,6 +142,58 @@ def upsert_fdr(conn, rows):
     conn.commit()
 
 
+def upsert_fdr_v2(conn, rows):
+    """FDR v2 multipliers; upsert by (team_id, gw), leaving v1 columns intact."""
+    now = _now()
+    conn.executemany(
+        """INSERT INTO fdr (team_id, gw, fdr_attack_mult, fdr_defense_mult, computed_at)
+           VALUES (?,?,?,?,?)
+           ON CONFLICT(team_id, gw) DO UPDATE SET
+             fdr_attack_mult=excluded.fdr_attack_mult,
+             fdr_defense_mult=excluded.fdr_defense_mult,
+             computed_at=excluded.computed_at""",
+        [(r["team_id"], r["gw"], r["fdr_attack_mult"], r["fdr_defense_mult"], now)
+         for r in rows],
+    )
+    conn.commit()
+
+
+def upsert_databank_stats(conn, season, gw, rows):
+    """Write one gameweek of Vaastav databank rows into player_stats.
+
+    Rows are per-GW player stats (not cumulative). source = 'fpl_databank:{season}' so
+    seasons never collide on the (player_id, gw, source) key. Rows whose element has no
+    players.id match are skipped (data hygiene; never a hard failure).
+    """
+    source = f"fpl_databank:{season}"
+    known = {r["id"] for r in conn.execute("SELECT id FROM players")}
+    tuples = [
+        (r["element"], gw, source, r["minutes"], 0, 0, r["expected_goals"],
+         r["expected_assists"], r["expected_goals_conceded"], r["dc"], r["saves"],
+         r["starts"], r["bps"], r["yellow_cards"], r["red_cards"],
+         r["was_home"], r["value"], r["bonus"], r["total_points"])
+        for r in rows if r["element"] in known
+    ]
+    if not tuples:
+        return 0
+    cur = conn.executemany(
+        """INSERT INTO player_stats (player_id, gw, source, minutes, goals, assists,
+               xg, xa, xgc, dc, saves, starts, bps, yellow_cards, red_cards,
+               was_home, value, bonus, total_points)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(player_id, gw, source) DO UPDATE SET
+             minutes=excluded.minutes, xg=excluded.xg, xa=excluded.xa,
+             xgc=excluded.xgc, dc=excluded.dc, saves=excluded.saves,
+             starts=excluded.starts, bps=excluded.bps,
+             yellow_cards=excluded.yellow_cards, red_cards=excluded.red_cards,
+             was_home=excluded.was_home, value=excluded.value,
+             bonus=excluded.bonus, total_points=excluded.total_points""",
+        tuples,
+    )
+    conn.commit()
+    return cur.rowcount
+
+
 def _per90(value, minutes):
     return round(value / (minutes / 90.0), 4) if minutes else 0.0
 
@@ -171,13 +226,19 @@ def upsert_understat_players(conn, understat_players, resolution, season):
 def upsert_xp(conn, rows):
     now = _now()
     conn.executemany(
-        """INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, xassists, xcs, computed_at)
-           VALUES (?,?,?,?,?,?,?,?,?)
+        """INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, xassists, xcs,
+               p_start, xbonus, xdc, xcs_lambda, computed_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(player_id, gw, model_version) DO UPDATE SET
              xp=excluded.xp, xminutes=excluded.xminutes, xgoals=excluded.xgoals,
-             xassists=excluded.xassists, xcs=excluded.xcs, computed_at=excluded.computed_at""",
+             xassists=excluded.xassists, xcs=excluded.xcs,
+             p_start=excluded.p_start, xbonus=excluded.xbonus,
+             xdc=excluded.xdc, xcs_lambda=excluded.xcs_lambda,
+             computed_at=excluded.computed_at""",
         [(r["player_id"], r["gw"], r["model_version"], r["xp"], r["xminutes"],
-          r["xgoals"], r["xassists"], r["xcs"], now) for r in rows],
+          r["xgoals"], r["xassists"], r["xcs"],
+          r.get("p_start"), r.get("xbonus"), r.get("xdc"), r.get("xcs_lambda"), now)
+         for r in rows],
     )
     conn.commit()
 

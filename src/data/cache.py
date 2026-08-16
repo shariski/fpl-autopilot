@@ -20,7 +20,10 @@ def is_stale(conn, resource, now=None):
     if row is None:
         return True
     last = datetime.fromisoformat(row["last_fetched_utc"])
-    ttl = DEFAULT_TTL.get(resource, timedelta(0))
+    ttl = DEFAULT_TTL.get(resource)
+    if ttl is None and resource.startswith("databank:"):
+        ttl = timedelta(hours=6)  # per-GW databank cooldown (success + 404 alike)
+    ttl = ttl or timedelta(0)
     return (now - last) >= ttl
 
 

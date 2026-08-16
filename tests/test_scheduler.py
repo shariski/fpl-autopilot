@@ -22,12 +22,14 @@ def test_refresh_and_recompute_pipeline_order(monkeypatch):
     calls = []
     monkeypatch.setattr(cli, "refresh", lambda **kw: calls.append("refresh"))
     monkeypatch.setattr(scheduler.fdr, "compute_and_store", lambda conn: calls.append("fdr"))
+    monkeypatch.setattr(scheduler.fdr, "compute_and_store_v2", lambda conn: calls.append("fdr_v2"))
     monkeypatch.setattr(scheduler.xp, "compute_and_store", lambda conn: calls.append("xp"))
+    monkeypatch.setattr(scheduler.xp, "compute_and_store_v2", lambda conn: calls.append("xp_v2"))
     monkeypatch.setattr(scheduler, "_ping_healthcheck", lambda: calls.append("ping"))
     conn = connect(":memory:")
     init_db(conn)
     scheduler.refresh_and_recompute(cfg={"storage": {"db_path": ":memory:"}}, conn=conn)
-    assert calls == ["refresh", "fdr", "xp", "ping"]
+    assert calls == ["refresh", "fdr", "fdr_v2", "xp", "xp_v2", "ping"]
     conn.close()
 
 

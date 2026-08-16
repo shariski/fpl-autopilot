@@ -40,6 +40,7 @@ class Element(_Base):
     form: float
     transfers_in: int | None = None
     transfers_out: int | None = None
+    chance_of_playing_next_round: float | None = None
 
 
 class ElementType(_Base):

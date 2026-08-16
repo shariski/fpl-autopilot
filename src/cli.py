@@ -274,11 +274,82 @@ def _clear_stale_season_rows(conn):
     return n_gw, n_team
 
 
+def _remap_databank_elements(conn, rows):
+    """Re-point historical databank rows at current player ids by name+team.
+
+    FPL element ids change every season (same problem as understat rematch). Rows whose
+    element already matches a current player pass through; the rest are matched by name
+    (team-scoped) and unmatchable rows are dropped — never mis-assigned (B6).
+    """
+    from .data import name_resolver as nr
+    import types
+
+    known = {r["id"] for r in conn.execute("SELECT id FROM players")}
+    if all(r["element"] in known for r in rows):
+        return rows, 0
+    fpl_players = [dict(r) for r in conn.execute("SELECT id, name, web_name, team_id FROM players")]
+    fpl_teams = [dict(r) for r in conn.execute("SELECT id, name, short_name FROM teams")]
+    if not fpl_players:
+        return rows, len(rows)
+    ups = [types.SimpleNamespace(id=r["element"], player_name=r["name"],
+                                 team_title=r["team"]) for r in rows]
+    res = nr.resolve_players(fpl_players, fpl_teams, ups, _load_name_overrides())
+    out = []
+    for r in rows:
+        pid = r["element"] if r["element"] in known else res.matched.get(r["element"])
+        if pid is None:
+            continue
+        row = dict(r)
+        row["element"] = pid
+        out.append(row)
+    return out, len(res.unmatched)
+
+
+def _refresh_databank_season(conn, databank_client, season, full):
+    """Fetch missing GWs of one databank season. 404 = GW not published: cooldown, continue."""
+    from .data import cache
+    from .data import repository as repo
+    fetched = 0
+    unmatched_total = 0
+    for gw in range(1, 39):
+        resource = f"databank:{season}:gw{gw}"
+        if not full and not cache.is_stale(conn, resource):
+            continue
+        try:
+            rows = databank_client.fetch_gw(season, gw)
+        except requests.exceptions.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                cache.mark_fetched(conn, resource)  # not published yet; cooldown
+                continue
+            raise
+        rows, unmatched = _remap_databank_elements(conn, rows)
+        unmatched_total += unmatched
+        fetched += repo.upsert_databank_stats(conn, season, gw, rows)
+        cache.mark_fetched(conn, resource)
+    return fetched, unmatched_total
+
+
+def _refresh_databank(conn, databank_client, cfg, full, report=False):
+    # Supplementary source: a failure must NOT break the FPL refresh (R2).
+    try:
+        fetched = {}
+        for season in config.databank_seasons(cfg):
+            n, unmatched = _refresh_databank_season(conn, databank_client, season, full)
+            if n or unmatched:
+                fetched[season] = {"rows": n, "unmatched": unmatched}
+        return fetched or None
+    except Exception as exc:  # noqa: BLE001 - supplementary source degrades gracefully
+        if report:
+            return {"warning": str(exc)}
+        print(f"WARNING: databank refresh failed ({exc}); keeping last data")
+        return None
+
+
 def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None,
-            sources=None, report=False):
+            databank_client=None, sources=None, report=False):
     cfg = cfg or load_config()
-    if sources is None:  # explicit: an empty tuple means "no sources", not "both"
-        sources = ("fpl", "understat")
+    if sources is None:  # explicit: an empty tuple means "no sources", not "all"
+        sources = ("fpl", "understat", "databank")
     owns_conn = conn is None
     conn = conn or connect(cfg_db_path(cfg))
     init_db(conn)
@@ -306,6 +377,16 @@ def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None,
             print(f"understat OK (matched {understat_out['matched']}/{understat_out['total']}, "
                   f"{understat_out['unmatched']} unmatched, "
                   f"{understat_out['unmapped_teams']} unmapped teams)")
+
+    databank_out = None
+    if "databank" in sources:
+        from .data.databank_client import DatabankClient
+        databank_out = _refresh_databank(conn, databank_client or DatabankClient(),
+                                         cfg, full, report=report)
+        if not report and databank_out is not None and "warning" not in databank_out:
+            print("databank OK (" + ", ".join(
+                f"{s}: {v['rows']} rows, {v['unmatched']} unmatched"
+                for s, v in databank_out.items()) + ")")
 
     # Season rollover: re-link prior-season understat rows to the current players
     # table (player ids change every season; stale pointers silently feed the wrong
@@ -338,8 +419,8 @@ def refresh(full=False, cfg=None, conn=None, client=None, understat_client=None,
     if owns_conn:
         conn.close()
     if report:
-        return {"fpl": fpl_out, "understat": understat_out, "rematch": rematch,
-                "cleanup": cleanup, "warnings": warnings}
+        return {"fpl": fpl_out, "understat": understat_out, "databank": databank_out,
+                "rematch": rematch, "cleanup": cleanup, "warnings": warnings}
 
 
 def _init_master_password_cli(salt_path=None, verify_path=None):

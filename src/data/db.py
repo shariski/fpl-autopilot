@@ -47,6 +47,35 @@ def _migrate_players(conn):
         conn.execute("ALTER TABLE players ADD COLUMN transfers_in INTEGER")
     if "transfers_out" not in cols:
         conn.execute("ALTER TABLE players ADD COLUMN transfers_out INTEGER")
+    if "chance_of_playing" not in cols:
+        conn.execute("ALTER TABLE players ADD COLUMN chance_of_playing REAL")
+
+
+def _migrate_player_stats(conn):
+    """v0.12/v0.13: databank columns on player_stats (idempotent)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(player_stats)")}
+    for name, decl in [("xgc", "REAL"), ("dc", "INTEGER"), ("saves", "INTEGER"),
+                       ("starts", "INTEGER"), ("bps", "INTEGER"),
+                       ("yellow_cards", "INTEGER"), ("red_cards", "INTEGER"),
+                       ("was_home", "BOOLEAN"), ("value", "REAL")]:
+        if name not in cols:
+            conn.execute(f"ALTER TABLE player_stats ADD COLUMN {name} {decl}")
+
+
+def _migrate_fdr(conn):
+    """v0.12: continuous FDR v2 multipliers on fdr (idempotent)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(fdr)")}
+    for name in ("fdr_attack_mult", "fdr_defense_mult"):
+        if name not in cols:
+            conn.execute(f"ALTER TABLE fdr ADD COLUMN {name} REAL")
+
+
+def _migrate_xp(conn):
+    """v0.13: xP v2 component columns on xp (idempotent)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(xp)")}
+    for name in ("p_start", "xbonus", "xdc", "xcs_lambda"):
+        if name not in cols:
+            conn.execute(f"ALTER TABLE xp ADD COLUMN {name} REAL")
 
 
 def init_db(conn):
@@ -54,4 +83,7 @@ def init_db(conn):
     _migrate_credentials(conn)
     _migrate_gameweeks(conn)
     _migrate_players(conn)
+    _migrate_player_stats(conn)
+    _migrate_fdr(conn)
+    _migrate_xp(conn)
     conn.commit()

@@ -26,6 +26,12 @@ def db_path(cfg=None):
     return str(p if p.is_absolute() else ROOT / p)
 
 
+def databank_seasons(cfg=None):
+    """Seasons to track in the Vaastav databank (v0.12). Previous + current by default."""
+    cfg = cfg if cfg is not None else load_config()
+    return cfg.get("databank", {}).get("seasons", ["2025-26", "2026-27"])
+
+
 def mode(cfg=None):
     cfg = cfg if cfg is not None else load_config()
     return cfg.get("mode", {}).get("current", "manual")
