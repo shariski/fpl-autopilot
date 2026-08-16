@@ -47,6 +47,12 @@ def _player(conn, pid, team, position="MID", price=6.0, status="a", xg90=0.5, xa
                  (str(pid), pid, "2025", minutes, games, xg90, xa90))
 
 
+def _xp_v2(conn, pid, gw, value):
+    conn.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes) "
+                 "VALUES (?,?,?,?,?)", (pid, gw, "v2", value, 80.0))
+    conn.commit()
+
+
 def _gw6_double_for_all(conn, teams):
     fid = 100
     for t in teams:
@@ -79,6 +85,8 @@ def test_bench_boost_triggers_on_dgw():
         _player(conn, i, i, position="MID", xg90=0.6, xa90=0.3)
     _gw6_double_for_all(conn, list(range(1, 16)))
     _seed_squad(conn, picks)
+    for i in (13, 14, 15):
+        _xp_v2(conn, i, 6, 2.0)  # bench players 13-15: DGW-xP 2x2 each
     _, squad, _ = chips._squad(conn)
     assert chips.bench_boost_trigger(conn, squad, [6]) is not None
 
@@ -92,6 +100,7 @@ def test_triple_captain_triggers_for_premium_dgw():
     _gw6_double_for_all(conn, [1])
     conn.execute("INSERT OR IGNORE INTO gameweeks (id, name, finished) VALUES (6,'GW6',0)")
     _seed_squad(conn, picks)
+    _xp_v2(conn, 1, 6, 6.0)  # premium: DGW-xP 12 (>= TRIPLE_CAPTAIN_XP)
     conn.commit()
     _, squad, _ = chips._squad(conn)
     assert chips.triple_captain_trigger(conn, squad, [6]) is not None
@@ -119,6 +128,8 @@ def test_recommend_chip_priority_and_chips_used():
         _player(conn, i, i, xg90=0.6, xa90=0.3)
     _gw6_double_for_all(conn, list(range(1, 16)))
     _seed_squad(conn, picks)
+    for i in (13, 14, 15):
+        _xp_v2(conn, i, 6, 2.0)
     rec = chips.recommend_chip(conn)["recommendation"]
     assert rec is not None and rec["chip"] == "bench_boost"
     conn.execute("UPDATE my_team SET chips_used_json=? WHERE gw=5", ('["bboost"]',))
@@ -150,5 +161,8 @@ def test_recommend_chip_triple_captain_beats_bench_boost():
         _player(conn, i, i, xg90=0.6, xa90=0.3)
     _gw6_double_for_all(conn, list(range(1, 16)))
     _seed_squad(conn, picks)
+    _xp_v2(conn, 1, 6, 6.0)
+    for i in (13, 14, 15):
+        _xp_v2(conn, i, 6, 2.0)
     rec = chips.recommend_chip(conn)["recommendation"]
     assert rec is not None and rec["chip"] == "triple_captain"

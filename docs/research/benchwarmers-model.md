@@ -234,14 +234,17 @@ free alternatives-considered data.
 
 ## 9. Implementation status
 
-**v0.12 (FDR v2) and v0.13 (xP v2) are APPLIED** — changelog + normative spec landed in
-`docs/decision-engine.md` (2026-08-16) and the code is implemented and tested
-(`src/analytics/ratings.py`, FDR v2 in `src/analytics/fdr.py`, xP v2 in
+**v0.12 (FDR v2), v0.13 (xP v2) and v0.14 (flip) are APPLIED** — changelog + normative
+spec landed in `docs/decision-engine.md` (2026-08-16) and the code is implemented and
+tested (`src/analytics/ratings.py`, FDR v2 in `src/analytics/fdr.py`, xP v2 in
 `src/analytics/xp.py`, databank ingestion in `src/data/databank_client.py` +
-`repository.upsert_databank_stats`, wired into `refresh` and the scheduler). B5
-parallel-run is live: every refresh computes v1 + v2; nothing consumes v2 yet.
+`repository.upsert_databank_stats`, wired into `refresh` and the scheduler). Since v0.14
+every decision path consumes `model_version='v2'`; **v1 keeps computing in every refresh
+purely as B5 comparison evidence** until the GW1 review, then retires.
 
-**v0.14 (value metric + MILP squad builder) remains DRAFT** — not implemented.
+**The draft value-metric + MILP squad-builder entry remains DRAFT** (to be numbered when
+applied). The captaincy ceiling-aware term (see §10) is a documented follow-up, not part
+of v0.14.
 
 ### 9.1 Proposed changelog entries
 
@@ -351,6 +354,9 @@ before it; actuals = databank total_points). Reuses the production functions.
   when v2 is adopted, the captain ranker may want a ceiling-aware term (xP + upside
   percentile) — documented follow-up, not a blocker.
 
-**Gate status:** the backtest satisfies the B5 review intent (2 full seasons, no leakage,
-beats v1 on every average-prediction metric). Remaining live gate: GW1-2 parallel run
-read-only, then flip (v0.13 changelog entry in decision-engine.md to be updated at flip).
+**Gate status:** the backtest satisfied the B5 review intent (2 full seasons, no leakage,
+beats v1 on every average-prediction metric) and **v0.14 flipped the consumers to v2 on
+2026-08-16**. v1 remains live as comparison evidence; the harness includes 2026-27, so
+the GW1 live row lands automatically once the databank publishes it (run
+`docs/research/calibration/backtest.py` after the GW settles). v1 retires after that
+review.

@@ -47,7 +47,7 @@ def _current_gw_stats(conn, player_id):
 def _projection(conn, player_id, next_gw):
     return [{"gw": r["gw"], "xp": round(r["xp"], 2)}
             for r in conn.execute(
-                "SELECT gw, xp FROM xp WHERE player_id=? AND model_version='v1' "
+                "SELECT gw, xp FROM xp WHERE player_id=? AND model_version='v2' "
                 "AND gw BETWEEN ? AND ? ORDER BY gw",
                 (player_id, next_gw, next_gw + 5))]
 

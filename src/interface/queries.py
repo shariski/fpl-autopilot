@@ -79,9 +79,9 @@ def get_squad(conn):
         if p is None:
             continue
         xpn = conn.execute(
-            "SELECT xp FROM xp WHERE player_id=? AND gw=? AND model_version='v1'", (pid, next_gw)).fetchone()
+            "SELECT xp FROM xp WHERE player_id=? AND gw=? AND model_version='v2'", (pid, next_gw)).fetchone()
         xp5 = conn.execute(
-            "SELECT SUM(xp) AS s FROM xp WHERE player_id=? AND model_version='v1' AND gw BETWEEN ? AND ?",
+            "SELECT SUM(xp) AS s FROM xp WHERE player_id=? AND model_version='v2' AND gw BETWEEN ? AND ?",
             (pid, next_gw, (next_gw + 4) if next_gw else 0)).fetchone()
         players.append({
             "id": pid, "web_name": p["web_name"], "position": p["position"],

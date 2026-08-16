@@ -18,6 +18,7 @@ Caveats (reported, not hidden):
 import csv
 import io
 import json
+import requests
 import sys
 import time
 import urllib.request
@@ -33,11 +34,13 @@ from src.data.databank_client import DatabankClient, REQUIRED_COLUMNS  # noqa: E
 from src.data import repository                    # noqa: E402
 from src.analytics import ratings, fdr, xp         # noqa: E402
 
-SEASONS = ["2024-25", "2025-26"]
+SEASONS = ["2024-25", "2025-26", "2026-27"]  # 2026-27: live GW evidence as files appear
 DATABANK_DIR = ROOT / "data" / "databank"
 TEAMS_CSV = {s: DATABANK_DIR / f"{s}_teams.csv" for s in SEASONS}
 UNDERSTAT_JSON = {"2024-25": DATABANK_DIR / "understat_2024.json",
-                  "2025-26": DATABANK_DIR / "understat_2025.json"}
+                  "2025-26": DATABANK_DIR / "understat_2025.json",
+                  # pre-season 26-27: v1 would read the previous season's aggregates
+                  "2026-27": DATABANK_DIR / "understat_2025.json"}
 
 
 # ---------- local-file source for the production client ----------
@@ -50,14 +53,26 @@ class _LocalSession:
 
     def get(self, url, timeout=None):
         # url = https://raw.githubusercontent.com/.../data/{season}/gws/gw{n}.csv
-        try:
-            season = url.split("/data/")[1].split("/gws/")[0]
-            gw = int(url.rsplit("/gw", 1)[1].rstrip(".csv"))
-            path = DATABANK_DIR / season / "gws" / f"gw{gw}.csv"
-            text = path.read_text()
-        except (IndexError, ValueError, OSError) as exc:
-            raise RuntimeError(f"local databank read failed for {url}: {exc}")
-        return type("R", (), {"status_code": 200, "text": text})()
+        season = url.split("/data/")[1].split("/gws/")[0]
+        gw = int(url.rsplit("/gw", 1)[1].rstrip(".csv"))
+        path = DATABANK_DIR / season / "gws" / f"gw{gw}.csv"
+        class _Resp:
+            def __init__(self, status_code, text):
+                self.status_code = status_code
+                self.text = text
+
+            def raise_for_status(self):
+                if self.status_code >= 400:
+                    import requests as _r
+                    resp = _r.Response()
+                    resp.status_code = self.status_code
+                    resp.url = url
+                    raise _r.HTTPError(f"{self.status_code} for {url}", response=resp)
+
+        if not path.exists():
+            # production 404 semantics: GW not published yet (e.g. 2026-27 pre-season)
+            return _Resp(404, "")
+        return _Resp(200, path.read_text())
 
 
 # ---------- team identity (FPL team ids drift across seasons; canonicalize by name) ----------
@@ -67,6 +82,8 @@ def _season_team_maps():
     by_season = {}
     all_names = set()
     for s in SEASONS:
+        if not TEAMS_CSV[s].exists():
+            continue
         name_to_id, id_to_name = {}, {}
         with open(TEAMS_CSV[s]) as f:
             for row in csv.DictReader(f):
@@ -188,6 +205,10 @@ def _understat_map(season):
         with open(path) as f:
             for r in csv.DictReader(f):
                 norm_names.setdefault(_norm(r["name"]), int(r["element"]))
+    if not norm_names:
+        return {}
+    if not UNDERSTAT_JSON[season].exists():
+        return {}
     with open(UNDERSTAT_JSON[season]) as f:
         data = json.load(f)
     out = {}
@@ -203,6 +224,8 @@ def _understat_map(season):
 
 
 def _fdr_v1_teams(season):
+    if not TEAMS_CSV[season].exists():
+        return []
     with open(TEAMS_CSV[season]) as f:
         return [{"id": int(r["id"]),
                  "strength_attack_home": int(r["strength_attack_home"]),
@@ -244,9 +267,18 @@ def main():
     all_v1 = {"pred": [], "act": []}
 
     for season in SEASONS:
+        if season not in season_maps:
+            print(f"skipping {season}: no teams.csv locally (fetch it first)")
+            continue
         _, id_to_name = season_maps[season]
         for gw in range(1, 39):
-            rows = _canonicalize_rows(season, client.fetch_gw(season, gw), id_to_name, canonical)
+            try:
+                raw = client.fetch_gw(season, gw)
+            except requests.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code == 404:
+                    continue  # GW not published (yet)
+                raise
+            rows = _canonicalize_rows(season, raw, id_to_name, canonical)
             # ---- predict BEFORE inserting this GW's rows (no leakage) ----
             team_ratings, la = ratings.compute_team_ratings(sc.conn)
             fixtures, collisions = fixtures_for_gw(sc, rows)

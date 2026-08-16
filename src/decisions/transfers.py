@@ -147,7 +147,7 @@ def get_transfer_suggestions(conn):
     squad_ids, bank, free_transfers = squad
 
     xp_rows = conn.execute(
-        "SELECT player_id, gw, xp FROM xp WHERE model_version='v1' AND gw BETWEEN ? AND ?",
+        "SELECT player_id, gw, xp FROM xp WHERE model_version='v2' AND gw BETWEEN ? AND ?",
         (next_gw, next_gw + HORIZON - 1)).fetchall()
     xp5 = xp_5gw_by_player(xp_rows, next_gw)
 

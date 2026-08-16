@@ -38,7 +38,7 @@ def _json_err(command, code, message, hint=None, exit_code=1):
 def _data_basis(conn, cfg):
     fresh = conn.execute("SELECT MAX(last_fetched_utc) AS m FROM cache_meta").fetchone()
     return {"as_of_utc": fresh["m"] if fresh else None,
-            "xp_model_version": cfg.get("xp_model", {}).get("version", "v1")}
+            "xp_model_version": cfg.get("xp_model", {}).get("version", "v2")}
 
 
 def _current_gw_from_db(conn):

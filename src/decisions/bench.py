@@ -1,4 +1,4 @@
-from src.analytics.xp import MODEL_VERSION
+from src.analytics.xp import MODEL_VERSION_V2 as MODEL_VERSION
 from src.decisions.transfers import _next_gw
 
 

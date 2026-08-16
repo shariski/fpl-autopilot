@@ -24,9 +24,9 @@ def build_candidate_pool(conn, next_gw=None):
                   SUM(x.xp) AS xp_6gw
            FROM players p
            JOIN teams t ON t.id = p.team_id
-           JOIN xp x ON x.player_id = p.id AND x.model_version = 'v1'
+           JOIN xp x ON x.player_id = p.id AND x.model_version = 'v2'
                 AND x.gw BETWEEN ? AND ?
-           JOIN xp x1 ON x1.player_id = p.id AND x1.model_version = 'v1' AND x1.gw = ?
+           JOIN xp x1 ON x1.player_id = p.id AND x1.model_version = 'v2' AND x1.gw = ?
            WHERE p.status IN ('a', 'd') AND p.price >= 4.0
            GROUP BY p.id
         """, (next_gw, next_gw + 5, next_gw)).fetchall()

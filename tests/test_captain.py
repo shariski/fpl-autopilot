@@ -87,7 +87,7 @@ def _seed_squad(db):
         db.execute("INSERT INTO players (id, name, web_name, team_id, position, status) "
                    "VALUES (?,?,?,?,?, 'a')", (pid, web, web, team, "FWD"))
         db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, "
-                   "xassists, xcs, computed_at) VALUES (?,10,'v1',?,85.0,0,0,0,'t')",
+                   "xassists, xcs, computed_at) VALUES (?,10,'v2',?,85.0,0,0,0,'t')",
                    (pid, xps[idx]))
     picks_json = json.dumps([
         {"element": pid, "position": i + 1, "multiplier": 1,
@@ -146,7 +146,7 @@ def test_get_captain_picks_no_xp_row_ranks_last(db):
                "VALUES (201,'Has XP','HasXP',1,'FWD','a'),(202,'No XP','NoXP',2,'FWD','a')")
     # player 201 has an xp row; player 202 deliberately does NOT
     db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, "
-               "xassists, xcs, computed_at) VALUES (201,10,'v1',5.0,85.0,0,0,0,'t')")
+               "xassists, xcs, computed_at) VALUES (201,10,'v2',5.0,85.0,0,0,0,'t')")
     picks_json = json.dumps([
         {"element": pid, "position": i + 1, "multiplier": 1,
          "is_captain": False, "is_vice_captain": False}

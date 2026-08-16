@@ -235,7 +235,7 @@ def _seed_captain_db(conn):
     conn.execute("INSERT INTO fdr(team_id, gw, fdr_attack, fdr_defense, computed_at) "
                  "VALUES (1, 38, 2, 2, '2026-05-19T00:00:00Z')")
     conn.execute("INSERT INTO xp(player_id, gw, model_version, xp, xminutes, computed_at) "
-                 "VALUES (10, 38, 'v1', 7.2, 90, '2026-05-19T00:00:00Z')")
+                 "VALUES (10, 38, 'v2', 7.2, 90, '2026-05-19T00:00:00Z')")
     conn.commit()
 
 
@@ -328,9 +328,9 @@ def _seed_transfer_db(conn):
                  "(1, 38, 2, 2, '2026-05-19T00:00Z'), (3, 38, 4, 4, '2026-05-19T00:00Z')")
     # Haaland (buy) >> median > Watkins (sell); Isak anchors the median above 3.0
     conn.execute("INSERT INTO xp(player_id, gw, model_version, xp, xminutes, computed_at) VALUES "
-                 "(10, 38, 'v1', 8.0, 90, '2026-05-19T00:00Z'), "
-                 "(20, 38, 'v1', 3.0, 90, '2026-05-19T00:00Z'), "
-                 "(30, 38, 'v1', 5.0, 90, '2026-05-19T00:00Z')")
+                 "(10, 38, 'v2', 8.0, 90, '2026-05-19T00:00Z'), "
+                 "(20, 38, 'v2', 3.0, 90, '2026-05-19T00:00Z'), "
+                 "(30, 38, 'v2', 5.0, 90, '2026-05-19T00:00Z')")
     conn.commit()
 
 

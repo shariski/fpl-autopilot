@@ -4,7 +4,7 @@ import json
 
 from src.decisions import confidence as confidence_mod
 
-MODEL_VERSION = "v1"
+MODEL_VERSION = "v2"
 
 
 def rank_captains(candidates):

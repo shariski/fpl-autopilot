@@ -14,16 +14,16 @@ def _picks():
 
 def test_rank_bench_orders_by_xp(db):
     _seed(db)
-    db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes) VALUES (13,30,'v1',3.0,80)")
-    db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes) VALUES (14,30,'v1',5.0,80)")
-    db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes) VALUES (15,30,'v1',1.0,80)")
+    db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes) VALUES (13,30,'v2',3.0,80)")
+    db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes) VALUES (14,30,'v2',5.0,80)")
+    db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes) VALUES (15,30,'v2',1.0,80)")
     db.commit()
     assert bench.rank_bench(db, _picks()) == [14, 13, 15]
 
 
 def test_rank_bench_missing_xp_sorts_last(db):
     _seed(db)
-    db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes) VALUES (13,30,'v1',2.0,80)")
+    db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes) VALUES (13,30,'v2',2.0,80)")
     db.commit()
     out = bench.rank_bench(db, _picks())
     assert out[0] == 13 and set(out) == {13, 14, 15}

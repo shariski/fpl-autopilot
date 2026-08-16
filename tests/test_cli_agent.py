@@ -27,7 +27,7 @@ def _seed_status_data(db):
 
 
 def _cfg():
-    return {"mode": {"current": "manual"}, "xp_model": {"version": "v1"}}
+    return {"mode": {"current": "manual"}, "xp_model": {"version": "v2"}}
 
 
 def test_status_json_envelope(db, capsys):
@@ -48,7 +48,7 @@ def test_status_json_envelope(db, capsys):
     assert len(data["pending_decisions"]) == 1
     assert len(data["last_system_actions"]) == 2
     assert data["health"] == {"db_ok": True, "players": 0, "teams": 0}
-    assert data["data_basis"] == {"as_of_utc": "2026-08-15T10:00:00Z", "xp_model_version": "v1"}
+    assert data["data_basis"] == {"as_of_utc": "2026-08-15T10:00:00Z", "xp_model_version": "v2"}
 
 
 def test_status_empty_db(db, capsys):
@@ -136,7 +136,7 @@ class _NoSquadClient(_FakeClient):
 
 def _refresh_cfg():
     return {"fpl": {"team_id": 3122849}, "storage": {"db_path": ":memory:"},
-            "mode": {"current": "manual"}, "xp_model": {"version": "v1"},
+            "mode": {"current": "manual"}, "xp_model": {"version": "v2"},
             "understat": {"season": "2026"}}
 
 
@@ -210,6 +210,11 @@ def _seed_decision_data(db, load):
     repository.upsert_understat_players(db, us, res, "2026")
     fdr.compute_and_store(db)
     xp.compute_and_store(db)
+    db.execute(
+        "INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, xassists, xcs, computed_at) "
+        "SELECT player_id, gw, 'v2', xp, xminutes, xgoals, xassists, xcs, computed_at "
+        "FROM xp WHERE model_version='v1'")
+    db.commit()
     db.commit()
 
 
@@ -219,7 +224,7 @@ def test_captain_json(load, db, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["ok"] is True and out["command"] == "captain"
     assert out["data"]["picks"] and "data_basis" in out["data"]
-    assert out["data"]["data_basis"]["xp_model_version"] == "v1"
+    assert out["data"]["data_basis"]["xp_model_version"] == "v2"
 
 
 def test_transfers_json(load, db, capsys):
@@ -307,7 +312,7 @@ def test_squad_json_built(load, db, capsys, monkeypatch):
     assert out["data"]["picks"][0]["player_id"] == pid
     assert out["data"]["picks"][0]["web_name"]  # enriched from the pool
     assert out["data"]["budget_used"] >= 0
-    assert out["data"]["data_basis"]["xp_model_version"] == "v1"
+    assert out["data"]["data_basis"]["xp_model_version"] == "v2"
 
 
 def test_squad_json_cached(load, db, capsys, monkeypatch):
@@ -390,7 +395,7 @@ def test_insight_json_generated(load, db, capsys, monkeypatch):
     assert out["data"]["player_id"] == pid
     assert out["data"]["insights"][0]["category"] == "value_market"
     assert out["data"]["player"]["web_name"]
-    assert out["data"]["data_basis"]["xp_model_version"] == "v1"
+    assert out["data"]["data_basis"]["xp_model_version"] == "v2"
 
 
 def test_insight_json_cached(load, db, capsys, monkeypatch):

@@ -109,7 +109,11 @@ Where:
 | MID | 1 |
 | FWD | 0 |
 
-### v1 implementation (current, 2026-05-22)
+### v1 (retained as B5 comparison evidence)
+
+v1 continues to compute in every refresh (`model_version='v1'`) but is not consumed by
+any decision since v0.14 (2026-08-16). It exists so the GW1 live window can be compared
+against the backtest; retire it after the GW1 review.
 
 Two corrections vs. the structural sketch above: (1) the leading `xMinutes` term was a typo — raw minutes must not be added to a points total; the minutes contribution to points is `appearance_points`. `xMinutes` only scales xGoals/xAssists and gates the clean sheet. (2) `xCleanSheet` uses `cs_prob(fdr_defense)` instead of Poisson(opponent xG/90), because team xG is unavailable (see FDR v2 note). FDR here is FDR v1 (FPL-strength).
 
@@ -138,9 +142,10 @@ Inputs come from `understat_players` (per-90 rates, season minutes/games — a v
 
 ### v2 (current, 2026-08-16) — 11-component model
 
-Versioned per B5. v1 and v2 run in parallel in every refresh; v2 is not consumed by any
-decision until the B5 comparison window is reviewed. Full provenance, calibration data and
-the reverse-engineered reference model: `docs/research/benchwarmers-model.md`.
+Consumed by every decision path since v0.14 (2026-08-16). v1 continues to compute in
+every refresh as B5 comparison evidence through the GW1 review (2-season backtest
+evidence: `docs/research/benchwarmers-model.md` §10). Full provenance, calibration data
+and the reverse-engineered reference model: `docs/research/benchwarmers-model.md`.
 
 ```
 xP_v2[player, gw] =
@@ -411,3 +416,4 @@ Every decision writes one row:
 | v0.11 | 2026-05-23 | Deadguard 2.5c-1 late-news re-evaluation: after DEADGUARD_EXECUTED, `evaluate` returns a `reeval` directive (>lockout) or `lockout` directive (<= `reeval_lockout_minutes`, default 15) until the deadline. Re-eval force-refreshes FPL availability + recomputes the lineup; a material change (captain/vice/bench differs from what is set) auto-applies via the existing captain/bench rankers when >15 min out, else alert-only. Lineup-only - no transfer (B8). Rankers reused unchanged (no threshold edits). |
 | v0.12 | 2026-08-16 | FDR v2 implemented: continuous xG-based opponent multipliers (opp xGC/90 ÷ league avg for attack; opp xG/90 ÷ league avg for defense), dampened (safe threshold 1.55, 40% beyond). Replaces quintile FDR v1 for xP v2 (v1 columns retained for v1 consumers). Fixes the pre-season degenerate state (v1 = flat when FPL publishes strength=0). Unblocked by databank ingestion (`source='fpl_databank'` in player_stats). Provenance: `docs/research/benchwarmers-model.md`. |
 | v0.13 | 2026-08-16 | xP v2: 11-component model (appearance, 60+ mins, 3×saves, YC, RC, bonus, assist, goal, CS, 2+GC, DC) with LF(38)/SF(6) 0.8/0.2 blends over the databank, P(start) = chance_of_playing × starts/squads-made, Poisson CS + 2+GC with calibrated bias corrections (+0.04 / +0.045), FA boost 1.38, DC thresholds DEF ≥10 / MID+FWD ≥12, bonus 0.29/start, component venue multipliers (attack 1.15/0.87, defense 0.88/1.12, saves 0.86/1.14, starts 1.00/1.00). Stored as `model_version='v2'` alongside v1; both run in every refresh (B5 parallel-run). All constants empirically calibrated on 24-25 + 25-26 databank data — see `docs/research/benchwarmers-model.md` §9.4. |
+| v0.14 | 2026-08-16 | xP v2 becomes the consumed model: squad builder pool, captain ranker, bench order, transfer engine, chip DGW-xP, interface queries and AI insight all read `model_version='v2'`. FDR v1 quintiles remain for chip-trigger FDR semantics (unchanged rule). v1 keeps computing in every refresh purely as B5 comparison evidence through the GW1 review. Decision: 2-season no-leakage backtest (MAE 1.22/1.36 vs 2.16/2.14, bias +0.1 vs +1.0, corr 0.40 vs 0.36 — `docs/research/benchwarmers-model.md` §10). Captain ranker unchanged (max xP); a ceiling-aware captaincy term is a documented follow-up, not part of this change. |

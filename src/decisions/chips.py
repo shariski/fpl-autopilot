@@ -1,6 +1,6 @@
 import json
 from src.analytics import dgw
-from src.analytics.xp import compute_player_xp
+from src.analytics.xp import MODEL_VERSION_V2
 
 PREMIUM_PRICE = 9.5
 BENCH_BOOST_THRESHOLD = 4.0
@@ -29,9 +29,8 @@ def _squad(conn):
     rows = []
     for pk in picks:
         p = conn.execute(
-            "SELECT p.id, p.web_name, p.position, p.status, p.team_id, p.price, "
-            "u.xg_per_90, u.xa_per_90, u.minutes, u.games "
-            "FROM players p LEFT JOIN understat_players u ON u.fpl_player_id = p.id WHERE p.id=?",
+            "SELECT p.id, p.web_name, p.position, p.status, p.team_id, p.price "
+            "FROM players p WHERE p.id=?",
             (pk["element"],)).fetchone()
         if p is None:
             continue
@@ -42,17 +41,21 @@ def _squad(conn):
 
 
 def _player_gw_xp(conn, r, gw):
-    if r["xg_per_90"] is None:  # unmatched player, no Understat rates
-        return 0.0
+    """DGW/single-GW xP for one squad player, from the consumed (v2) xp table.
+
+    v0.14: reads model_version='v2' rows (replaces the inline v1 formula). The v2 row
+    is single-fixture (fdr (team, gw) key) — the fixture-count multiplication below is
+    the documented DGW approximation (decision-engine.md).
+    """
     n = dgw.team_fixture_count(conn, r["team_id"], gw)
     if n == 0:
         return 0.0
-    fd = dgw.team_gw_fdr(conn, r["team_id"], gw)
-    if fd is None:
+    row = conn.execute(
+        "SELECT xp FROM xp WHERE player_id=? AND gw=? AND model_version=?",
+        (r["id"], gw, MODEL_VERSION_V2)).fetchone()
+    if row is None:
         return 0.0
-    one = compute_player_xp(r["position"], r["status"], r["xg_per_90"], r["xa_per_90"],
-                            r["minutes"], r["games"], fd["fdr_attack"], fd["fdr_defense"])["xp"]
-    return round(n * one, 2)
+    return round(n * row["xp"], 2)
 
 
 def _gw_has_fixtures(conn, gw):

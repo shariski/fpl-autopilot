@@ -27,6 +27,11 @@ def _seed():
     repository.upsert_understat_players(conn, us, res, "2025")
     fdr.compute_and_store(conn)
     xp.compute_and_store(conn)
+    conn.execute(
+        "INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, xassists, xcs, computed_at) "
+        "SELECT player_id, gw, 'v2', xp, xminutes, xgoals, xassists, xcs, computed_at "
+        "FROM xp WHERE model_version='v1'")
+    conn.commit()
     conn.commit()
     return conn
 

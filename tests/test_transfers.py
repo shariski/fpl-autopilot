@@ -62,7 +62,7 @@ def _seed_db(db, players, squad_ids, bank, next_gw=1):
         for g in range(next_gw, next_gw + HORIZON):
             db.execute(
                 "INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, xassists, xcs,"
-                " computed_at) VALUES (?,?, 'v1', ?, 0, 0, 0, 0, 't')",
+                " computed_at) VALUES (?,?, 'v2', ?, 0, 0, 0, 0, 't')",
                 (p["id"], g, p["xp5"] / HORIZON))
     picks = json.dumps([{"element": pid, "position": i + 1, "multiplier": 1,
                          "is_captain": False, "is_vice_captain": False}
