@@ -37,8 +37,17 @@ def _next_gw(conn):
 
 
 def _squad_element_ids(conn):
+    """Elements of the current squad IN STARTING POSITIONS (1-11).
+
+    FPL requires captain and vice to be in the starting XI — proposing a
+    benched player is rejected with 'squad_vice_captain_invalid_position'
+    (observed 2026-08-20 on a live execute-lineup submit).
+    """
     row = conn.execute("SELECT picks_json FROM my_team ORDER BY gw DESC LIMIT 1").fetchone()
-    return [p["element"] for p in json.loads(row["picks_json"])] if row else []
+    if row is None:
+        return []
+    picks = json.loads(row["picks_json"])
+    return [p["element"] for p in picks if int(p.get("position", 1)) <= 11]
 
 
 def _fixture_and_fdr(conn, team_id, team_short, gw):

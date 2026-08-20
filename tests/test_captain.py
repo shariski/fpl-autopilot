@@ -126,6 +126,24 @@ def test_get_captain_picks_integration(db):
     assert result["vice_player_id"] == result["picks"][1]["player_id"] == 102
 
 
+def test_get_captain_picks_skips_benched_players(db):
+    """FPL requires captain and vice to be in the starting XI (positions 1-11):
+    a benched player must never be proposed (observed 2026-08-20: FPL rejected
+    the live lineup with 'squad_vice_captain_invalid_position' because the
+    ranker proposed a benched vice)."""
+    _seed_squad(db)
+    benched = [101, 102, 103]  # the three highest-xP players, all moved to the bench
+    picks = [{"element": pid, "position": i + 1, "multiplier": 1,
+              "is_captain": False, "is_vice_captain": False}
+             for i, pid in enumerate(list(range(104, 116)) + benched)]
+    db.execute("UPDATE my_team SET picks_json=? WHERE gw=10", (json.dumps(picks),))
+    db.commit()
+    result = captain.get_captain_picks(db)
+    ids = [p["player_id"] for p in result["picks"]]
+    assert all(b not in ids for b in benched)
+    assert ids[0] == 104 and result["vice_player_id"] == 105
+
+
 def test_get_captain_picks_no_upcoming_gw_returns_empty(db):
     db.execute("INSERT INTO gameweeks (id, name, finished) VALUES (1,'GW1',1)")
     db.commit()
