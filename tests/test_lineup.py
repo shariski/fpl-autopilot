@@ -92,6 +92,26 @@ def test_run_lineup_optimize_bench_reorders(db, monkeypatch):
     assert pos[15] == 13 and pos[14] == 14 and pos[13] == 15
 
 
+def test_run_lineup_persists_fpl_refusal_body(db):
+    """B6: FPL's refusal body on a failed live submit must be in the logged
+    outcome — 'HTTP 400' alone is not a failure diagnosis (observed 2026-08-20:
+    two live submits rejected, only status 400 was logged)."""
+    from src.execution import executor
+    from src.execution import lineup as lineup_mod
+    from types import SimpleNamespace
+
+    sess = _FakeSession(_current(), post_status=400)
+    sess.post = lambda url, json=None, timeout=None: SimpleNamespace(
+        status_code=400, text="Invalid lineup data", json=lambda: {})
+
+    res = lineup_mod.run_lineup(db, b"k", live=True, confirm_fn=lambda d: True,
+                                session=sess, ranker=_ranker)
+    assert not res.ok and res.status == 400
+    row = db.execute("SELECT exec_outcome_json FROM activity_log "
+                     "WHERE decision_type='lineup'").fetchone()
+    assert row is not None and "Invalid lineup data" in row["exec_outcome_json"]
+
+
 def test_run_lineup_default_does_not_reorder(db, monkeypatch):
     from src.execution import lineup as lineup_mod
     from src.decisions import bench as bench_mod

@@ -40,7 +40,10 @@ def run_lineup(conn, key, *, live=False, confirm_fn=None, session=None, ranker=N
 
     result = executor.apply_lineup(session, entry, payload, dry_run=not live)
     action = f"captain={captain_id}, vice={vice_id}" if live else "dry-run"
+    outcome = {"status": result.status, "request": result.request}
+    if result.error:
+        outcome["error"] = result.error  # B6: FPL's refusal body, for diagnosis
     repository.log_activity(conn, decision_type="lineup", mode="manual", action_taken=action,
                             inputs=inputs, executed=(result.ok and not result.dry_run),
-                            exec_outcome={"status": result.status, "request": result.request})
+                            exec_outcome=outcome)
     return result

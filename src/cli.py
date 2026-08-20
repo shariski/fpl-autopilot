@@ -1175,6 +1175,8 @@ def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
             repository.touch_user_action(conn, gw)
     else:
         print(f"Submission failed (HTTP {result.status}); nothing changed.")
+        if getattr(result, "error", None):
+            print(f"  FPL says: {result.error}")
     if owns_conn:
         conn.close()
 
@@ -1224,6 +1226,8 @@ def _execute_transfer_cli(conn=None, salt_path=None, verify_path=None, live=Fals
             repository.touch_user_action(conn, gw)
     else:
         print(f"Submission failed (HTTP {result.status}); nothing changed.")
+        if getattr(result, "error", None):
+            print(f"  FPL says: {result.error}")
     if owns_conn:
         conn.close()
 

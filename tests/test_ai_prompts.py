@@ -12,6 +12,16 @@ def test_captain_template_exists_and_has_placeholders():
     assert "{payload_json}" in template
 
 
+def test_captain_template_calls_it_recommended_not_the_captain():
+    """The pane describes a RECOMMENDATION that may not be applied — the model
+    must not state 'is the captain' as fact (observed 2026-08-20: the pane said
+    'Dubravka is the captain this week' while the live team had Thiago as
+    captain because the lineup submit was rejected by FPL)."""
+    template = (PROMPTS_DIR / "captain.txt").read_text()
+    assert "recommended captain" in template.lower()
+    assert 'not "the captain"' in template
+
+
 def test_captain_examples_file_is_valid_json_list():
     examples = json.loads((PROMPTS_DIR / "captain_examples.json").read_text())
     assert isinstance(examples, list)
