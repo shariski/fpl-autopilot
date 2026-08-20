@@ -5,6 +5,7 @@ from . import config
 from .config import load_config, db_path
 from .data.db import connect, init_db
 from .analytics import fdr, xp
+from .interface import status_watch
 
 log = logging.getLogger(__name__)
 
@@ -39,8 +40,14 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
     conn = conn or connect(db_path(cfg))
     init_db(conn)
     try:
+        # injury/status watcher: squad availability BEFORE the fetch, diffed after
+        before = status_watch.squad_status_snapshot(conn)
         refresh(cfg=cfg, conn=conn, client=client, understat_client=understat_client,
                 databank_client=databank_client)
+        try:
+            status_watch.run_watch(conn, before)
+        except Exception:
+            log.exception("status_watch.failed")
         fdr.compute_and_store(conn)
         fdr.compute_and_store_v2(conn)
         xp.compute_and_store(conn)

@@ -26,6 +26,29 @@ def test_refresh_and_recompute_pipeline_order(monkeypatch):
     monkeypatch.setattr(scheduler.xp, "compute_and_store", lambda conn: calls.append("xp"))
     monkeypatch.setattr(scheduler.xp, "compute_and_store_v2", lambda conn: calls.append("xp_v2"))
     monkeypatch.setattr(scheduler, "_ping_healthcheck", lambda: calls.append("ping"))
+    monkeypatch.setattr(scheduler.status_watch, "squad_status_snapshot",
+                        lambda conn: calls.append("snapshot") or {})
+    monkeypatch.setattr(scheduler.status_watch, "run_watch",
+                        lambda conn, before: calls.append("watch"))
+    conn = connect(":memory:")
+    init_db(conn)
+    scheduler.refresh_and_recompute(cfg={"storage": {"db_path": ":memory:"}}, conn=conn)
+    assert calls == ["snapshot", "refresh", "watch", "fdr", "fdr_v2", "xp", "xp_v2", "ping"]
+    conn.close()
+
+
+def test_status_watch_failure_does_not_break_refresh(monkeypatch):
+    import src.cli as cli
+    calls = []
+    monkeypatch.setattr(cli, "refresh", lambda **kw: calls.append("refresh"))
+    monkeypatch.setattr(scheduler.status_watch, "squad_status_snapshot", lambda conn: {})
+    monkeypatch.setattr(scheduler.status_watch, "run_watch",
+                        lambda conn, before: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(scheduler.fdr, "compute_and_store", lambda conn: calls.append("fdr"))
+    monkeypatch.setattr(scheduler.fdr, "compute_and_store_v2", lambda conn: calls.append("fdr_v2"))
+    monkeypatch.setattr(scheduler.xp, "compute_and_store", lambda conn: calls.append("xp"))
+    monkeypatch.setattr(scheduler.xp, "compute_and_store_v2", lambda conn: calls.append("xp_v2"))
+    monkeypatch.setattr(scheduler, "_ping_healthcheck", lambda: calls.append("ping"))
     conn = connect(":memory:")
     init_db(conn)
     scheduler.refresh_and_recompute(cfg={"storage": {"db_path": ":memory:"}}, conn=conn)
