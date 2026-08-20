@@ -241,4 +241,5 @@ export interface SquadBuilder {
 	speculation: Speculation | null;
 	model_id: string | null;
 	generated_at: string | null;
+	data_basis?: { as_of_utc: string | null; xp_model_version: string };
 }

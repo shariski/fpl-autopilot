@@ -59,6 +59,13 @@
 		<p class="muted">Squad builder unavailable.</p>
 		<button onclick={() => location.reload()}>Retry</button>
 	{:else if builder}
+		<p class="muted refresh-line">
+			Data refreshed:
+			{builder.data_basis?.as_of_utc ? new Date(builder.data_basis.as_of_utc).toLocaleString() : '—'}
+			{builder.generated_at
+				? ` · Squad generated: ${new Date(builder.generated_at).toLocaleString()}`
+				: ''}
+		</p>
 		<p class="lead">
 			<span class="chip">{builder.source === 'ai' ? 'AI' : 'optimizer'}</span>
 			{builder.template_rationale}
@@ -148,6 +155,10 @@
 		border-radius: 0 var(--radius) var(--radius) 0;
 		margin-bottom: 1.25rem;
 		line-height: 1.5;
+	}
+	.refresh-line {
+		font-size: 0.78rem;
+		margin: 0 0 0.6rem;
 	}
 	.chip {
 		flex-shrink: 0;

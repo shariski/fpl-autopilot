@@ -73,6 +73,9 @@ def test_builder_generates_and_enriches(client, monkeypatch):
     tc, conn = client
     from src.decisions.squad_builder import build_candidate_pool
 
+    conn.execute("INSERT INTO cache_meta (resource, last_fetched_utc) "
+                 "VALUES ('bootstrap-static', '2026-08-15T10:00:00Z')")
+    conn.commit()
     pool_pid = build_candidate_pool(conn)[0]["player_id"]
     monkeypatch.setattr("src.ai.provider.build_provider", lambda cfg, conn=None: object())
     monkeypatch.setattr("src.ai.squad.runner.generate_squad",
@@ -83,6 +86,10 @@ def test_builder_generates_and_enriches(client, monkeypatch):
     assert body["source"] == "ai"
     assert body["picks"][0]["web_name"]  # enriched from the players table
     assert body["budget_used"] is not None
+    # the page shows when the underlying data and the squad were last refreshed
+    assert body["data_basis"]["as_of_utc"] == "2026-08-15T10:00:00Z"
+    assert body["data_basis"]["xp_model_version"] == "v2"
+    assert body["generated_at"]
 
 
 def test_builder_cached_hit_skips_generation(client, monkeypatch):

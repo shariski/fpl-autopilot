@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -185,7 +187,14 @@ def squad_builder(conn=Depends(get_db)):
         "risks": result.get("risks", []), "budget_used": budget_used,
         "speculation": spec,
         "model_id": config.ai_deepseek_model(),
-        "generated_at": hit["generated_at"] if hit is not None else None,
+        "generated_at": (hit["generated_at"] if hit is not None
+                         else datetime.now(timezone.utc).isoformat()),
+        # the squad-builder page shows when the underlying data was last fetched
+        "data_basis": {
+            "as_of_utc": conn.execute(
+                "SELECT MAX(last_fetched_utc) AS m FROM cache_meta").fetchone()["m"],
+            "xp_model_version": config.load_config().get("xp_model", {}).get("version", "v2"),
+        },
     }
 
 
