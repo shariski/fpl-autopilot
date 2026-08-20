@@ -44,6 +44,7 @@ _ICONS = {
     "executed": "✅ Executed",
     "info": "📊 Decision pending",
     "alert": "❌ Autopilot blocked",
+    "status": "❌ Availability alert",
 }
 
 

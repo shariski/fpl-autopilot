@@ -76,7 +76,7 @@ def run_watch(conn, before, *, notify_fn=None):
         summary = (f"{name} flagged {_STATUS_LABEL.get(nst, nst)} — "
                    f"{_fmt_cop(ncop)} chance to play (was {_fmt_cop(ocop)}).")
         try:
-            notify_fn(conn, kind="alert", decision_type="status", mode="auto",
+            notify_fn(conn, kind="status", decision_type="status", mode="auto",
                       summary=summary)
         except Exception:
             log.exception("status_watch.notify_failed")

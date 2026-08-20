@@ -100,6 +100,10 @@ def test_format_alert():
     assert telegram._format("alert", "session expired") == "❌ Autopilot blocked\nsession expired"
 
 
+def test_format_status_alert():
+    assert telegram._format("status", "Player flagged") == "❌ Availability alert\nPlayer flagged"
+
+
 def test_notify_noop_unconfigured_no_log(db, monkeypatch):
     monkeypatch.delenv(telegram.BOT_TOKEN_ENV, raising=False)
     monkeypatch.delenv(telegram.CHAT_ID_ENV, raising=False)

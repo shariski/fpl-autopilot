@@ -59,7 +59,7 @@ def test_run_watch_notifies_and_logs(monkeypatch):
     assert len(sent) == 1
     assert "P1" in sent[0]["summary"] and "injured" in sent[0]["summary"]
     assert "0%" in sent[0]["summary"] and "100%" in sent[0]["summary"]
-    assert sent[0]["kind"] == "alert" and sent[0]["decision_type"] == "status"
+    assert sent[0]["kind"] == "status" and sent[0]["decision_type"] == "status"
     row = conn.execute("SELECT action_taken, inputs_json FROM activity_log "
                        "WHERE decision_type='status'").fetchone()
     assert row is not None
