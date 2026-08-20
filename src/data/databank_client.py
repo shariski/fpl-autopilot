@@ -23,6 +23,11 @@ RETRY_DELAYS = (1, 5, 30)
 MIN_INTERVAL = 1.0  # <= 1 req/s (B6)
 TIMEOUT = 30
 
+# A real per-GW CSV lists every squad (~500-650 rows). Live files were observed
+# truncated to ~31 rows (2026-08-20); a short fetch would silently overwrite the
+# last known-good rows, so anything under this floor fails loudly (B6).
+MIN_GW_ROWS = 300
+
 # Columns the xP v2 model consumes. Asserted per fetch (B6).
 REQUIRED_COLUMNS = {
     "element", "name", "team", "position",
@@ -32,12 +37,14 @@ REQUIRED_COLUMNS = {
 
 
 class DatabankClient:
-    def __init__(self, session=None, sleep=time.sleep, monotonic=time.monotonic):
+    def __init__(self, session=None, sleep=time.sleep, monotonic=time.monotonic,
+                 min_gw_rows=MIN_GW_ROWS):
         self._session = session or requests.Session()
         self._session.headers.update({"User-Agent": USER_AGENT})
         self._sleep = sleep
         self._monotonic = monotonic
         self._last_request_at = None
+        self._min_gw_rows = min_gw_rows
 
     def _rate_limit(self):
         if self._last_request_at is not None:
@@ -101,6 +108,10 @@ class DatabankClient:
                 "was_home": str(raw["was_home"]).lower() == "true",
                 "opponent_team": int(raw["opponent_team"] or 0),
             })
+        if len(rows) < self._min_gw_rows:
+            raise ValueError(
+                f"databank {season} gw{gw} truncated: {len(rows)} rows < "
+                f"{self._min_gw_rows} minimum (refusing to overwrite good data)")
         return rows
 
     def fetch_season(self, season, max_gw=38):

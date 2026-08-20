@@ -112,12 +112,32 @@ class FakeDatabankClient:
         return self._gw.get(gw, [])
 
 
-def _db_row(element, gw):
-    return {"element": element, "name": "x", "team": "T", "position": "P",
+def _db_row(element, name, team, gw):
+    return {"element": element, "name": name, "team": team, "position": "P",
             "minutes": 90, "expected_goals": 0.5, "expected_assists": 0.2,
             "expected_goals_conceded": 1.4, "dc": 2, "saves": 1, "starts": 1,
             "bps": 20, "bonus": 0, "total_points": 5,
             "yellow_cards": 0, "red_cards": 0, "was_home": True, "value": 5.0}
+
+
+def test_databank_client_rejects_truncated_gw_csv(load):
+    """A real per-GW CSV has ~600 rows; Vaastav's live files were observed
+    truncated to ~31 rows (2026-08-20). Truncated fetches must fail loudly
+    (B6), not silently overwrite the last known-good data."""
+    from src.data.databank_client import DatabankClient
+
+    class Truncated(DatabankClient):
+        def _get(self, url):
+            return ("name,position,team,xP,minutes,expected_goals,expected_assists,"
+                    "expected_goals_conceded,bonus,bps,total_points,saves,starts,"
+                    "yellow_cards,red_cards,value,was_home,element,defensive_contribution,"
+                    "opponent_team\n"
+                    + "\n".join(
+                        f"Player{i},MID,Chelsea,5,90,0.5,0.2,1.2,1,20,5,1,1,0,0,50,true,{i},0,1"
+                        for i in range(1, 20)))
+
+    with pytest.raises(ValueError, match="truncated"):
+        Truncated().fetch_gw("2025-26", 1)
 
 
 def test_refresh_databank_populates_player_stats(load):
@@ -128,7 +148,9 @@ def test_refresh_databank_populates_player_stats(load):
     picks = EntryPicks.model_validate(load("picks.json"))
     cfg = {"fpl": {"team_id": 3122849}, "storage": {"db_path": ":memory:"},
            "databank": {"seasons": ["2025-26"]}}
-    dbc = FakeDatabankClient({1: [_db_row(e.id, 1) for e in bs.elements[:5]]})
+    team_names = {t.id: t.name for t in bs.teams}
+    dbc = FakeDatabankClient({1: [_db_row(e.id, e.web_name, team_names[e.team], 1)
+                                  for e in bs.elements[:5]]})
     cli.refresh(full=True, cfg=cfg, conn=conn, client=FakeClient(bs, fx, picks),
                 understat_client=FakeUnderstatClient(_understat_resp(load)),
                 databank_client=dbc)
@@ -189,7 +211,8 @@ def test_remap_databank_elements_rematches_historical_ids(load):
 
 
 def test_remap_databank_elements_passthrough_current_ids(load):
-    """Current-season rows (ids already matching) pass through untouched."""
+    """Current-season rows resolve by name to the same id (never via the element
+    id alone — ids are reused across seasons and cannot be trusted)."""
     from src.cli import _remap_databank_elements
 
     conn = connect(":memory:")
@@ -204,6 +227,88 @@ def test_remap_databank_elements_passthrough_current_ids(load):
            "was_home": True, "value": 15.0}
     remapped, unmatched = _remap_databank_elements(conn, [row])
     assert unmatched == 0 and remapped[0]["element"] == 5000
+
+
+def test_remap_databank_elements_name_beats_reused_element_id(load):
+    """FPL reuses element ids across seasons: a 25-26 CSV row's element usually
+    points at a DIFFERENT player in the current roster. Name matching must win
+    (regression: 'Cole Palmer' with 25-26 element 235 must land on today's CHE
+    Palmer, not today's id 235 = Aznou)."""
+    from src.cli import _remap_databank_elements
+
+    conn = connect(":memory:")
+    init_db(conn)
+    teams = [(1, "Man City", "MCI"), (2, "Chelsea", "CHE"), (3, "Man Utd", "MUN"),
+             (4, "Newcastle", "NEW"), (5, "Everton", "EVE"), (6, "Liverpool", "LIV"),
+             (7, "Tottenham", "TOT")]
+    conn.executemany("INSERT INTO teams (id, name, short_name) VALUES (?,?,?)", teams)
+    players = [
+        (154, "Cole Palmer", "Palmer", 2, "MID", 9.5),
+        (235, "Noor Aznou", "Aznou", 5, "DEF", 4.0),
+        (430, "Mason Mount", "Mount", 3, "MID", 5.5),
+        (449, "Lewis Hall", "Hall", 4, "DEF", 5.0),
+        (499, "Pedro Porro", "Porro", 7, "DEF", 5.0),
+        (5000, "Erling Haaland", "Haaland", 1, "FWD", 15.0),
+        (6000, "Bruno Fernandes", "B.Fernandes", 3, "MID", 12.0),
+        (6001, "Alexander Isak", "Isak", 6, "FWD", 9.0),
+    ]
+    conn.executemany(
+        "INSERT INTO players (id, name, web_name, team_id, position, price, status, "
+        "ownership, form) VALUES (?,?,?,?,?,?,'a',0.0,0.0)", players)
+    conn.commit()
+
+    def row(element, name, team):
+        return {"element": element, "name": name, "team": team, "position": "MID",
+                "minutes": 90, "expected_goals": 0.5, "expected_assists": 0.3,
+                "expected_goals_conceded": 0.2, "dc": 0, "saves": 0, "starts": 1,
+                "bps": 30, "bonus": 3, "total_points": 12, "yellow_cards": 0,
+                "red_cards": 0, "was_home": True, "value": 10.0}
+
+    rows = [
+        row(235, "Cole Palmer", "Chelsea"),
+        row(430, "Erling Haaland", "Man City"),
+        row(449, "Bruno Borges Fernandes", "Man Utd"),
+        row(499, "Alexander Isak", "Newcastle"),  # moved clubs; 25-26 id now Porro
+    ]
+    remapped, unmatched = _remap_databank_elements(conn, rows)
+    assert unmatched == 0
+    assert {r["element"] for r in remapped} == {154, 5000, 6000, 6001}
+
+
+def test_remap_databank_elements_element_fallback_requires_corroboration(load):
+    """Rows the name matcher cannot disambiguate may use the element id ONLY when
+    the id-holder's web_name + team corroborate the CSV name; a recycled id whose
+    holder does not match is dropped, never mis-assigned."""
+    from src.cli import _remap_databank_elements
+
+    conn = connect(":memory:")
+    init_db(conn)
+    conn.executemany("INSERT INTO teams (id, name, short_name) VALUES (?,?,?)",
+                     [(2, "Chelsea", "CHE"), (7, "Ipswich", "IPS"), (8, "Everton", "EVE")])
+    players = [
+        (154, "Cole Palmer", "Palmer", 2, "MID", 9.5),
+        (301, "Aidan Palmer", "Palmer", 7, "GKP", 4.0),
+        (237, "Ndiaye", "Ndiaye", 8, "MID", 6.0),
+    ]
+    conn.executemany(
+        "INSERT INTO players (id, name, web_name, team_id, position, price, status, "
+        "ownership, form) VALUES (?,?,?,?,?,?,'a',0.0,0.0)", players)
+    conn.commit()
+
+    def row(element, name, team):
+        return {"element": element, "name": name, "team": team, "position": "MID",
+                "minutes": 90, "expected_goals": 0.5, "expected_assists": 0.3,
+                "expected_goals_conceded": 0.2, "dc": 0, "saves": 0, "starts": 1,
+                "bps": 30, "bonus": 3, "total_points": 12, "yellow_cards": 0,
+                "red_cards": 0, "was_home": True, "value": 10.0}
+
+    rows = [
+        row(301, "Palmer", "Ipswich"),       # surname-only: ambiguous -> corroborated id wins
+        row(237, "Nobody Knows", "Everton"),  # no name match, holder doesn't corroborate
+    ]
+    remapped, unmatched = _remap_databank_elements(conn, rows)
+    assert [r["element"] for r in remapped] == [301]
+    assert unmatched == 1
 
 
 def test_refresh_populates_understat(load):

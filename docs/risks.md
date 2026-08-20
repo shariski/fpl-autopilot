@@ -148,6 +148,47 @@ Currently designed for a single season. Season rollover (squad reset, prices res
 
 ---
 
+## R8 — Vaastav databank: element ids are reused across seasons ✅ FIXED 2026-08-20
+
+FPL reissues element ids every season / on every roster re-sync. A 25-26 databank
+CSV's `element` column is usually a DIFFERENT player today. `_remap_databank_elements`
+trusted `element in current roster` as a passthrough, so historical rows were
+mis-attributed by id (e.g. 25-26 "Cole Palmer" element 235 landed on today's id 235
+= Aznou; Saka→Madueke, Haaland→Mount, Bruno→Hall).
+
+**Impact observed (GW1 26/27):** ~194 of 587 players — nearly every premium — got
+zero/minimal projected minutes, xP v2 rated them at ~0, and the AI squad builder
+bought "all cheap players" (84.5m of 100m, zero premiums). The xP surface, FDR v2
+team ratings, transfer engine, captain ranker and chip DGW-xP were all fed poisoned
+rates.
+
+**Fix (2026-08-20):** rows are now matched by NAME (team-agnostic full-name tokens,
+so club-movers match); the element id is accepted only when the current holder's
+web_name + team corroborate the CSV name; otherwise the row is dropped, never
+mis-assigned (B6). Re-ingested 25-26 from the local full CSVs via
+`docs/research/calibration/reingest_databank.py`.
+
+**Residual risk:** new signings / players not in last season's PL databank have no
+rates and no xP v2 (e.g. foreign-league imports) — they are simply absent from the
+pool, which can shrink the candidate pool. Monitor pool size each refresh.
+
+---
+
+## R9 — Vaastav GitHub CSVs are revision-unstable (truncation observed 2026-08-20)
+
+The live `vaastav/Fantasy-Premier-League` master CSVs currently contain ~31 rows/GW
+for 2025-26 (truncated vs the full ~692-row sets fetched 2026-08-16). The 6h
+databank cooldown means the DB keeps its last full fetch, but a re-fetch today
+would silently overwrite 31 rows/GW with the truncated content — rates would be
+computed from a near-empty season.
+
+**Mitigation:** `docs/research/calibration/reingest_databank.py` reads the last
+known-good CSVs from disk instead of GitHub; treat live-GitHub databank fetches as
+suspect until the upstream files recover. Never delete the local `data/databank/`
+snapshot (gitignored — it is the only full copy).
+
+---
+
 ## Q1 — User risk tolerance for auto-execution ✅ RESOLVED
 
 See R3. The user has confirmed they accept the risk of fully auto-executing transfers via session cookie. Phase 2.2 implements the full Action Executor as originally planned.

@@ -87,6 +87,36 @@ def test_optimize_squad_budget_aware_with_premiums():
     assert validate_squad(picks, pool) == []
 
 
+def test_optimize_squad_reserve_sums_n_cheapest_per_position():
+    """The reserve for the remaining slots must be the SUM of the N cheapest
+    unused players per position, not cheapest×N — cheapest×N under-reserves
+    when cheap options are spread thin, letting the greedy overspend and strand
+    a final slot (observed on the re-ingested 25-26 databank: 95m spent, only
+    5.5m+ FWDs left, FWD3 unfillable)."""
+    from src.decisions.squad_validator import optimize_squad
+
+    pool = [{"player_id": i, "web_name": f"P{i}", "team_short": f"C{i}",
+             "position": pos, "price": price, "status": "a", "xp_next": 5.0,
+             "xp_6gw": 30.0 - i, "value": (30.0 - i) / price}
+            for i, (pos, price) in enumerate(
+                [("GKP", 5.5), ("GKP", 5.0), ("GKP", 5.0)] +
+                [("DEF", 4.3), ("DEF", 6.0), ("DEF", 6.5), ("DEF", 6.0),
+                 ("DEF", 8.0), ("DEF", 5.0), ("DEF", 5.0)] +
+                [("MID", 12.0), ("MID", 6.5), ("MID", 8.0), ("MID", 8.0),
+                 ("MID", 7.0), ("MID", 6.0), ("MID", 6.0)] +
+                [("FWD", 15.5), ("FWD", 8.0), ("FWD", 8.0), ("FWD", 7.8),
+                 ("FWD", 7.5), ("FWD", 9.1), ("FWD", 6.5), ("FWD", 6.0),
+                 ("FWD", 6.0), ("FWD", 5.5), ("FWD", 5.5), ("FWD", 5.5),
+                 ("FWD", 4.2)])]
+    picks = optimize_squad(pool)
+    assert len(picks) == 15
+    assert validate_squad(picks, pool) == []
+    total = sum(next(p["price"] for p in pool if p["player_id"] == pk["player_id"])
+                for pk in picks)
+    assert total <= 100.0 + 1e-9
+    assert total > 98.0  # the fix actually spends the budget instead of stranding
+
+
 def test_normalize_squad_fixes_llm_slop():
     """LLM output with invented slots, position mismatch, surplus and over-budget
     picks is normalized into a legal squad."""

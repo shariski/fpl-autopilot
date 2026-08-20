@@ -287,34 +287,55 @@ def _clear_stale_season_rows(conn):
 
 
 def _remap_databank_elements(conn, rows):
-    """Re-point historical databank rows at current player ids by name+team.
+    """Re-point databank rows at current player ids by NAME — never by element id.
 
-    FPL element ids change every season (same problem as understat rematch). Rows whose
-    element already matches a current player pass through; the rest are matched by name
-    (team-scoped) and unmatchable rows are dropped — never mis-assigned (B6).
+    FPL reuses element ids across seasons/roster versions: a 25-26 CSV "element"
+    usually belongs to a DIFFERENT player today (regression: 'Cole Palmer' 25-26
+    element 235 landed on today's id 235 = Aznou). Every row is matched by name
+    (team-agnostic, so club-movers still match); the element id is accepted only
+    when its current holder's web_name and team corroborate the CSV name. Rows
+    that match neither are dropped — never mis-assigned (B6).
     """
     from .data import name_resolver as nr
-    import types
-
-    known = {r["id"] for r in conn.execute("SELECT id FROM players")}
-    if all(r["element"] in known for r in rows):
+    if not rows:
         return rows, 0
-    fpl_players = [dict(r) for r in conn.execute("SELECT id, name, web_name, team_id FROM players")]
-    fpl_teams = [dict(r) for r in conn.execute("SELECT id, name, short_name FROM teams")]
+    fpl_players = [dict(r) for r in conn.execute(
+        "SELECT id, name, web_name, team_id FROM players")]
+    fpl_teams = [dict(r) for r in conn.execute("SELECT id, name FROM teams")]
     if not fpl_players:
         return rows, len(rows)
-    ups = [types.SimpleNamespace(id=r["element"], player_name=r["name"],
-                                 team_title=r["team"]) for r in rows]
-    res = nr.resolve_players(fpl_players, fpl_teams, ups, _load_name_overrides())
-    out = []
+    overrides = _load_name_overrides()
+    known = {p["id"] for p in fpl_players}
+    team_by_id = {t["id"]: t["name"] for t in fpl_teams}
+    by_name = {p["id"]: (set(nr._norm(p["name"] or "").split()),
+                         set(nr._norm(p["web_name"] or "").split())) for p in fpl_players}
+
+    out, dropped = [], 0
     for r in rows:
-        pid = r["element"] if r["element"] in known else res.matched.get(r["element"])
+        if r["element"] in overrides:
+            row = dict(r)
+            row["element"] = overrides[r["element"]]
+            out.append(row)
+            continue
+        u = set(nr._norm(r["name"]).split())
+        hits = [pid for pid, (full, _web) in by_name.items()
+                if full and (u <= full or full <= u)]
+        pid = None
+        if len(hits) == 1:
+            pid = hits[0]
+        elif r["element"] in known:
+            holder = next(p for p in fpl_players if p["id"] == r["element"])
+            _full, web = by_name[r["element"]]
+            if (web and web <= u
+                    and nr._norm(team_by_id[holder["team_id"]]) == nr._norm(r["team"])):
+                pid = r["element"]
         if pid is None:
+            dropped += 1
             continue
         row = dict(r)
         row["element"] = pid
         out.append(row)
-    return out, len(res.unmatched)
+    return out, dropped
 
 
 def _refresh_databank_season(conn, databank_client, season, full):

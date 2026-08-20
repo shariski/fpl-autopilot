@@ -40,13 +40,14 @@ class FakeSession:
         return item
 
 
-def _client(items, sleeps=None, times=None):
+def _client(items, sleeps=None, times=None, min_gw_rows=0):
     sleeps = sleeps if sleeps is not None else []
     times = times if times is not None else iter(range(0, 10_000_000, 100))
     return DatabankClient(
         session=FakeSession(items),
         sleep=sleeps.append,
         monotonic=lambda: next(times),
+        min_gw_rows=min_gw_rows,
     )
 
 
