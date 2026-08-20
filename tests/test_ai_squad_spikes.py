@@ -101,6 +101,31 @@ def test_spikes_rejects_stat_only_restatement(db, monkeypatch):
     assert any("restatement" in p for p in problems)
 
 
+def test_spikes_gw_label_not_treated_as_cited_number(db, monkeypatch):
+    """'GW2' is a fixture label, not a stat — the digit inside it must not trip
+    the grounding check (observed 2026-08-20 with real evidence: a reason saying
+    'at home in GW2' was rejected for citing ['2'])."""
+    _seed(db)
+    monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
+    monkeypatch.setattr(spikes_mod, "build_squad_digest",
+                        lambda c, pool=None, next_gw=None: _digest())
+    payload = json.loads(_signals_json())
+    payload["spikes"][0]["reason"] = "100000 transfers in and a home game in GW2"
+    assert spikes_mod.validate_signals(payload, _pool(), _digest()) == []
+
+
+def test_spikes_prompt_demands_verbatim_numbers(db, monkeypatch):
+    """The prompt must tell the model to transcribe digest numbers verbatim —
+    no rounding (observed: the model wrote 0.49 for a digest value of 0.494)."""
+    _seed(db)
+    monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
+    monkeypatch.setattr(spikes_mod, "build_squad_digest",
+                        lambda c, pool=None, next_gw=None: _digest())
+    prompt = build_spikes_prompt(_digest())
+    assert "EXACTLY as shown" in prompt
+    assert "no rounding" in prompt
+
+
 def test_spikes_returns_none_when_exhausted(db, monkeypatch):
     _seed(db)
     monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
@@ -113,6 +138,13 @@ def test_spikes_returns_none_when_exhausted(db, monkeypatch):
     row = db.execute("SELECT * FROM activity_log WHERE decision_type='squad'"
                      " ORDER BY rowid DESC LIMIT 1").fetchone()
     assert row is not None and "spikes_failed" in row["inputs_json"]
+    # the rejected attempts are persisted for auditability (B10): raw response + gate problems
+    data = json.loads(row["inputs_json"])
+    assert data.get("reason") == "gate"
+    attempts = data.get("attempts")
+    assert attempts and len(attempts) == 3
+    assert "9999" in attempts[0]["response"]
+    assert attempts[0]["problems"]
 
 
 def test_spikes_provider_failure_returns_none(db, monkeypatch):

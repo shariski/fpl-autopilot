@@ -6,6 +6,7 @@ Failures degrade gracefully to no signals (the squad is still deterministic).
 """
 import json
 import logging
+import re
 from pathlib import Path
 
 from src.ai import cache, grounding
@@ -18,6 +19,10 @@ logger = logging.getLogger(__name__)
 PANE_TYPE = "squad_spikes"
 MAX_ATTEMPTS = 3
 LEVELS = {"high", "medium"}
+# "GW2" is a fixture label, not a stat — its digit would otherwise trip the
+# grounding check as an ungrounded number (observed 2026-08-20 with real
+# evidence: a reason saying "at home in GW2" was rejected for citing ['2']).
+_GW_RE = re.compile(r"\bgw\s?\d+\b", re.IGNORECASE)
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
@@ -78,7 +83,7 @@ def validate_signals(payload, pool, digest):
             if not reason:
                 problems.append(f"{kind}[{i}]: reason missing")
                 continue
-            reason_nums = grounding.numbers_in(reason)
+            reason_nums = grounding.numbers_in(_GW_RE.sub("gameweek", reason))
             edge_nums = reason_nums & grounding.numbers_in(edge_text.get(pid, ""))
             stat_nums = reason_nums & grounding.numbers_in(stat_text.get(pid, ""))
             ungrounded = reason_nums - edge_nums - stat_nums
@@ -113,18 +118,21 @@ def generate_spike_signals(conn, *, provider, model_id, max_tokens: int = 2000,
         return extract_json_object(hit["prose"])
     prompt = build_spikes_prompt(digest)
     problems_seen = []
+    attempts_log = []
     for attempt in range(MAX_ATTEMPTS):
         try:
             prose = provider.generate(prompt, max_tokens=max_tokens, temperature=temperature)
         except Exception:
             logger.exception("ai.squad.spikes.provider_error", extra={"gw": gw})
-            _log_failed(conn, gw, model_id, "provider")
+            _log_failed(conn, gw, model_id, "provider", attempts=attempts_log)
             return None
         payload = extract_json_object(prose) if prose else None
         if payload is None:
-            problems_seen.append("not valid JSON")
+            problems_seen = ["not valid JSON"]
         else:
             problems_seen = validate_signals(payload, pool, digest)
+        # persist every attempt for auditability (B10): raw response + gate verdict
+        attempts_log.append({"response": (prose or "")[:1500], "problems": problems_seen[:5]})
         if not problems_seen:
             cache.put(conn, gw, PANE_TYPE, rec_hash, json.dumps(payload, sort_keys=True),
                       model_id)
@@ -134,13 +142,15 @@ def generate_spike_signals(conn, *, provider, model_id, max_tokens: int = 2000,
         if attempt < MAX_ATTEMPTS - 1:
             prompt = f"{prompt}\n\nPrevious read was rejected: " \
                      f"{'; '.join(problems_seen[:5])}. Output ONLY the JSON."
-    _log_failed(conn, gw, model_id, "gate")
+    _log_failed(conn, gw, model_id, "gate", attempts=attempts_log)
     return None
 
 
-def _log_failed(conn, gw, model_id, reason):
+def _log_failed(conn, gw, model_id, reason, attempts=None):
     from src.data import repository
+    payload = {"gw": gw, "model_id": model_id, "result": "spikes_failed", "reason": reason}
+    if attempts:
+        payload["attempts"] = attempts
     repository.log_activity(conn, decision_type="squad", mode="ai",
                             action_taken="spikes failed", executed=False,
-                            inputs={"gw": gw, "model_id": model_id, "result": "spikes_failed",
-                                    "reason": reason})
+                            inputs=payload)

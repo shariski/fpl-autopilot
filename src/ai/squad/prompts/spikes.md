@@ -34,9 +34,13 @@ Rules:
    hundreds of thousands, a fixture run that suits their profile, a form spike
    the projection has not caught up to.
 4. level: "high" = confident call; "medium" = leans that way.
-5. Every number in a reason must come from THAT player's digest entry.
+5. Every number in a reason must come from THAT player's digest entry,
+   transcribed EXACTLY as shown — same decimals, no rounding, no conversions:
+   0.494 stays 0.494, never "0.49" or "49%".
 6. reasons are 1 sentence, specific, no hype words.
 7. No player may appear twice (spike and drop at once is a contradiction).
+8. Write "gameweek 2", never "GW2": labels are not stats, and the digit is
+   not in the digest.
 
 ## user
 
