@@ -1153,7 +1153,8 @@ def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
     init_db(conn)
     try:
         result = lineup_mod.run_lineup(conn, key, live=live, confirm_fn=confirm_fn,
-                                       session=session, ranker=ranker)
+                                       session=session, ranker=ranker,
+                                       optimize_bench=True)
     except (executor_mod.ExecutorError, SessionError) as exc:
         print(f"Could not execute: {exc}")
         if owns_conn:
@@ -1403,7 +1404,7 @@ def main(argv=None):
     p_auth_status = sub.add_parser("auth-status", help="show stored FPL session state (no secrets)")
     p_auth_status.add_argument("--json", action="store_true",
                                help="output the JSON envelope (agent contract)")
-    p_exec = sub.add_parser("execute-lineup", help="set captain & vice from the ranker (dry-run unless --live)")
+    p_exec = sub.add_parser("execute-lineup", help="set captain, vice & bench order from the rankers (dry-run unless --live)")
     p_exec.add_argument("--live", action="store_true", help="actually submit to FPL (requires typed confirmation)")
     p_xfer = sub.add_parser("execute-transfer", help="make one free transfer from the suggestions (dry-run unless --live)")
     p_xfer.add_argument("--live", action="store_true", help="actually submit to FPL (requires typed confirmation)")

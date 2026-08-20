@@ -553,6 +553,28 @@ def test_dry_run_never_needs_tty(monkeypatch, capsys):
     assert "Master password not set" in capsys.readouterr().out
 
 
+def test_execute_lineup_applies_bench_order(monkeypatch, db):
+    """execute-lineup must also apply the ranker's bench order (positions
+    13-15) by default — FPL's auto-subs follow bench order, so leaving it
+    untouched means a sub-optimal sub when a starter misses. The CLI only set
+    captain/vice; deadguard was the only caller passing optimize_bench."""
+    import src.auth.master as master
+    from src.execution import lineup as lineup_mod
+
+    captured = {}
+
+    def fake_run(conn, key, **kw):
+        captured.update(kw)
+        return SimpleNamespace(ok=True, dry_run=True, status=None,
+                               request={"method": "POST", "url": "x", "body": {}})
+
+    monkeypatch.setattr(master, "is_initialized", lambda **k: True)
+    monkeypatch.setattr(master, "get_master_key", lambda **k: b"k")
+    monkeypatch.setattr(lineup_mod, "run_lineup", fake_run)
+    cli._execute_lineup_cli(conn=db, salt_path="s", verify_path="v")
+    assert captured.get("optimize_bench") is True
+
+
 def test_insight_json_provider_unavailable(load, db, capsys):
     """Provider start failure must produce an E_RUNTIME envelope, not a traceback."""
     import os

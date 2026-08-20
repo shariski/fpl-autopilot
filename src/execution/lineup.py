@@ -26,6 +26,8 @@ def run_lineup(conn, key, *, live=False, confirm_fn=None, session=None, ranker=N
     diff = _format_diff(current, captain_id, vice_id)
     inputs = {"captain": caps["picks"][0], "vice_player_id": vice_id,
               "alternatives": caps["picks"][1:]}
+    if bench_order is not None:
+        inputs["bench_order"] = bench_order  # B10: the applied bench order is part of the action
     url = executor.MY_TEAM_URL.format(entry=entry)
 
     if live and (confirm_fn is None or not confirm_fn(diff)):
