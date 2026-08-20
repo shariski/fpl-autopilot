@@ -137,6 +137,23 @@ def test_recommend_chip_priority_and_chips_used():
     assert chips.recommend_chip(conn)["recommendation"] is None
 
 
+def test_recommend_chip_handles_authed_chip_dicts():
+    """The authed my-team snapshot stores chips as dicts (FPL's payload with a
+    'name' key), not strings — the set-comprehension must not hash dicts
+    (observed 2026-08-20: the hourly AI reasoning job crashed with
+    TypeError: unhashable type: 'dict' at chips.py:28, every hour)."""
+    conn = _db()
+    picks = [(i, i) for i in range(1, 16)]
+    for i in range(1, 16):
+        _player(conn, i, i)
+    _seed_squad(conn, picks, chips_used=[
+        {"name": "wildcard", "status_for_entry": "available"},
+        {"name": "bboost", "status_for_entry": "available"}])
+    conn.commit()
+    chips_used = chips._squad(conn)[2]
+    assert chips_used == {"wildcard", "bench_boost"}
+
+
 def test_recommend_chip_none_when_nothing_triggers():
     conn = _db()
     picks = [(i, i) for i in range(1, 16)]

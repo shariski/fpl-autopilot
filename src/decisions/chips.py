@@ -13,6 +13,21 @@ WILDCARD_SWING_DELTA = 2
 FPL_CHIP = {"wildcard": "wildcard", "freehit": "free_hit", "bboost": "bench_boost", "3xc": "triple_captain"}
 
 
+def _chips_used_set(raw):
+    """Normalize the stored chips payload to our chip names.
+
+    FPL's authed my-team stores chips as dicts [{"name": "wildcard", ...}];
+    older snapshots store plain strings. Both must work — hashing the raw
+    entries directly crashed with TypeError: unhashable type: 'dict'
+    (observed 2026-08-20: hourly AI reasoning job died at chips.py:28).
+    """
+    out = set()
+    for c in raw:
+        name = (c.get("name") if isinstance(c, dict) else c) or ""
+        out.add(FPL_CHIP.get(name, name))
+    return out
+
+
 def _next_gw(conn):
     r = conn.execute("SELECT MIN(id) AS gw FROM gameweeks WHERE finished=0").fetchone()
     return r["gw"] if r and r["gw"] is not None else None
@@ -25,7 +40,7 @@ def _squad(conn):
         return [], [], set()
     picks = json.loads(snap["picks_json"])
     chips_used_raw = json.loads(snap["chips_used_json"]) if snap["chips_used_json"] else []
-    chips_used = {FPL_CHIP.get(c, c) for c in chips_used_raw}
+    chips_used = _chips_used_set(chips_used_raw)
     rows = []
     for pk in picks:
         p = conn.execute(
