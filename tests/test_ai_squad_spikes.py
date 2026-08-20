@@ -102,15 +102,18 @@ def test_spikes_rejects_stat_only_restatement(db, monkeypatch):
 
 
 def test_spikes_gw_label_not_treated_as_cited_number(db, monkeypatch):
-    """'GW2' is a fixture label, not a stat — the digit inside it must not trip
-    the grounding check (observed 2026-08-20 with real evidence: a reason saying
-    'at home in GW2' was rejected for citing ['2'])."""
+    """'GW2' / 'gameweek 2' are fixture labels, not stats — the digit inside
+    them must not trip the grounding check (observed 2026-08-20 with real
+    evidence: 'at home in GW2' and, after the prompt fix, 'in gameweek 2' were
+    both rejected for citing ['2'])."""
     _seed(db)
     monkeypatch.setattr(spikes_mod, "build_candidate_pool", lambda c, next_gw=None: _pool())
     monkeypatch.setattr(spikes_mod, "build_squad_digest",
                         lambda c, pool=None, next_gw=None: _digest())
     payload = json.loads(_signals_json())
-    payload["spikes"][0]["reason"] = "100000 transfers in and a home game in GW2"
+    # digits 2 and 5 appear nowhere in the player's digest entry (field-name
+    # digits like "fixtures_3" can accidentally ground a "3" — avoid that here)
+    payload["spikes"][0]["reason"] = "100000 transfers in, a home game in GW2 and one in gameweek 5"
     assert spikes_mod.validate_signals(payload, _pool(), _digest()) == []
 
 

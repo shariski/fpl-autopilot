@@ -19,10 +19,11 @@ logger = logging.getLogger(__name__)
 PANE_TYPE = "squad_spikes"
 MAX_ATTEMPTS = 3
 LEVELS = {"high", "medium"}
-# "GW2" is a fixture label, not a stat — its digit would otherwise trip the
-# grounding check as an ungrounded number (observed 2026-08-20 with real
-# evidence: a reason saying "at home in GW2" was rejected for citing ['2']).
-_GW_RE = re.compile(r"\bgw\s?\d+\b", re.IGNORECASE)
+# "GW2" / "gameweek 2" are fixture labels, not stats — their digits would
+# otherwise trip the grounding check as ungrounded numbers (observed 2026-08-20
+# with real evidence: "at home in GW2", and after the prompt fix "in gameweek
+# 2", were both rejected for citing ['2']).
+_GW_RE = re.compile(r"\b(?:gw|game\s?week)\s?\d+\b", re.IGNORECASE)
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
