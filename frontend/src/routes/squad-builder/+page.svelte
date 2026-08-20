@@ -65,6 +65,7 @@
 			{builder.generated_at
 				? ` · Squad generated: ${new Date(builder.generated_at).toLocaleString()}`
 				: ''}
+			{builder.status ? ` · Status: ${builder.status}` : ''}
 		</p>
 		<p class="lead">
 			<span class="chip">{builder.source === 'ai' ? 'AI' : 'optimizer'}</span>
