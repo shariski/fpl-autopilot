@@ -64,10 +64,24 @@ describe('Header controls', () => {
 	});
 
 	it('mode select calls onmode with the chosen mode', async () => {
-		const onmode = vi.fn();
+		const onmode = vi.fn(async () => true);
 		render(Header, { props: { status: base, onmode } });
 		await userEvent.selectOptions(screen.getByRole('combobox'), 'auto');
 		expect(onmode).toHaveBeenCalledWith('auto');
+	});
+
+	it('shows feedback after a successful mode switch', async () => {
+		const onmode = vi.fn(async () => true);
+		render(Header, { props: { status: base, onmode } });
+		await userEvent.selectOptions(screen.getByRole('combobox'), 'auto');
+		expect(await screen.findByText(/Mode set to auto/)).toBeInTheDocument();
+	});
+
+	it('shows failure feedback when the switch fails', async () => {
+		const onmode = vi.fn(async () => false);
+		render(Header, { props: { status: base, onmode } });
+		await userEvent.selectOptions(screen.getByRole('combobox'), 'auto');
+		expect(await screen.findByText(/Mode switch failed/)).toBeInTheDocument();
 	});
 
 	it('mode select is disabled while frozen', () => {

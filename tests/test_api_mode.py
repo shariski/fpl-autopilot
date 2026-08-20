@@ -47,6 +47,26 @@ def test_api_mode_set_and_get(client):
     assert tc.get("/api/mode").json()["mode"] == "hybrid"
 
 
+def test_api_status_reflects_mode_override(client):
+    """The dashboard reads /api/status — it must show the effective (overridden)
+    mode, not the baked config value (regression: it read the config dict
+    directly, so a runtime mode switch never appeared after refresh)."""
+    tc, _ = client
+    tc.post("/api/mode", json={"mode": "auto"})
+    status = tc.get("/api/status").json()
+    assert status["mode"] == "auto"
+
+
+def test_api_mode_config_value_is_the_file_value(client):
+    """config_value must be the baked config.yaml value, not the override
+    (regression: get_mode computed it through config.mode(), which already
+    applies the override — circular)."""
+    tc, _ = client
+    tc.post("/api/mode", json={"mode": "hybrid"})
+    body = tc.get("/api/mode").json()
+    assert body["config_value"] == "manual" and body["mode"] == "hybrid"
+
+
 def test_api_mode_rejects_invalid(client):
     tc, _ = client
     r = tc.post("/api/mode", json={"mode": "banana"})

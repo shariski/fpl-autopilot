@@ -28,12 +28,14 @@
 		}
 	}
 
-	async function handleMode(mode: string) {
+	async function handleMode(mode: string): Promise<boolean> {
 		try {
 			await setMode(mode);
 			status = await fetchStatus();
+			return true;
 		} catch (e) {
 			console.warn('[dashboard] mode switch failed', mode, e);
+			return false;
 		}
 	}
 

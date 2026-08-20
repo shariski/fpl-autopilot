@@ -11,8 +11,10 @@ def _next_gw(conn):
 
 def get_mode(conn):
     """Effective operating mode: a runtime override (system_state 'mode', set via
-    the CLI/dashboard) wins over the image-baked config.yaml."""
-    file_mode = config.mode()
+    the CLI/dashboard) wins over the image-baked config.yaml. config_value is
+    the baked file value (NOT config.mode(), which already applies the override)."""
+    cfg = load_config()
+    file_mode = cfg.get("mode", {}).get("current", "manual")
     override = None
     row = conn.execute("SELECT value FROM system_state WHERE key='mode'").fetchone()
     if row is not None and row["value"]:
@@ -65,7 +67,11 @@ def get_status(conn):
     nxt = conn.execute("SELECT id, deadline_utc, state FROM gameweeks WHERE is_next=1").fetchone()
     fresh = conn.execute("SELECT MAX(last_fetched_utc) AS m FROM cache_meta").fetchone()
     cfg = load_config()
-    mode = cfg.get("mode", {}).get("current", "manual")
+    # v0.19: the effective mode — a runtime override wins over the baked config
+    # (regression: this read the config dict directly, so a mode switch made via
+    # the CLI/dashboard never showed up in /api/status). Read through the same
+    # conn so the override written by this API process is visible.
+    mode = get_mode(conn)["mode"]
     deadline_src = nxt or cur
     frozen_status = override.status(conn)
     now = datetime.now(timezone.utc)

@@ -4,8 +4,19 @@
 	let { status, onaction, onmode }: {
 		status: Status;
 		onaction?: (endpoint: string) => void;
-		onmode?: (mode: string) => void;
+		onmode?: (mode: string) => Promise<boolean>;
 	} = $props();
+	let feedback = $state<string | null>(null);
+	let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
+
+	async function changeMode(m: string) {
+		if (m === status.mode) return;
+		feedback = null;
+		const ok = await onmode?.(m);
+		feedback = ok ? `Mode set to ${m}` : 'Mode switch failed';
+		clearTimeout(feedbackTimer);
+		feedbackTimer = setTimeout(() => (feedback = null), 4000);
+	}
 </script>
 
 <header class="hdr">
@@ -16,13 +27,16 @@
 			class="mode-select"
 			value={status.frozen ? 'frozen' : status.mode}
 			disabled={status.frozen}
-			onchange={(e) => onmode?.((e.target as HTMLSelectElement).value)}
+			onchange={(e) => changeMode((e.target as HTMLSelectElement).value)}
 			title={status.frozen ? 'Unfreeze before changing mode' : 'Operating mode (manual | hybrid | auto)'}
 		>
 			<option value="manual">manual</option>
 			<option value="hybrid">hybrid</option>
 			<option value="auto">auto</option>
 		</select>
+		{#if feedback}
+			<span class="feedback" class:bad={feedback.includes('failed')}>{feedback}</span>
+		{/if}
 		<button class="toggle" onclick={() => onaction?.(status.frozen ? '/api/unfreeze' : '/api/freeze')}>
 			{status.frozen ? 'Unfreeze' : 'Freeze'}
 		</button>
@@ -55,6 +69,13 @@
 		color: var(--text);
 		cursor: pointer;
 		text-transform: capitalize;
+	}
+	.feedback {
+		font-size: 0.75rem;
+		color: var(--accent);
+	}
+	.feedback.bad {
+		color: var(--danger);
 	}
 	.toggle { font-size: 0.75rem; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--text-dim);
 		background: var(--surface); color: var(--text); cursor: pointer; }
