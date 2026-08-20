@@ -103,7 +103,7 @@ def test_serve_no_scheduler(monkeypatch):
 # auto_execute_job tests
 # ---------------------------------------------------------------------------
 
-_CFG = {"unattended": {"enabled": True, "hours_before_deadline": 2}}
+_CFG = {"mode": {"current": "auto"}, "unattended": {"hours_before_deadline": 2}}
 _NOW = datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc)
 
 
@@ -152,11 +152,11 @@ def test_auto_execute_manual_notify_not_marked(db):
     assert db.execute("SELECT last_system_action_at FROM gameweeks WHERE id=1").fetchone()["last_system_action_at"] is None
 
 
-def test_auto_execute_disabled_skips(db):
+def test_auto_execute_manual_mode_skips(db):
     _seed_gw(db, _NOW + timedelta(hours=1))
     called = []
     scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=lambda c, k: called.append(1),
-                               cfg={"unattended": {"enabled": False}})
+                               cfg={"mode": {"current": "manual"}})
     assert not called
 
 
@@ -295,7 +295,7 @@ def test_auto_execute_uses_interactive_notify_when_enabled(db, monkeypatch):
              "summary": "Captain pending: X", "executed": False,
              "identity": {"captain_id": 5, "vice_id": 6}}]
     scheduler.auto_execute_job(b"key", conn=db, now=_NOW, route_fn=lambda c, k: plan, cfg=_CFG)
-    assert got["n"] == 1 and got["gw"] == 1 and got["mode"] == "manual"
+    assert got["n"] == 1 and got["gw"] == 1 and got["mode"] == "auto"
 
 
 def test_maybe_load_key_loads_when_deadguard(monkeypatch):

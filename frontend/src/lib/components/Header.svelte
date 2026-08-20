@@ -1,14 +1,28 @@
 <script lang="ts">
 	import type { Status } from '$lib/types';
 	import Countdown from './Countdown.svelte';
-	let { status, onaction }: { status: Status; onaction?: (endpoint: string) => void } = $props();
+	let { status, onaction, onmode }: {
+		status: Status;
+		onaction?: (endpoint: string) => void;
+		onmode?: (mode: string) => void;
+	} = $props();
 </script>
 
 <header class="hdr">
 	<div class="row">
 		<strong>GW{status.current_gw}</strong>
 		<span class="dot {status.frozen ? 'frozen' : status.mode}"></span>
-		<span class="mode">{status.frozen ? 'frozen' : status.mode}</span>
+		<select
+			class="mode-select"
+			value={status.frozen ? 'frozen' : status.mode}
+			disabled={status.frozen}
+			onchange={(e) => onmode?.((e.target as HTMLSelectElement).value)}
+			title={status.frozen ? 'Unfreeze before changing mode' : 'Operating mode (manual | hybrid | auto)'}
+		>
+			<option value="manual">manual</option>
+			<option value="hybrid">hybrid</option>
+			<option value="auto">auto</option>
+		</select>
 		<button class="toggle" onclick={() => onaction?.(status.frozen ? '/api/unfreeze' : '/api/freeze')}>
 			{status.frozen ? 'Unfreeze' : 'Freeze'}
 		</button>
@@ -32,6 +46,16 @@
 	.hdr { position: sticky; top: 0; z-index: 10; background: var(--bg); padding: 12px 0 8px; }
 	.row { display: flex; align-items: center; gap: 8px; font-size: 1.05rem; }
 	.mode { color: var(--text-dim); text-transform: capitalize; font-size: 0.85rem; }
+	.mode-select {
+		font-size: 0.8rem;
+		padding: 2px 6px;
+		border-radius: 6px;
+		border: 1px solid var(--text-dim);
+		background: var(--surface);
+		color: var(--text);
+		cursor: pointer;
+		text-transform: capitalize;
+	}
 	.toggle { font-size: 0.75rem; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--text-dim);
 		background: var(--surface); color: var(--text); cursor: pointer; }
 	.cd { margin-left: auto; color: var(--accent); }

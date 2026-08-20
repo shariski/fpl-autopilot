@@ -62,4 +62,18 @@ describe('Header controls', () => {
 		await userEvent.click(screen.getByRole('button', { name: /keep as is/i }));
 		expect(onaction).toHaveBeenCalledWith('/api/deadguard/keep');
 	});
+
+	it('mode select calls onmode with the chosen mode', async () => {
+		const onmode = vi.fn();
+		render(Header, { props: { status: base, onmode } });
+		await userEvent.selectOptions(screen.getByRole('combobox'), 'auto');
+		expect(onmode).toHaveBeenCalledWith('auto');
+	});
+
+	it('mode select is disabled while frozen', () => {
+		render(Header, {
+			props: { status: { ...base, frozen: true, banners: [{ level: 'error', text: 'frozen' }] } }
+		});
+		expect(screen.getByRole('combobox')).toBeDisabled();
+	});
 });

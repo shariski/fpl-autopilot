@@ -9,6 +9,23 @@ def _next_gw(conn):
     return r["gw"] if r and r["gw"] is not None else None
 
 
+def get_mode(conn):
+    """Effective operating mode: a runtime override (system_state 'mode', set via
+    the CLI/dashboard) wins over the image-baked config.yaml."""
+    file_mode = config.mode()
+    override = None
+    row = conn.execute("SELECT value FROM system_state WHERE key='mode'").fetchone()
+    if row is not None and row["value"]:
+        try:
+            m = json.loads(row["value"]).get("mode")
+            if m in ("manual", "hybrid", "auto"):
+                override = m
+        except Exception:
+            pass
+    return {"mode": override or file_mode, "source": "override" if override else "config",
+            "config_value": file_mode}
+
+
 def _read_deadguard_ai_prose(conn, gw):
     """Read the most recent cached deadguard_summary prose for this gw, or None."""
     row = conn.execute(

@@ -45,6 +45,22 @@ export async function postAction(path: string, fetchFn: Fetch = fetch): Promise<
 	return res.json() as Promise<Status>;
 }
 
+export interface ModeState {
+	mode: 'manual' | 'hybrid' | 'auto';
+	source: 'override' | 'config';
+	config_value: string;
+}
+
+export async function setMode(mode: string, fetchFn: Fetch = fetch): Promise<ModeState> {
+	const res = await fetchFn(`${API_BASE}/api/mode`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ mode })
+	});
+	if (!res.ok) throw new Error(`POST /api/mode failed: ${res.status}`);
+	return res.json() as Promise<ModeState>;
+}
+
 const EMPTY_CAPTAIN: Captain = { picks: [], vice_player_id: null };
 const EMPTY_TRANSFERS: Transfers = { suggestions: [], empty_reason: null };
 const EMPTY_CHIPS: Chips = { recommendation: null };

@@ -104,7 +104,8 @@ Adds to the status shape:
                               "freeze-status", "auth-status", "review"],
       "human_only_commands": ["execute-lineup", "execute-transfer", "apply-squad",
                               "route-gameweek", "undo-transfer", "refresh-my-team",
-                              "init-master-password", "init-fpl", "freeze", "unfreeze"]
+                              "init-master-password", "init-fpl", "freeze", "unfreeze",
+                              "mode"]
     }
 
 ### log

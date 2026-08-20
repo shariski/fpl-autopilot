@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +20,27 @@ app.add_middleware(
 @app.get("/api/status")
 def status(conn=Depends(get_db)):
     return queries.get_status(conn)
+
+
+@app.get("/api/mode")
+def get_mode(conn=Depends(get_db)):
+    return queries.get_mode(conn)
+
+
+@app.post("/api/mode")
+def set_mode(payload: dict, conn=Depends(get_db)):
+    """Runtime mode switch (manual|hybrid|auto); persists across redeploys."""
+    m = (payload or {}).get("mode")
+    if m not in ("manual", "hybrid", "auto"):
+        return JSONResponse(status_code=400,
+                            content={"detail": "mode must be manual, hybrid or auto"})
+    conn.execute(
+        "INSERT INTO system_state (key, value) VALUES ('mode', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (json.dumps({"mode": m, "set_at": datetime.now(timezone.utc).isoformat(),
+                     "source": "dashboard"}),))
+    conn.commit()
+    return queries.get_mode(conn)
 
 
 @app.get("/api/squad")

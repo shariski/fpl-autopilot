@@ -205,8 +205,8 @@ squad --candidates, insight <player_id>, speculate, refresh, freeze-status,
 auth-status, review`.
 
 Human-only (writes/secrets): `execute-lineup, execute-transfer, apply-squad,
-route-gameweek, undo-transfer, refresh-my-team, init-master-password, init-fpl, freeze,
-unfreeze`.
+route-gameweek, undo-transfer, refresh-my-team, init-master-password, init-fpl,
+freeze, unfreeze, mode`.
 
 ## Working conventions (binding)
 

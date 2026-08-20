@@ -22,6 +22,47 @@ def test_mode_from_config():
     assert config.mode({}) == "manual"  # default
 
 
+def test_mode_override_from_system_state(tmp_path):
+    """A runtime mode switch (CLI mode --set / dashboard /api/mode) stored in
+    system_state wins over the image-baked config.yaml."""
+    from src.data.db import connect, init_db
+    dbp = str(tmp_path / "t.db")
+    conn = connect(dbp)
+    init_db(conn)
+    conn.execute("INSERT INTO system_state (key, value) "
+                 "VALUES ('mode', '{\"mode\": \"auto\", \"source\": \"user\"}')")
+    conn.commit()
+    conn.close()
+    cfg = {"storage": {"db_path": dbp}, "mode": {"current": "manual"}}
+    assert config.mode(cfg) == "auto"
+
+
+def test_mode_override_unset_falls_back_to_config(tmp_path):
+    from src.data.db import connect, init_db
+    dbp = str(tmp_path / "t.db")
+    conn = connect(dbp)
+    init_db(conn)
+    conn.close()
+    cfg = {"storage": {"db_path": dbp}, "mode": {"current": "hybrid"}}
+    assert config.mode(cfg) == "hybrid"
+
+
+def test_mode_override_invalid_falls_back(tmp_path):
+    from src.data.db import connect, init_db
+    dbp = str(tmp_path / "t.db")
+    conn = connect(dbp)
+    init_db(conn)
+    conn.execute("INSERT INTO system_state (key, value) VALUES ('mode', '{\"mode\": \"banana\"}')")
+    conn.commit()
+    conn.close()
+    assert config.mode({"storage": {"db_path": dbp}, "mode": {"current": "manual"}}) == "manual"
+
+
+def test_mode_override_skipped_without_storage_key():
+    """cfg without storage never touches the DB (config accessors stay pure)."""
+    assert config.mode({"mode": {"current": "auto"}}) == "auto"
+
+
 def test_confidence_floor_from_config():
     assert config.confidence_floor({"thresholds": {"confidence_floor": 65}}) == 65
     assert config.confidence_floor({}) == 70  # default

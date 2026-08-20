@@ -1,4 +1,7 @@
+import json
 import pathlib
+import sqlite3
+
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -34,7 +37,32 @@ def databank_seasons(cfg=None):
 
 def mode(cfg=None):
     cfg = cfg if cfg is not None else load_config()
+    override = _mode_override(cfg)
+    if override:
+        return override
     return cfg.get("mode", {}).get("current", "manual")
+
+
+def _mode_override(cfg):
+    """Runtime mode switch (CLI `mode --set` / dashboard POST /api/mode) wins over
+    the image-baked config.yaml. Stored in system_state key 'mode' as
+    {"mode": ...}. Invalid or unreadable -> None (fall back to the file).
+    Only consulted when cfg declares a storage path (keeps the accessor pure
+    for minimal cfgs)."""
+    if "storage" not in cfg:
+        return None
+    try:
+        conn = sqlite3.connect(db_path(cfg))
+        try:
+            row = conn.execute("SELECT value FROM system_state WHERE key='mode'").fetchone()
+        finally:
+            conn.close()
+        if row is None or not row[0]:
+            return None
+        value = json.loads(row[0]).get("mode")
+        return value if value in ("manual", "hybrid", "auto") else None
+    except Exception:
+        return None
 
 
 def confidence_floor(cfg=None):

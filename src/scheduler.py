@@ -151,7 +151,9 @@ def auto_execute_job(key, *, conn=None, now=None, route_fn=None, cfg=None):
     from .auth.session import SessionExpired
     from .execution import override
     cfg = cfg or load_config()
-    if not config.unattended_enabled(cfg):
+    # v0.19: the runtime mode switch is the gate — auto mode implies unattended
+    # execution near the deadline (was config.unattended.enabled).
+    if config.mode(cfg) != "auto":
         return None
     hours = config.unattended_hours_before(cfg)
     owns = conn is None

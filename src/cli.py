@@ -106,7 +106,7 @@ _PRETTY_FORMATTERS = {"captain": _fmt_captain, "transfers": _fmt_transfers,
 # Commands that emit the JSON envelope via _json_ok (pretty default applies).
 _ENVELOPE_COMMANDS = {"status", "resume", "log", "auth-status", "freeze-status",
                       "refresh", "captain", "transfers", "chips", "squad",
-                      "speculate", "insight"}
+                      "speculate", "insight", "mode"}
 
 
 def _print_pretty(payload):
@@ -229,7 +229,8 @@ def _operating_rules():
                                 "freeze-status", "auth-status", "review"],
         "human_only_commands": ["execute-lineup", "execute-transfer", "apply-squad",
                                 "route-gameweek", "undo-transfer", "refresh-my-team",
-                                "init-master-password", "init-fpl", "freeze", "unfreeze"],
+                                "init-master-password", "init-fpl", "freeze", "unfreeze",
+                                "mode"],
     }
 
 
@@ -685,6 +686,36 @@ def _freeze_status_cli(conn=None):
         print(f"FROZEN since {st['since']} (source: {st['source']}) — {st['reason']}")
     if owns:
         conn.close()
+
+
+def _cmd_mode_cli(conn=None, cfg=None, set_to=None):
+    """Show or set the operating mode (manual | hybrid | auto).
+
+    The mode lives in system_state (runtime switch — survives redeploys and
+    beats the image-baked config.yaml), so switching is one command instead of
+    a config change + CI deploy.
+    """
+    from .interface.queries import get_mode
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        if set_to is not None:
+            if set_to not in ("manual", "hybrid", "auto"):
+                _json_err("mode", "E_ARG",
+                          f"invalid mode {set_to!r}; choose manual, hybrid or auto")
+                return
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                "INSERT INTO system_state (key, value) VALUES ('mode', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (json.dumps({"mode": set_to, "set_at": now, "source": "user"}),))
+            conn.commit()
+        _json_ok("mode", get_mode(conn))
+    finally:
+        if owns:
+            conn.close()
 
 
 def _print_status_text(data):
@@ -1427,6 +1458,11 @@ def main(argv=None):
     p_freeze_status = sub.add_parser("freeze-status", help="show whether autonomous execution is frozen")
     p_freeze_status.add_argument("--json", action="store_true",
                                  help="output the JSON envelope (agent contract)")
+    p_mode = sub.add_parser("mode", help="show or set the operating mode (manual | hybrid | auto; persists across redeploys)")
+    p_mode.add_argument("--set", choices=["manual", "hybrid", "auto"], default=None,
+                        dest="set_to", help="switch the mode now (no config edit / redeploy needed)")
+    p_mode.add_argument("--json", action="store_true",
+                        help="output the JSON envelope (agent contract)")
     p_status = sub.add_parser("status", help="one-shot state: mode, frozen, freshness, next GW, pending decisions")
     p_status.add_argument("--json", action="store_true", help="output the JSON envelope (agent contract)")
     p_resume = sub.add_parser("resume", help="session continuity: status + activity tail + operating rules")
@@ -1531,6 +1567,8 @@ def main(argv=None):
         _unfreeze_cli()
     elif args.command == "freeze-status":
         _cmd_freeze_status_cli(json_out=args.json)
+    elif args.command == "mode":
+        _cmd_mode_cli(set_to=args.set_to)
     elif args.command == "review":
         _cmd_review_cli(gw=args.gw, last=args.last,
                         ai_override=args.ai, format_=args.format_)

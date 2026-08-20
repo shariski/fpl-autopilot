@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 	import type { Status } from '$lib/types';
-	import { fetchStatus, postAction } from '$lib/api/client';
+	import { fetchStatus, postAction, setMode } from '$lib/api/client';
 	import Header from '$lib/components/Header.svelte';
 	import SectionNav from '$lib/components/SectionNav.svelte';
 	import Section from '$lib/components/Section.svelte';
@@ -28,6 +28,15 @@
 		}
 	}
 
+	async function handleMode(mode: string) {
+		try {
+			await setMode(mode);
+			status = await fetchStatus();
+		} catch (e) {
+			console.warn('[dashboard] mode switch failed', mode, e);
+		}
+	}
+
 	async function refreshStatus() {
 		try {
 			status = await fetchStatus();
@@ -48,7 +57,7 @@
 	});
 </script>
 
-<Header {status} onaction={handleAction} />
+<Header {status} onaction={handleAction} onmode={handleMode} />
 <SectionNav {hasChip} />
 
 <Section id="team" title="My Team"><Pitch squad={d.squad} /></Section>

@@ -121,3 +121,25 @@ describe('postAction', () => {
 		await expect(postAction('/api/freeze', f)).rejects.toThrow(/freeze/);
 	});
 });
+
+describe('setMode', () => {
+	it('POSTs the mode and returns the new state', async () => {
+		let seen: { path: string; init: RequestInit } | null = null;
+		const f = (async (p: string, init?: RequestInit) => {
+			seen = { path: p, init: init ?? {} };
+			return { ok: true, status: 200, json: async () => ({ mode: 'auto', source: 'override', config_value: 'manual' }) } as Response;
+		}) as unknown as typeof fetch;
+		const { setMode } = await import('./client');
+		const s = await setMode('auto', f);
+		expect(seen?.path).toBe('/api/mode');
+		expect(seen?.init.method).toBe('POST');
+		expect(JSON.parse(String(seen?.init.body))).toEqual({ mode: 'auto' });
+		expect(s.mode).toBe('auto');
+	});
+
+	it('throws on a non-ok response', async () => {
+		const f = (async () => ({ ok: false, status: 400, json: async () => ({}) }) as Response) as unknown as typeof fetch;
+		const { setMode } = await import('./client');
+		await expect(setMode('auto', f)).rejects.toThrow(/mode/);
+	});
+});

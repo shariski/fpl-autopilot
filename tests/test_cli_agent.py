@@ -218,6 +218,29 @@ def _seed_decision_data(db, load):
     db.commit()
 
 
+def test_mode_cli_show_defaults_to_config(db, capsys):
+    cli._cmd_mode_cli(conn=db, cfg=_cfg())
+    out = json.loads(capsys.readouterr().out)
+    assert out["command"] == "mode"
+    assert out["data"] == {"mode": "manual", "source": "config", "config_value": "manual"}
+
+
+def test_mode_cli_set_persists_and_reports_override(db, capsys):
+    cli._cmd_mode_cli(conn=db, cfg=_cfg(), set_to="auto")
+    out = json.loads(capsys.readouterr().out)
+    assert out["data"] == {"mode": "auto", "source": "override", "config_value": "manual"}
+    row = db.execute("SELECT value FROM system_state WHERE key='mode'").fetchone()
+    assert json.loads(row["value"])["mode"] == "auto"
+
+
+def test_mode_cli_rejects_invalid(db, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli._cmd_mode_cli(conn=db, cfg=_cfg(), set_to="banana")
+    assert exc.value.code == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False and out["error"]["code"] == "E_ARG"
+
+
 def test_captain_json(load, db, capsys):
     _seed_decision_data(db, load)
     cli._cmd_captain_cli(conn=db, cfg=_cfg())
