@@ -74,7 +74,7 @@ def test_build_captain_prompt_includes_payload_and_examples():
     payload = reasoning._build_captain_payload(CAPTAIN_DECISION_FIXTURE)
     prompt = reasoning._build_captain_prompt(payload)
     assert "Haaland" in prompt          # from payload
-    assert "Saka" in prompt             # from the second few-shot exemplar
+    assert "[captain]" in prompt        # from the few-shot exemplars (name-neutral)
     assert '"web_name": "Haaland"' in prompt or json.dumps(payload, sort_keys=True, indent=2) in prompt
     assert "Do not invent" in prompt
     # substitution actually happened — neither placeholder remains in the rendered prompt

@@ -125,8 +125,7 @@ def test_build_transfer_prompt_includes_payload_and_examples():
     payload = reasoning._build_transfer_payload(conn, TRANSFER_DECISION_FIXTURE)
     prompt = reasoning._build_transfer_prompt(payload)
     assert "Watkins" in prompt
-    assert "Saka" in prompt
-    assert "Isak" in prompt
+    assert "[sell]" in prompt and "[buy]" in prompt  # examples are name-neutral
     assert "{examples}" not in prompt
     assert "{payload_json}" not in prompt
     assert "Do not invent" in prompt

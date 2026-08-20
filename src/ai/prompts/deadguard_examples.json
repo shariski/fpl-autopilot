@@ -1,23 +1,32 @@
 [
-  {
-    "input": {
-      "captain": "Haaland", "vice": "Salah",
-      "transfer": null, "gw": 38
-    },
-    "output": "Deadguard set Haaland as captain and Salah as vice for GW38, and optimized the bench order."
+ {
+  "input": {
+   "captain": "[captain]",
+   "vice": "[vice]",
+   "transfer": null,
+   "gw": 38
   },
-  {
-    "input": {
-      "captain": "Saka", "vice": "Palmer",
-      "transfer": null, "gw": 32
-    },
-    "output": "For GW32, deadguard set Saka as captain, Palmer as vice, and optimized the bench order."
+  "output": "Deadguard set [captain] as captain and [vice] as vice for GW38, and optimized the bench order."
+ },
+ {
+  "input": {
+   "captain": "[captain]",
+   "vice": "[vice]",
+   "transfer": null,
+   "gw": 32
   },
-  {
-    "input": {
-      "captain": "Haaland", "vice": "Salah",
-      "transfer": {"out_name": "Watkins", "in_name": "Calvert-Lewin"}, "gw": 38
-    },
-    "output": "Deadguard set Haaland as captain and Salah as vice for GW38, optimized the bench order, and transferred out Watkins for Calvert-Lewin."
-  }
+  "output": "For GW32, deadguard set [captain] as captain, [vice] as vice, and optimized the bench order."
+ },
+ {
+  "input": {
+   "captain": "[captain]",
+   "vice": "[vice]",
+   "transfer": {
+    "out_name": "[out]",
+    "in_name": "[in]"
+   },
+   "gw": 38
+  },
+  "output": "Deadguard set [captain] as captain and [vice] as vice for GW38, optimized the bench order, and transferred out [out] for [in]."
+ }
 ]
