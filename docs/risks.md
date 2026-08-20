@@ -172,6 +172,13 @@ mis-assigned (B6). Re-ingested 25-26 from the local full CSVs via
 rates and no xP v2 (e.g. foreign-league imports) — they are simply absent from the
 pool, which can shrink the candidate pool. Monitor pool size each refresh.
 
+**Second fix (2026-08-20, same incident):** team/league xG·90 and DC·90 were
+normalized per player-minute, deflating them ~13× (la.xg90 0.132 vs true ~1.35)
+because player xG sums to the team match total once while minutes count every
+player. Non-promoted FDR ratios self-cancelled, but absolute-value promoted
+overrides exploded (damp(1.3/0.132) = 4.86 → Lammens 14.43 xP vs a promoted
+side). Normalized per match instead; backtest re-run unchanged (v2 still wins).
+
 ---
 
 ## R9 — Vaastav GitHub CSVs are revision-unstable (truncation observed 2026-08-20)

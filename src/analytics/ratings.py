@@ -60,21 +60,43 @@ def _window_keys(rows, gw_count):
 
 
 def _aggregate(rows, keys):
-    """Σ stat ÷ Σ minutes × 90 per team over the given window keys."""
+    """Per-team raw sums over the window: [mins, xg, xgc, dc, nm].
+
+    xGC is team-shared per match (every player row carries the same match xGC),
+    so minutes-normalization cancels the squad-size factor. xG and DC are
+    per-player stats that sum to the team match total ONCE — dividing by ALL
+    players' minutes deflates them by the squad-size factor (~13x real-world),
+    which broke the league average (la.xg90 ~0.13 vs true ~1.35) and made
+    promoted-override multipliers explode (observed 2026-08-20: damp(1.3/0.132)
+    = 4.86 -> Lammens 14.43 xP). They are normalized per MATCH instead (nm,
+    one match per team per GW).
+    """
     teams = {}
     for r in rows:
         if (r["source"], r["gw"]) not in keys:
             continue
-        t = teams.setdefault(r["team_id"], [0.0, 0.0, 0.0, 0.0])
+        t = teams.setdefault(r["team_id"], [0.0, 0.0, 0.0, 0.0, set()])
         t[0] += r["minutes"]
         t[1] += r["xg"]
         t[2] += r["xgc"]
         t[3] += r["dc"]
+        t[4].add((r["source"], r["gw"]))
     out = {}
-    for tid, (mins, xg, xgc, dc) in teams.items():
+    for tid, (mins, xg, xgc, dc, matches) in teams.items():
         if mins <= 0:
             continue
-        out[tid] = (xg / mins * 90, xgc / mins * 90, dc / mins * 90)
+        out[tid] = (mins, xg, xgc, dc, len(matches))
+    return out
+
+
+def _team_rates(agg):
+    """{team_id: (xg90, xgc90, dc90)} from raw sums: xG/DC per match (90 min),
+    xGC per player-minute (cancels the squad-size factor)."""
+    out = {}
+    for tid, (mins, xg, xgc, dc, nm) in agg.items():
+        if mins <= 0 or nm <= 0:
+            continue
+        out[tid] = (xg / nm, xgc / mins * 90, dc / nm)
     return out
 
 
@@ -94,34 +116,37 @@ def compute_team_ratings(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT)
     rows = _databank_rows(conn)
     lf_keys = _window_keys(rows, lf_gw_count)
     sf_keys = _window_keys(rows, sf_gw_count)
-    lf = _aggregate(rows, lf_keys)
-    sf = _aggregate(rows, sf_keys)
+    lf = _team_rates(_aggregate(rows, lf_keys))
+    sf = _team_rates(_aggregate(rows, sf_keys))
     blend = _blend(lf, sf)
     ratings = {tid: TeamRating(team_id=tid, xg90=round(v[0], 4), xgc90=round(v[1], 4),
                                dc90=round(v[2], 4), gw_count=len({(r["source"], r["gw"])
                                                                   for r in rows if r["team_id"] == tid}))
                for tid, v in blend.items()}
 
-    def _league(keys):
-        mins = xg = xgc = dc = 0.0
-        for r in rows:
-            if (r["source"], r["gw"]) in keys:
-                mins += r["minutes"]
-                xg += r["xg"]
-                xgc += r["xgc"]
-                dc += r["dc"]
-        return mins, xg, xgc, dc
+    def _league(agg):
+        mins = xg = xgc = dc = nm = 0.0
+        for _mins, _xg, _xgc, _dc, _nm in agg.values():
+            mins += _mins
+            xg += _xg
+            xgc += _xgc
+            dc += _dc
+            nm += _nm
+        return mins, xg, xgc, dc, nm
 
-    lf_m, lf_xg, lf_xgc, lf_dc = _league(lf_keys)
-    sf_m, sf_xg, sf_xgc, sf_dc = _league(sf_keys)
+    lf_m, lf_xg, lf_xgc, lf_dc, lf_nm = _league(_aggregate(rows, lf_keys))
+    sf_m, sf_xg, sf_xgc, sf_dc, sf_nm = _league(_aggregate(rows, sf_keys))
 
     def _per90(x, m):
         return (x / m * 90) if m else 0.0
 
+    def _per_match(x, nm):
+        return (x / nm) if nm else 0.0
+
     la = LeagueAverage(
-        xg90=(LF_WEIGHT * _per90(lf_xg, lf_m) + SF_WEIGHT * _per90(sf_xg, sf_m)),
+        xg90=(LF_WEIGHT * _per_match(lf_xg, lf_nm) + SF_WEIGHT * _per_match(sf_xg, sf_nm)),
         xgc90=(LF_WEIGHT * _per90(lf_xgc, lf_m) + SF_WEIGHT * _per90(sf_xgc, sf_m)),
-        dc90=(LF_WEIGHT * _per90(lf_dc, lf_m) + SF_WEIGHT * _per90(sf_dc, sf_m)),
+        dc90=(LF_WEIGHT * _per_match(lf_dc, lf_nm) + SF_WEIGHT * _per_match(sf_dc, sf_nm)),
     )
     return ratings, la
 
