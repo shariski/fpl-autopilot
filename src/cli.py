@@ -14,9 +14,118 @@ from .data import repository, cache, name_resolver
 
 NAME_RESOLUTION_PATH = pathlib.Path(__file__).resolve().parent.parent / "data" / "name_resolution.yaml"
 
+# Output mode: True = pretty terminal view (default for humans), False = the raw
+# JSON envelope (--json, the agent contract). Set per invocation in main().
+_PRETTY = False
+
 
 def _print_json(payload):
-    print(json.dumps(payload, default=str))
+    if _PRETTY:
+        _print_pretty(payload)
+    else:
+        print(json.dumps(payload, default=str))
+
+
+def _render_pretty(obj, indent="  "):
+    """Generic readable renderer for arbitrary envelope data (dicts, lists,
+    scalars). None values are skipped; lists of scalars join inline."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if v is None:
+                continue
+            if isinstance(v, dict):
+                print(f"{indent}{k}:")
+                _render_pretty(v, indent + "  ")
+            elif isinstance(v, (list, tuple)):
+                if v and all(isinstance(x, (dict, list)) for x in v):
+                    print(f"{indent}{k} ({len(v)}):")
+                    for item in v:
+                        _render_pretty(item, indent + "  ")
+                else:
+                    print(f"{indent}{k}: {', '.join(str(x) for x in v)}")
+            else:
+                print(f"{indent}{k}: {v}")
+    elif isinstance(obj, list):
+        for item in obj:
+            _render_pretty(item, indent)
+    else:
+        print(f"{indent}{obj}")
+
+
+def _fmt_captain(data):
+    picks = data.get("picks") or []
+    for i, p in enumerate(picks, 1):
+        print(f"  {i}. {p['web_name']} — {p.get('xp')} xP | {p.get('fixture', '—')}")
+        if p.get("reason"):
+            print(f"     {p['reason']}")
+    vice_id = data.get("vice_player_id")
+    if vice_id is not None:
+        vice = next((p for p in picks if p["player_id"] == vice_id), None)
+        print(f"  vice: {vice['web_name'] if vice else vice_id}")
+    if data.get("confidence") is not None:
+        print(f"  confidence: {data['confidence']}")
+    _render_pretty({k: v for k, v in data.items()
+                    if k not in ("picks", "vice_player_id", "confidence")})
+
+
+def _fmt_transfers(data):
+    sugg = data.get("suggestions") or []
+    if not sugg:
+        print(f"  no suggestions: {data.get('empty_reason', '—')}")
+    else:
+        for i, s in enumerate(sugg, 1):
+            hit = " | HIT -4" if s.get("hit_cost") else ""
+            print(f"  {i}. {s['out']['web_name']} ({s['out']['price']}m) -> "
+                  f"{s['in']['web_name']} ({s['in']['price']}m) | EP delta "
+                  f"{s.get('ep_delta_5gw')} | conf {s.get('confidence')}{hit}")
+    if data.get("free_transfers") is not None:
+        print(f"  free_transfers: {data['free_transfers']}")
+    _render_pretty({k: v for k, v in data.items()
+                    if k not in ("suggestions", "free_transfers")})
+
+
+def _fmt_squad(data):
+    print(f"  gw {data.get('gw', '—')} | source: {data.get('source', '—')}"
+          f"{' | status: ' + data['status'] if data.get('status') else ''}")
+    print(f"  {'SLOT':5s} {'PLAYER':18s} {'POS':3s} {'PRICE':>6s} {'xP 6GW':>7s}")
+    for p in data.get("picks", []):
+        print(f"  {p['slot']:5s} {p['web_name']:18s} {p['position']:3s} "
+              f"{p['price']:5.1f}m {p['xp_6gw']:7.2f}")
+    if data.get("template_rationale"):
+        print(f"  {data['template_rationale']}")
+    if data.get("budget_used") is not None:
+        print(f"  budget_used: {data['budget_used']}m")
+    _render_pretty({k: v for k, v in data.items()
+                    if k not in ("picks", "template_rationale", "budget_used",
+                                 "gw", "source", "status")})
+
+
+_PRETTY_FORMATTERS = {"captain": _fmt_captain, "transfers": _fmt_transfers,
+                      "squad": _fmt_squad}
+
+# Commands that emit the JSON envelope via _json_ok (pretty default applies).
+_ENVELOPE_COMMANDS = {"status", "resume", "log", "auth-status", "freeze-status",
+                      "refresh", "captain", "transfers", "chips", "squad",
+                      "speculate", "insight"}
+
+
+def _print_pretty(payload):
+    print()
+    print(f"== {payload['command']} ({payload.get('generated_at_utc', '—')}) ==")
+    err = payload.get("error")
+    if err:
+        print(f"ERROR {err['code']}: {err['message']}")
+        if err.get("hint"):
+            print(f"  hint: {err['hint']}")
+        return
+    data = payload.get("data")
+    if data is None:
+        return
+    fmt = _PRETTY_FORMATTERS.get(payload["command"])
+    if fmt:
+        fmt(data)
+    else:
+        _render_pretty(data)
 
 
 def _json_ok(command, data):
@@ -1325,24 +1434,24 @@ def main(argv=None):
     p_log.add_argument("--mode", default=None, help="filter by mode (e.g. manual, deadguard, auto)")
     p_log.add_argument("--decision-type", dest="decision_type", default=None,
                        help="filter by decision type (e.g. transfer, captain)")
-    for _name, _help in (("captain", "captain ranker output (JSON)"),
-                         ("transfers", "transfer suggestions (JSON)"),
-                         ("chips", "chip recommendation (JSON)")):
+    for _name, _help in (("captain", "captain ranker output (pretty; --json for the envelope)"),
+                         ("transfers", "transfer suggestions (pretty; --json for the envelope)"),
+                         ("chips", "chip recommendation (pretty; --json for the envelope)")):
         p = sub.add_parser(_name, help=_help)
-        p.add_argument("--json", action="store_true", required=True,
-                       help="output the JSON envelope (agent contract)")
-    p_squad = sub.add_parser("squad", help="AI-built squad (JSON; --candidates for the pool)")
-    p_squad.add_argument("--json", action="store_true", required=True,
-                         help="output the JSON envelope (agent contract)")
+        p.add_argument("--json", action="store_true",
+                       help="output the machine-readable JSON envelope (agent contract)")
+    p_squad = sub.add_parser("squad", help="AI-built squad (pretty; --json for the envelope; --candidates for the pool)")
+    p_squad.add_argument("--json", action="store_true",
+                         help="output the machine-readable JSON envelope (agent contract)")
     p_squad.add_argument("--candidates", action="store_true",
                          help="output the deterministic candidate pool instead of the built squad")
-    p_speculate = sub.add_parser("speculate", help="AI spike/drop signals (JSON)")
-    p_speculate.add_argument("--json", action="store_true", required=True,
-                             help="output the JSON envelope (agent contract)")
-    p_insight = sub.add_parser("insight", help="per-player AI deep-dive (JSON)")
+    p_speculate = sub.add_parser("speculate", help="AI spike/drop signals (pretty; --json for the envelope)")
+    p_speculate.add_argument("--json", action="store_true",
+                             help="output the machine-readable JSON envelope (agent contract)")
+    p_insight = sub.add_parser("insight", help="per-player AI deep-dive (pretty; --json for the envelope)")
     p_insight.add_argument("player_id", type=int, help="FPL player id")
-    p_insight.add_argument("--json", action="store_true", required=True,
-                           help="output the JSON envelope (agent contract)")
+    p_insight.add_argument("--json", action="store_true",
+                           help="output the machine-readable JSON envelope (agent contract)")
     p_review = sub.add_parser("review", help="audit past decisions vs outcomes")
     review_window = p_review.add_mutually_exclusive_group()
     review_window.add_argument("--gw", type=int, default=None,
@@ -1354,6 +1463,11 @@ def main(argv=None):
     p_review.add_argument("--format", choices=["text", "json"], default="text",
                           dest="format_", help="output format (default: text)")
     args = parser.parse_args(argv)
+    global _PRETTY
+    # Pretty terminal view is the default ONLY for commands that emit the JSON
+    # envelope (--json keeps the machine-readable form). Commands without a
+    # --json flag never route through _print_json, so leave _PRETTY False.
+    _PRETTY = args.command in _ENVELOPE_COMMANDS and not getattr(args, "json", False)
     if args.command in ("execute-lineup", "execute-transfer", "apply-squad",
                         "route-gameweek", "undo-transfer"):
         _live_requires_tty(args.live)

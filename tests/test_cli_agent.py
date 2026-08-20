@@ -227,6 +227,101 @@ def test_captain_json(load, db, capsys):
     assert out["data"]["data_basis"]["xp_model_version"] == "v2"
 
 
+def test_main_captain_without_json_flag_ok(monkeypatch):
+    """--json is no longer required: plain `fpl-autopilot captain` must work
+    (pretty terminal view by default; --json keeps the machine envelope).
+    Commands without a --json flag must not flip the pretty mode."""
+    seen = {}
+
+    def fake(**kw):
+        seen["kw"] = kw
+
+    monkeypatch.setattr(cli, "_cmd_captain_cli", fake)
+    monkeypatch.setattr(cli, "_freeze_cli", fake)
+    cli.main(["captain"])
+    assert cli._PRETTY is True
+    cli.main(["captain", "--json"])
+    assert cli._PRETTY is False
+    cli.main(["freeze"])  # no --json arg on this command
+    assert cli._PRETTY is False
+    cli._PRETTY = False
+
+
+def test_captain_pretty_without_json(load, db, capsys):
+    _seed_decision_data(db, load)
+    cli._PRETTY = True
+    try:
+        cli._cmd_captain_cli(conn=db, cfg=_cfg())
+    finally:
+        cli._PRETTY = False
+    out = capsys.readouterr().out
+    assert not out.startswith("{")
+    assert "CAPTAIN" in out.upper()
+    assert "1." in out
+
+
+def test_pretty_squad_table(capsys):
+    cli._PRETTY = True
+    try:
+        cli._print_json({"ok": True, "contract_version": "1", "command": "squad",
+                         "generated_at_utc": "2026-08-20T06:00:00Z",
+                         "data": {"gw": 1, "status": "cached", "source": "ai",
+                                  "picks": [{"slot": "GKP1", "web_name": "Dubravka",
+                                             "position": "GKP", "price": 4.0,
+                                             "xp_6gw": 41.96}],
+                                  "budget_used": 99.0}})
+    finally:
+        cli._PRETTY = False
+    out = capsys.readouterr().out
+    assert "GKP1" in out and "Dubravka" in out and "41.96" in out
+    assert "99.0m" in out
+
+
+def test_pretty_transfers(capsys):
+    cli._PRETTY = True
+    try:
+        cli._print_json({"ok": True, "contract_version": "1", "command": "transfers",
+                         "generated_at_utc": "2026-08-20T06:00:00Z",
+                         "data": {"suggestions": [
+                             {"out": {"web_name": "Quenda", "price": 5.5},
+                              "in": {"web_name": "B.Fernandes", "price": 12.0},
+                              "ep_delta_5gw": 28.2, "hit_cost": 0, "confidence": 40}],
+                             "free_transfers": 1}})
+    finally:
+        cli._PRETTY = False
+    out = capsys.readouterr().out
+    assert "Quenda" in out and "B.Fernandes" in out and "28.2" in out
+    assert "->" in out
+
+
+def test_pretty_generic_nested(capsys):
+    cli._PRETTY = True
+    try:
+        cli._print_json({"ok": True, "contract_version": "1", "command": "insight",
+                         "generated_at_utc": "2026-08-20T06:00:00Z",
+                         "data": {"player": {"name": "Saka", "x": None},
+                                  "tags": ["a", "b"],
+                                  "rows": [{"k": 1}, {"k": 2}]}})
+    finally:
+        cli._PRETTY = False
+    out = capsys.readouterr().out
+    assert "Saka" in out
+    assert "a, b" in out
+    assert "None" not in out
+    assert "rows (2):" in out
+
+
+def test_pretty_error(capsys):
+    cli._PRETTY = True
+    try:
+        with pytest.raises(SystemExit):
+            cli._json_err("squad", "E_NO_DATA", "no upcoming gameweek", "run refresh")
+    finally:
+        cli._PRETTY = False
+    out = capsys.readouterr().out
+    assert "E_NO_DATA" in out and "no upcoming gameweek" in out and "run refresh" in out
+
+
 def test_transfers_json(load, db, capsys):
     _seed_decision_data(db, load)
     cli._cmd_transfers_cli(conn=db, cfg=_cfg())
