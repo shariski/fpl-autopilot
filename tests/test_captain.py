@@ -3,9 +3,34 @@ import json
 from src.decisions import captain
 
 
-def _cand(pid, web_name, xp, xminutes=80.0, fdr_attack=3, fixture="ABC v XYZ (H)"):
-    return {"player_id": pid, "web_name": web_name, "position": "MID",
-            "xp": xp, "xminutes": xminutes, "fdr_attack": fdr_attack, "fixture": fixture}
+def _cand(pid, web_name, xp, xminutes=80.0, fdr_attack=3, fixture="ABC v XYZ (H)",
+          position="MID", xgoals=0.0, xassists=0.0):
+    return {"player_id": pid, "web_name": web_name, "position": position,
+            "xp": xp, "xminutes": xminutes, "fdr_attack": fdr_attack, "fixture": fixture,
+            "xgoals": xgoals, "xassists": xassists}
+
+
+def test_rank_captains_ceiling_prefers_attackers():
+    """v0.20 ceiling term: a midfielder/forward with real goal involvement can
+    outrank a slightly-higher-xP defender/keeper — captaincy is a leverage play
+    and the backtest's captain-proxy showed pure max-xP underperforms."""
+    picks = captain.rank_captains([
+        _cand(1, "Keeper", 5.1, position="GKP"),                          # score 5.10
+        _cand(2, "Fwd", 5.0, position="FWD", xgoals=0.9, xassists=0.3),   # 5.0 + .15*1.2 = 5.18
+        _cand(3, "Mid", 4.9, position="MID", xgoals=0.6, xassists=0.8),   # 4.9 + .15*1.4 = 5.11
+    ])
+    assert [p["player_id"] for p in picks] == [2, 3, 1]
+
+
+def test_rank_captains_ceiling_reason_marks_upside_pick():
+    """When the ceiling term reorders the top pick, the reason says so — a
+    bare 'Highest xP' claim would be misleading (B10: inspectable inputs)."""
+    picks = captain.rank_captains([
+        _cand(1, "Keeper", 5.0, position="GKP"),
+        _cand(2, "Fwd", 5.0, position="FWD", xgoals=0.9, xassists=0.3),
+    ])
+    assert [p["player_id"] for p in picks] == [2, 1]
+    assert "ceiling" in picks[0]["reason"].lower()
 
 
 def test_rank_captains_orders_by_xp():

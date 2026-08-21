@@ -335,10 +335,14 @@ before it; actuals = databank total_points). Reuses the production functions.
 
 | Metric | 24-25 (26,799 player-GWs) | 25-26 (29,719 player-GWs) |
 |---|---|---|
-| MAE v2 / v1 | **1.217** / 2.163 | **1.355** / 2.144 |
-| bias v2 / v1 | **+0.147** / +1.204 | **+0.115** / +0.994 |
-| pooled corr v2 / v1 | — | **0.396** / 0.358 |
-| captain-proxy (top-xP pick actual) | 4.54 vs 7.78 (5/37 wins) | 2.79 vs 3.24 (13/38 wins) |
+| MAE v2 / v1 | **1.215** / 2.163 | **1.357** / 2.144 |
+| bias v2 / v1 | **+0.149** / +1.204 | **+0.120** / +0.994 |
+| pooled corr v2 / v1 | — | **0.397** / 0.358 |
+| captain-proxy (top-xP pick actual) | 4.89 vs 7.78 (5/37 wins) | 2.89 vs 3.24 (13/38 wins) |
+| ceiling-proxy (v0.20, xP + 0.15×upside) | **5.35** vs plain 4.89 (3/37 wins) | **3.11** vs plain 2.89 (5/38 wins) |
+
+*(re-run 2026-08-21 after the v0.20 recalibrations: position-specific bonus 0.21/0.21/0.31/0.58
+and the captaincy ceiling term — see decision-engine.md v0.20)*
 
 **Read:**
 
@@ -346,13 +350,15 @@ before it; actuals = databank total_points). Reuses the production functions.
   (v1 systematically overpredicts by ~1 pt/player-GW — it assumes full minutes), and a
   higher rank correlation. 25-26 (which includes DC) confirms the improvement holds with
   the new scoring rules.
-- **Captain-proxy is the caveat**: the max-xP pick under v2 scores lower actuals than
-  under v1. v1's inflated model selects premium high-xG assets (which genuinely score
-  most), while v2's probability-weighted EV ranking favors safer value picks. Single-GW
-  actuals are noise (Palmer 5.95 xP -> 0 pts; Sessegnon 5.75 -> 14), so head-to-head wins
-  hover near 50%. This is a *captaincy-design* note, not a prediction-quality failure:
-  when v2 is adopted, the captain ranker may want a ceiling-aware term (xP + upside
-  percentile) — documented follow-up, not a blocker.
+- **Captain-proxy was the caveat — partially closed in v0.20.** The max-xP pick under v2
+  scored lower actuals than under v1 (v1's inflated model selects premium high-xG assets,
+  while v2's probability-weighted EV favors safer value picks). The bonus recalibration
+  alone lifted 24-25's plain top-pick actuals 4.51→4.89; the ceiling term
+  (`xp + 0.15×(xgoals+xassists)`) adds another 0.46/0.22 points per GW of actual captain
+  output on 24-25/25-26. The gap to v1's 7.78 remains partly a proxy artifact (the proxy
+  ranks ALL players, incl. 4.0m punters, with no squad restriction) — but the direction is
+  now right. Single-GW actuals are noisy, so head-to-head wins still hover near 50%;
+  the v2 ceiling pick is preferred on the average.
 
 **Gate status:** the backtest satisfied the B5 review intent (2 full seasons, no leakage,
 beats v1 on every average-prediction metric) and **v0.14 flipped the consumers to v2 on

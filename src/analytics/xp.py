@@ -8,10 +8,13 @@ FDR_ATTACK_MULT = {1: 1.20, 2: 1.10, 3: 1.00, 4: 0.90, 5: 0.80}
 CS_PROB = {1: 0.55, 2: 0.45, 3: 0.35, 4: 0.22, 5: 0.12}
 MODEL_VERSION = "v1"
 
-# xP v2 constants (decision-engine.md v0.13; B4 — do not change without a log entry)
+# xP v2 constants (decision-engine.md v0.13/v0.20; B4 — do not change without a log entry)
 MODEL_VERSION_V2 = "v2"
 FA_BOOST = 1.38            # calibrated 24-25/25-26: weighted assists/xA 1.375/1.382
-BONUS_PER_START = 0.29     # calibrated: bonus/start 0.286-0.288
+# v0.20: position-specific bonus/start from the 25-26 databank — the flat 0.29
+# league average badly under-credited forwards (25-26: FWD 0.580, MID 0.306,
+# GK 0.212, DEF 0.211), which depressed premium-attacker xP vs GK/DEF.
+BONUS_PER_START = {"GKP": 0.21, "DEF": 0.21, "MID": 0.31, "FWD": 0.58}
 SUB_RATIO = 0.30           # Mn/Sub ÷ Mn/St league constant
 CS_BIAS = 0.04             # Poisson over-dispersion correction (P(0) under-predicted)
 TWOG_BIAS = 0.045          # Poisson over-dispersion correction (P(>=2) under-predicted)
@@ -128,7 +131,7 @@ def compute_player_xp_v2(position, status, chance_of_playing, starts, squads_mad
     yc = yc_per_90
     rc = rc_per_90
     defensive_pos = position in ("GKP", "DEF")
-    bonus = BONUS_PER_START * (xg_ratio if defensive_pos else xgc_ratio) \
+    bonus = BONUS_PER_START[position] * (xg_ratio if defensive_pos else xgc_ratio) \
         * (venue_d if defensive_pos else venue_a)
     xassists = xa_per_start * xgc_ratio * FA_BOOST * 3 * venue_a
     xgoals = xg_per_start * xgc_ratio * GOAL_PTS[position] * venue_a

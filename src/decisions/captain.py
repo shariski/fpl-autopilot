@@ -6,22 +6,44 @@ from src.decisions import confidence as confidence_mod
 
 MODEL_VERSION = "v2"
 
+# v0.20 captaincy ceiling term: rank by xP plus a small share of the player's
+# goal-involvement upside (xgoals + xassists). GKP/DEF have ~zero upside, so the
+# term prefers premium attackers when the xP gap is small — the backtest's
+# captain-proxy showed pure max-xP underperforms premium-biased picks. Pinned
+# in decision-engine.md (B4).
+CEILING_WEIGHT = 0.15
+
+
+def _score(c):
+    return c["xp"] + CEILING_WEIGHT * (c.get("xgoals", 0.0) + c.get("xassists", 0.0))
+
 
 def rank_captains(candidates):
     """Pure: rank captain candidates, build reasoning, return the top-5 picks.
 
-    Each candidate: {player_id, web_name, position, xp, xminutes, fdr_attack, fixture}.
-    Order: xp desc, tiebreak xminutes desc, then fdr_attack asc.
+    Each candidate: {player_id, web_name, position, xp, xminutes, fdr_attack,
+    fixture, xgoals, xassists}. Order: ceiling-adjusted score desc (xp + 0.15×
+    goal involvement), tiebreak xminutes desc, then fdr_attack asc.
     Returns up to 5 picks: {player_id, web_name, xp, fixture, reason}.
-    Reason — rank 1: "Highest xP ({xp}) {fixture}. Next best {name} {xp2} — gap {gap}.";
-    ranks 2-5: "xP {xp} {fixture}." (B9: notification layer consumes this verbatim)."""
-    ranked = sorted(candidates, key=lambda c: (-c["xp"], -c["xminutes"], c["fdr_attack"]))[:5]
+    Reason — rank 1: "Highest xP ({xp}) {fixture}. Next best {name} {xp2} —
+    gap {gap}."; when the ceiling term reorders the top pick the reason says
+    "ceiling-adjusted" (B9: notification layer consumes this verbatim).
+    """
+    ranked = sorted(candidates,
+                    key=lambda c: (-_score(c), -c["xminutes"], c["fdr_attack"]))[:5]
     picks = []
+    max_xp_id = max(candidates, key=lambda c: c["xp"])["player_id"] if candidates else None
     for i, c in enumerate(ranked):
         if i == 0 and len(ranked) > 1:
             s = ranked[1]
-            reason = (f"Highest xP ({c['xp']}) {c['fixture']}. "
-                      f"Next best {s['web_name']} {s['xp']} — gap {round(c['xp'] - s['xp'], 1)}.")
+            if c["player_id"] == max_xp_id:
+                reason = (f"Highest xP ({c['xp']}) {c['fixture']}. "
+                          f"Next best {s['web_name']} {s['xp']} — gap {round(c['xp'] - s['xp'], 1)}.")
+            else:
+                ceiling = round(CEILING_WEIGHT * (c.get("xgoals", 0.0) + c.get("xassists", 0.0)), 2)
+                reason = (f"Ceiling-adjusted top pick: {c['web_name']} {c['xp']} xP "
+                          f"+{ceiling} upside {c['fixture']}. Next best {s['web_name']} "
+                          f"{s['xp']} — gap {round(c['xp'] - s['xp'], 1)}.")
         elif i == 0:
             reason = f"Highest xP ({c['xp']}) {c['fixture']}."
         else:
@@ -77,15 +99,17 @@ def _build_candidate(conn, player_id, gw):
     if pl is None:
         return None
     xp_row = conn.execute(
-        "SELECT xp, xminutes FROM xp WHERE player_id=? AND gw=? AND model_version=?",
+        "SELECT xp, xminutes, xgoals, xassists FROM xp WHERE player_id=? AND gw=? AND model_version=?",
         (player_id, gw, MODEL_VERSION)).fetchone()
     if xp_row is None:
         return {"player_id": pl["player_id"], "web_name": pl["web_name"],
                 "position": pl["position"], "xp": 0.0, "xminutes": 0.0,
+                "xgoals": 0.0, "xassists": 0.0,
                 "fdr_attack": 5, "fixture": "—"}
     fixture, fdr_attack = _fixture_and_fdr(conn, pl["team_id"], pl["team_short"], gw)
     return {"player_id": pl["player_id"], "web_name": pl["web_name"],
             "position": pl["position"], "xp": xp_row["xp"], "xminutes": xp_row["xminutes"],
+            "xgoals": xp_row["xgoals"] or 0.0, "xassists": xp_row["xassists"] or 0.0,
             "fdr_attack": fdr_attack, "fixture": fixture}
 
 

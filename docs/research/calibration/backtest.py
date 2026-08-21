@@ -249,6 +249,8 @@ class GWResult:
     cap_v2: float     # actual points of the top-xP-v2 player that GW
     cap_v1: float
     cap_win_v2: "bool | None"  # v2 top pick outscored v1 top pick
+    cap_v2c: float    # v0.20 ceiling-adjusted top pick actuals
+    cap_win_v2c: "bool | None"  # ceiling pick outscored the plain max-xP pick
 
 
 def _mae(pred, act):
@@ -315,7 +317,7 @@ def main():
                     team_xgc90, xg_ratio=mults[tid]["fdr_defense_mult"],
                     xgc_ratio=mults[tid]["fdr_attack_mult"],
                     dc_ratio=dc_ratio, venue=venue)
-                pred_v2.append((r["element"], res["xp"]))
+                pred_v2.append((r["element"], res["xp"], res["xgoals"], res["xassists"]))
                 act.append((r["element"], int(r["total_points"])))
                 # ---- v1 (production formula, season-aggregate inputs) ----
                 u = us.get(r["element"])
@@ -328,8 +330,8 @@ def main():
 
             # actuals + metrics for this GW
             act_map = dict(act)
-            p2 = [p for e, p in pred_v2 if e in act_map]
-            a2 = [act_map[e] for e, _ in pred_v2 if e in act_map]
+            p2 = [p for e, p, _g, _a in pred_v2 if e in act_map]
+            a2 = [act_map[e] for e, _p, _g, _a in pred_v2 if e in act_map]
             p1 = [p for e, p in pred_v1 if e in act_map]
             a1 = [act_map[e] for e, _ in pred_v1 if e in act_map]
             all_v2["pred"] += p2
@@ -339,18 +341,25 @@ def main():
 
             cap_v2 = cap_v1 = 0.0
             cap_win = None
+            cap_v2c = 0.0
+            cap_win_v2c = None
             if pred_v2 and pred_v1:
                 top_v2 = max(pred_v2, key=lambda x: x[1])[0]
                 top_v1 = max(pred_v1, key=lambda x: x[1])[0]
+                # v0.20 captain ranker: xP + CEILING_WEIGHT*(xgoals+xassists)
+                top_v2c = max(pred_v2, key=lambda x: x[1] + 0.15 * (x[2] + x[3]))[0]
                 cap_v2 = act_map.get(top_v2, 0)
                 cap_v1 = act_map.get(top_v1, 0)
                 cap_win = cap_v2 > cap_v1
+                cap_v2c = act_map.get(top_v2c, 0)
+                cap_win_v2c = cap_v2c > cap_v2
 
             results.append(GWResult(
                 season=season, gw=gw, n=len(a2), mae_v2=_mae(p2, a2), mae_v1=_mae(p1, a1),
                 bias_v2=(sum(p2) - sum(a2)) / len(a2) if a2 else 0.0,
                 bias_v1=(sum(p1) - sum(a1)) / len(a1) if a1 else 0.0,
-                cap_v2=cap_v2, cap_v1=cap_v1, cap_win_v2=cap_win))
+                cap_v2=cap_v2, cap_v1=cap_v1, cap_win_v2=cap_win,
+                cap_v2c=cap_v2c, cap_win_v2c=cap_win_v2c))
 
             # ---- then insert this GW's rows (window advances) ----
             upsert_rows(sc, season, gw, rows)
@@ -381,6 +390,11 @@ def _report(results, v2, v1):
         if caps1:
             print(f"  captain-proxy: v2 top-pick actual {sum(caps2)/len(caps2):.2f} vs "
                   f"v1 {sum(caps1)/len(caps1):.2f}; v2 wins {wins}/{len(caps1)} GWs")
+        caps2c = [r.cap_v2c for r in rs if r.cap_win_v2c is not None]
+        wins2c = sum(1 for r in rs if r.cap_win_v2c)
+        if caps2c:
+            print(f"  ceiling-proxy: v2 ceiling pick actual {sum(caps2c)/len(caps2c):.2f} vs "
+                  f"v2 plain {sum(caps2)/len(caps2):.2f}; ceiling wins {wins2c}/{len(caps2c)} GWs")
         print(f"  worst GWs by v2 MAE: " +
               ", ".join(f"GW{r.gw}:{r.mae_v2:.2f}" for r in sorted(rs, key=lambda r: -r.mae_v2)[:3]))
     # pooled stats
