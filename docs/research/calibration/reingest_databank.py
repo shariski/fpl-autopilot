@@ -27,7 +27,7 @@ from pathlib import Path
 
 import requests
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path.cwd()  # repo root locally; /app in the container (src is pip-installed there)
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.analytics import fdr, xp  # noqa: E402
@@ -93,10 +93,14 @@ def main():
         print(f"deleted {n} stored rows for {season}")
     conn.commit()
 
-    out = refresh(full=True, cfg=cfg, conn=conn, sources=("databank",),
-                  databank_client=DiskDatabankClient(databank_dir),
-                  report=True)
-    print("refresh databank:", out.get("databank"))
+    # Ingest the REQUESTED seasons directly (not cli.refresh, which reads the
+    # configured databank.seasons — a season frozen out of config would be
+    # deleted here and never re-ingested).
+    from src.cli import _refresh_databank_season
+    for season in seasons:
+        n, unmatched = _refresh_databank_season(
+            conn, DiskDatabankClient(databank_dir), season, full=True)
+        print(f"re-ingested {season}: {n} rows, {unmatched} unmatched")
 
     print("recomputing FDR v1/v2 + xP v1/v2 ...")
     fdr.compute_and_store(conn)
