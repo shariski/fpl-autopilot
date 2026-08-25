@@ -203,3 +203,18 @@ def test_guard_does_not_touch_players_with_prior_rows():
     rates = _rates(conn, lf_gw_count=5, sf_gw_count=2)
     pr = rates[101]
     assert pr.xg_per_start < 1.5                       # natural blend, no shrink
+
+
+def test_sf_live_pairs_penalty_gate():
+    """v0.23: the pre-season def-penalty gate — SF live pairs < 3 keeps it on."""
+    conn = connect(":memory:")
+    init_db(conn)
+    _seed(conn, prior_gws=6)                    # enough prior GWs to fill SF
+    assert ratings.sf_live_pairs(conn) == 0     # no live rows -> penalty on
+    _live_row(conn, 101, 1, 42)
+    assert ratings.sf_live_pairs(conn) == 1
+    _live_row(conn, 101, 2, 43)
+    assert ratings.sf_live_pairs(conn) == 2
+    _live_row(conn, 101, 3, 44)
+    assert ratings.sf_live_pairs(conn) == 3
+    assert ratings.sf_live_pairs(conn) >= ratings.SF_LIVE_MIN

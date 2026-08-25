@@ -224,3 +224,55 @@ def test_get_captain_picks_no_xp_row_ranks_last(db):
     last = result["picks"][1]
     assert last["xp"] == 0.0
     assert last["fixture"] == "—"
+
+
+def _seed_penalty_squad(db, live_gws):
+    """Keeper (xp 5.0) vs forward (xp 4.6 + ceiling 0.18): the keeper wins without
+    the penalty, loses with it. `live_gws` = count of settled live GWs in the DB."""
+    db.executemany("INSERT INTO teams (id, name, short_name) VALUES (?,?,?)",
+                   [(1, "Man City", "MCI"), (2, "Bournemouth", "BOU")])
+    db.execute("INSERT INTO gameweeks (id, name, finished) VALUES (9,'GW9',1),(10,'GW10',0)")
+    db.execute("INSERT INTO fixtures (id, gw, home_team_id, away_team_id, finished) "
+               "VALUES (1,10,1,2,0)")
+    db.execute("INSERT INTO fdr (team_id, gw, fdr_attack, fdr_defense, computed_at) "
+               "VALUES (1,10,2,3,'t'),(2,10,4,3,'t')")
+    db.executemany("INSERT INTO players (id, name, web_name, team_id, position, status) "
+                   "VALUES (?,?,?,?,?, 'a')",
+                   [(201, "Keeper", "Keeper", 1, "GKP"),
+                    (202, "Fwd", "Fwd", 2, "FWD")])
+    db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, "
+               "xassists, xcs, computed_at) VALUES (201,10,'v2',5.0,85.0,0.0,0.0,0,'t')")
+    db.execute("INSERT INTO xp (player_id, gw, model_version, xp, xminutes, xgoals, "
+               "xassists, xcs, computed_at) VALUES (202,10,'v2',4.6,85.0,0.9,0.3,0,'t')")
+    picks_json = json.dumps([
+        {"element": 201, "position": 1, "multiplier": 1,
+         "is_captain": False, "is_vice_captain": False},
+        {"element": 202, "position": 2, "multiplier": 1,
+         "is_captain": False, "is_vice_captain": False}])
+    db.execute("INSERT INTO my_team (gw, picks_json, bank, team_value, snapshot_at) "
+               "VALUES (10, ?, 0, 0, 't')", (picks_json,))
+    # settled live GWs: every player started every one
+    db.executemany(
+        """INSERT INTO player_gw_stats (player_id, gw, fixture_id, minutes,
+           goals_scored, assists, clean_sheets, bonus, total_points, starts, saves,
+           bps, expected_goals, expected_assists, expected_goals_conceded,
+           defensive_contribution, yellow_cards, red_cards, settled_at)
+           VALUES (?,?,?,90,0,0,0,0,5,1,0,20,0.3,0.1,1.4,2,0,0,'t')""",
+        [(pid, gw, gw) for gw in range(1, live_gws + 1)
+         for pid in (201, 202)])
+    db.commit()
+
+
+def test_get_captain_picks_penalty_on_with_few_live_gws(db):
+    """v0.23: <3 live pairs in the SF window -> GKP penalty still applies."""
+    _seed_penalty_squad(db, live_gws=2)
+    result = captain.get_captain_picks(db)
+    assert result["picks"][0]["player_id"] == 202        # keeper penalized: 3.5 < 4.78
+    assert "pre-season" in result["picks"][0]["reason"].lower()
+
+
+def test_get_captain_picks_penalty_off_at_three_live_gws(db):
+    _seed_penalty_squad(db, live_gws=3)
+    result = captain.get_captain_picks(db)
+    assert result["picks"][0]["player_id"] == 201        # keeper wins: 5.0 > 4.78
+    assert "Highest xP (5.0)" in result["picks"][0]["reason"]  # no reorder -> plain reason

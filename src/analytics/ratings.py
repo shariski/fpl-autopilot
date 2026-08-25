@@ -30,6 +30,19 @@ PROMOTED_XGC90 = 1.55
 # league averages until MIN_LIVE_RATE_GWS live GWs (decision-engine.md v0.23).
 MIN_LIVE_RATE_GWS = 3
 
+# v0.23: the v0.21 pre-season defensive-captain penalty applies while the SF window
+# has fewer than this many live (season, gw) pairs (i.e. until SF is majority-live).
+SF_LIVE_MIN = 3
+
+
+def sf_live_pairs(conn, live_season=None):
+    """Live (season, gw) pairs inside the SF window (v0.23 penalty gate)."""
+    rows = _rating_rows(conn, live_season=live_season)
+    sf_keys = _window_keys(rows, SF_GW_COUNT)
+    return len({(r["source"], r["gw"]) for r in rows
+                if r["source"].startswith(LIVE_SOURCE_PREFIX)
+                and (r["source"], r["gw"]) in sf_keys})
+
 
 def damp(x):
     """Damp extreme multipliers: |x| <= 1.55 passes through, excess decays at 40%."""

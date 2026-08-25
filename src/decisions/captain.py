@@ -2,6 +2,7 @@
 ranks the 15-man squad for captaincy. Suggest-only — no execution/persistence (CLAUDE.md B2)."""
 import json
 
+from src.analytics import ratings
 from src.decisions import confidence as confidence_mod
 
 MODEL_VERSION = "v2"
@@ -13,9 +14,10 @@ MODEL_VERSION = "v2"
 # in decision-engine.md (B4).
 CEILING_WEIGHT = 0.15
 
-# v0.21 pre-season defensive penalty: while the current season has no databank
-# rows, GKP/DEF projections lean entirely on last season's team defense and
-# carry lineup risk (GW1 live: a benched keeper captain returned 0 pts).
+# v0.21/v0.23 pre-season defensive penalty: while the SF rating window is not
+# majority-live (< 3 live GW pairs), GKP/DEF projections lean on last season's
+# team defense and carry lineup risk (GW1 live: a benched keeper captain returned
+# 0 pts). Gate: ratings.sf_live_pairs(conn) < ratings.SF_LIVE_MIN.
 PRE_SEASON_DEF_PENALTY = 1.5
 
 
@@ -135,11 +137,10 @@ def get_captain_picks(conn):
         return {"picks": [], "vice_player_id": None, "confidence": None}
     candidates = [c for c in (_build_candidate(conn, pid, gw)
                               for pid in _squad_element_ids(conn)) if c is not None]
-    # v0.21: pre-season = the current season has no databank rows yet (projections
-    # lean entirely on last season) — GKP/DEF captain scores take the penalty.
-    pre_season = conn.execute(
-        "SELECT COUNT(*) AS n FROM player_stats WHERE source LIKE 'fpl_databank:2026-27:%'"
-    ).fetchone()["n"] == 0
+    # v0.23: pre-season = the SF rating window is not majority-live yet (projections
+    # still lean on last season; lineup risk only partially visible). The penalty
+    # auto-off rule: SF_LIVE_MIN=3 live pairs (decision-engine.md v0.23).
+    pre_season = ratings.sf_live_pairs(conn) < ratings.SF_LIVE_MIN
     picks = rank_captains(candidates, pre_season=pre_season)
     if not picks:
         return {"picks": [], "vice_player_id": None, "confidence": None}
