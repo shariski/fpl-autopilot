@@ -116,7 +116,13 @@ def compute_player_xp_v2(position, status, chance_of_playing, starts, squads_mad
     All rates are per-start (per-90 for saves/YC/RC); ratios are damped FDR v2 multipliers.
     """
     import math
-    raw_start = min(1.0, chance_of_playing * starts / squads_made) if squads_made else 0.0
+    # chance_of_playing arrives on the FPL 0-100 scale from the DB but the model
+    # contract is 0-1 (the backtest passes 1.0). Without normalization, cop=100
+    # capped every available player's start probability at 1.0, nullifying both
+    # rotation risk (starts/squads) and the doubt haircut (observed 2026-08-25:
+    # Brooks — a 13/37 starter — got a guaranteed 90-minute, 7.1 xP projection).
+    cop = chance_of_playing / 100.0 if chance_of_playing > 1.0 else chance_of_playing
+    raw_start = min(1.0, cop * starts / squads_made) if squads_made else 0.0
     p_start = raw_start * STATUS_MULT.get(status, 1.0)
     lam = team_xgc90 * xg_ratio
     if p_start <= 0:

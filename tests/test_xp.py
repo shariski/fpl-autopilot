@@ -1,3 +1,5 @@
+import pytest
+
 from src.analytics import xp
 
 
@@ -25,6 +27,24 @@ def test_injured_status_zero_xp():
     inj = xp.compute_player_xp("FWD", "i", 0.7, 0.2, 2700, 30, fdr_attack=1, fdr_defense=1)
     assert inj["xminutes"] == 0.0
     assert inj["xp"] == 0.0
+
+
+def test_rotation_risk_respected_with_0_100_cop():
+    """chance_of_playing is stored on the 0-100 scale (FPL API), but the model
+    contract is 0-1. A 13/37 starter with cop=100 must NOT be capped to a
+    guaranteed start (regression: Brooks got a 90-min, 7.1 xP projection while
+    starting 34% of games — the cap made every available player a full-starter)."""
+    r = xp.compute_player_xp_v2("MID", "a", 100.0, 13, 37, 0.53, 0.25, 0.1,
+                                2.0, 0.1, 0.0, 0.6, 1.4, venue="H")
+    assert r["xminutes"] == pytest.approx(90 * 13 / 37, abs=0.5)
+    assert r["xp"] < 5.0
+
+
+def test_cop_0_1_inputs_still_work():
+    """The 0-1 contract used by the backtest must be unchanged."""
+    r = xp.compute_player_xp_v2("MID", "a", 1.0, 13, 37, 0.53, 0.25, 0.1,
+                                2.0, 0.1, 0.0, 0.6, 1.4, venue="H")
+    assert r["xminutes"] == pytest.approx(90 * 13 / 37, abs=0.5)
 
 
 def test_zero_games_no_division_error():
