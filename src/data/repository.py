@@ -496,3 +496,38 @@ def upsert_player_gw_stats(conn, gw, payload):
     )
     conn.commit()
     return cur.rowcount
+
+
+def backfill_player_gw_stats(conn, gw, payload):
+    """v0.23: fill the 9 full-stat columns on rows settled before they existed.
+
+    UPDATEs keyed on the (player_id, gw, fixture_id) PK, touching ONLY the v0.23
+    columns — existing columns stay frozen (residuals/audit stability). Returns the
+    number of rows updated.
+    """
+    if "elements" not in payload:
+        raise ValueError(f"event_live payload for gw={gw} missing 'elements' (schema drift?)")
+    updates = []
+    for el in payload["elements"]:
+        stats = el["stats"]
+        for ex in el.get("explain") or []:
+            updates.append((
+                stats.get("starts", 0), stats.get("saves", 0),
+                stats.get("bps", 0), stats.get("expected_goals", 0.0),
+                stats.get("expected_assists", 0.0),
+                stats.get("expected_goals_conceded", 0.0),
+                stats.get("defensive_contribution", 0),
+                stats.get("yellow_cards", 0), stats.get("red_cards", 0),
+                el["id"], gw, ex["fixture"],
+            ))
+    if not updates:
+        return 0
+    cur = conn.executemany(
+        """UPDATE player_gw_stats SET starts=?, saves=?, bps=?, expected_goals=?,
+                expected_assists=?, expected_goals_conceded=?, defensive_contribution=?,
+                yellow_cards=?, red_cards=?
+           WHERE player_id=? AND gw=? AND fixture_id=?""",
+        updates,
+    )
+    conn.commit()
+    return cur.rowcount

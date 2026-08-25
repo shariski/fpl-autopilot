@@ -214,3 +214,79 @@ def test_settlement_writes_full_stat_set():
     assert row["defensive_contribution"] == 3
     assert row["yellow_cards"] == 1
     assert row["red_cards"] == 0
+
+
+def test_settlement_backfills_pre_existing_rows():
+    """v0.23: a GW settled before the full-stat columns existed (starts NULL) is
+    re-fetched and backfilled; existing columns stay frozen."""
+    conn = _db()
+    _seed_gameweeks(conn, finished_gws=[1])
+    # old-shape row: written by pre-v0.23 code (7 columns, starts NULL)
+    conn.execute(
+        """INSERT INTO player_gw_stats (player_id, gw, fixture_id, minutes,
+           goals_scored, assists, clean_sheets, bonus, total_points, settled_at)
+           VALUES (1, 1, 42, 90, 1, 0, 0, 2, 9, 't')""")
+    conn.commit()
+    # the re-fetch carries corrected stats (total_points=99 must NOT overwrite 9)
+    client = StubFPLClient({1: _live_payload([
+        {"player_id": 1, "fixture_id": 42, "minutes": 90, "total_points": 99,
+         "starts": 1, "saves": 2, "bps": 28,
+         "expected_goals": 0.5, "expected_assists": 0.2,
+         "expected_goals_conceded": 1.4, "defensive_contribution": 3,
+         "yellow_cards": 1, "red_cards": 0},
+    ])})
+
+    written = settlement.settlement_run(conn, client)
+    assert written == 1  # backfilled row counts
+
+    row = conn.execute(
+        "SELECT total_points, starts, expected_goals FROM player_gw_stats "
+        "WHERE player_id=1 AND gw=1").fetchone()
+    assert row["total_points"] == 9       # frozen
+    assert row["starts"] == 1             # backfilled
+    assert row["expected_goals"] == 0.5
+    assert client.calls == [1]
+
+
+def test_settlement_backfill_is_idempotent():
+    conn = _db()
+    _seed_gameweeks(conn, finished_gws=[1])
+    conn.execute(
+        """INSERT INTO player_gw_stats (player_id, gw, fixture_id, minutes,
+           goals_scored, assists, clean_sheets, bonus, total_points, settled_at)
+           VALUES (1, 1, 42, 90, 0, 0, 0, 0, 5, 't')""")
+    conn.commit()
+    client = StubFPLClient({1: _live_payload([
+        {"player_id": 1, "fixture_id": 42, "minutes": 90, "total_points": 5,
+         "starts": 1},
+    ])})
+
+    first = settlement.settlement_run(conn, client)
+    second = settlement.settlement_run(conn, client)
+
+    assert first == 1
+    assert second == 0
+    assert client.calls == [1]  # second run sees starts already filled
+
+
+def test_settlement_backfill_failure_is_isolated():
+    """A failing backfill re-fetch does not block other GWs (same contract as settlement)."""
+    conn = _db()
+    _seed_gameweeks(conn, finished_gws=[1, 2])
+    conn.executemany(
+        """INSERT INTO player_gw_stats (player_id, gw, fixture_id, minutes,
+           goals_scored, assists, clean_sheets, bonus, total_points, settled_at)
+           VALUES (?,?,?,90,0,0,0,0,5,'t')""",
+        [(1, 1, 42), (2, 2, 50)])
+    conn.commit()
+    client = StubFPLClient(
+        payloads={2: _live_payload([{"player_id": 2, "fixture_id": 50,
+                                     "minutes": 90, "total_points": 5, "starts": 1}])},
+        raises_on={1},
+    )
+
+    settlement.settlement_run(conn, client)
+
+    assert sorted(client.calls) == [1, 2]   # settle pass (gw2) runs before backfill (gw1)
+    assert conn.execute("SELECT starts FROM player_gw_stats WHERE gw=2").fetchone()["starts"] == 1
+    assert conn.execute("SELECT starts FROM player_gw_stats WHERE gw=1").fetchone()["starts"] is None
