@@ -317,7 +317,8 @@ def main():
                     team_xgc90, xg_ratio=mults[tid]["fdr_defense_mult"],
                     xgc_ratio=mults[tid]["fdr_attack_mult"],
                     dc_ratio=dc_ratio, venue=venue)
-                pred_v2.append((r["element"], res["xp"], res["xgoals"], res["xassists"]))
+                pred_v2.append((r["element"], res["xp"], res["xgoals"], res["xassists"],
+                                pr.position))
                 act.append((r["element"], int(r["total_points"])))
                 # ---- v1 (production formula, season-aggregate inputs) ----
                 u = us.get(r["element"])
@@ -330,8 +331,8 @@ def main():
 
             # actuals + metrics for this GW
             act_map = dict(act)
-            p2 = [p for e, p, _g, _a in pred_v2 if e in act_map]
-            a2 = [act_map[e] for e, _p, _g, _a in pred_v2 if e in act_map]
+            p2 = [p for e, p, _g, _a, _pos in pred_v2 if e in act_map]
+            a2 = [act_map[e] for e, _p, _g, _a, _pos in pred_v2 if e in act_map]
             p1 = [p for e, p in pred_v1 if e in act_map]
             a1 = [act_map[e] for e, _ in pred_v1 if e in act_map]
             all_v2["pred"] += p2
@@ -346,8 +347,17 @@ def main():
             if pred_v2 and pred_v1:
                 top_v2 = max(pred_v2, key=lambda x: x[1])[0]
                 top_v1 = max(pred_v1, key=lambda x: x[1])[0]
-                # v0.20 captain ranker: xP + CEILING_WEIGHT*(xgoals+xassists)
-                top_v2c = max(pred_v2, key=lambda x: x[1] + 0.15 * (x[2] + x[3]))[0]
+                # v0.20/v0.21 captain ranker: xP + 0.15*(xgoals+xassists),
+                # minus the pre-season defensive penalty on each season's GW1
+                # (the current season has no databank rows yet).
+                pre_season = gw == 1
+
+                def _cap_key(x):
+                    e, xp, xg, xa, pos = x
+                    pen = 1.5 if pre_season and pos in ("GK", "DEF") else 0.0
+                    return xp + 0.15 * (xg + xa) - pen
+
+                top_v2c = max(pred_v2, key=_cap_key)[0]
                 cap_v2 = act_map.get(top_v2, 0)
                 cap_v1 = act_map.get(top_v1, 0)
                 cap_win = cap_v2 > cap_v1

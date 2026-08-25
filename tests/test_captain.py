@@ -33,6 +33,27 @@ def test_rank_captains_ceiling_reason_marks_upside_pick():
     assert "ceiling" in picks[0]["reason"].lower()
 
 
+def test_rank_captains_pre_season_defensive_penalty():
+    """v0.21: pre-season (no settled GW), GKP/DEF captain scores carry a
+    documented penalty — their projections lean on last season's team defense
+    and carry lineup risk (GW1 live: benched keeper captain -> 0 pts, while the
+    ceiling term alone kept a keeper ahead on an 8.86 projection)."""
+    picks = captain.rank_captains([
+        _cand(1, "Keeper", 5.0, position="GKP"),
+        _cand(2, "Fwd", 4.6, position="FWD", xgoals=0.9, xassists=0.3),  # 4.6 + .18 = 4.78
+    ], pre_season=True)
+    assert [p["player_id"] for p in picks] == [2, 1]          # 5.0 - 1.5 = 3.5 < 4.78
+    assert "pre-season" in picks[0]["reason"].lower()
+
+
+def test_rank_captains_no_penalty_mid_season():
+    picks = captain.rank_captains([
+        _cand(1, "Keeper", 5.0, position="GKP"),
+        _cand(2, "Fwd", 4.6, position="FWD", xgoals=0.9, xassists=0.3),
+    ], pre_season=False)
+    assert [p["player_id"] for p in picks] == [1, 2]          # keeper keeps the lead
+
+
 def test_rank_captains_orders_by_xp():
     picks = captain.rank_captains([
         _cand(2, "Mid", 5.0), _cand(1, "Top", 7.2), _cand(3, "Low", 3.1),

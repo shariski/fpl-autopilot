@@ -387,3 +387,27 @@ policies, scored on 25-26 ACTUAL points (GW3-38, no leakage, v2 xP):
 - Caveat: 25-26 data; the 26/27 bonus rebalance (full-backs/GK/attackers get slightly
   better bonus odds — FPL "What's New") could narrow the DEF edge; re-run after GW1-4
   of 26/27.
+
+## 11. Live GW1 review — 26/27 (B5 first live gate, 2026-08-21)
+
+GW1 settled; the 26-27 databank CSVs were not yet published (404 at review time), so
+this review used the FPL live endpoint (actuals) vs the stored v1/v2 projections.
+
+| Metric (245 players with minutes) | v2 | v1 |
+|---|---|---|
+| MAE | **2.38** | 2.88 |
+| bias (pred − actual) | **−0.44** | +0.60 |
+
+Read:
+- v2 still beats v1 live, but GW1 MAE (2.38) is far above the 2-season backtest
+  (1.215/1.357) — the documented pre-season state: projections lean entirely on last
+  season, and lineup uncertainty is invisible (a benched keeper captain → 0 pts).
+- Bias flipped negative (−0.44): the model under-predicted, dominated by players
+  projected full minutes who didn't start.
+- The worst misses were upside events (proj 2.5-3.6 → actual 11-17): the EV model
+  can't see hauls — the case for the captaincy ceiling term (v0.20) and the
+  pre-season defensive-captain penalty (v0.21, `PRE_SEASON_DEF_PENALTY = 1.5`).
+- Action: keep v2; re-evaluate bias after 3-4 GWs of 26-27 data (LF window shifts
+  to the current season); re-calibrate bonus from 26-27 once ~6 GWs exist; the
+  backtest harness picks up the live 26-27 row automatically once the databank
+  publishes GW1.

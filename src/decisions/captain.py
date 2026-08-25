@@ -13,24 +13,32 @@ MODEL_VERSION = "v2"
 # in decision-engine.md (B4).
 CEILING_WEIGHT = 0.15
 
+# v0.21 pre-season defensive penalty: while the current season has no databank
+# rows, GKP/DEF projections lean entirely on last season's team defense and
+# carry lineup risk (GW1 live: a benched keeper captain returned 0 pts).
+PRE_SEASON_DEF_PENALTY = 1.5
 
-def _score(c):
-    return c["xp"] + CEILING_WEIGHT * (c.get("xgoals", 0.0) + c.get("xassists", 0.0))
+
+def _score(c, pre_season=False):
+    upside = CEILING_WEIGHT * (c.get("xgoals", 0.0) + c.get("xassists", 0.0))
+    if pre_season and c.get("position") in ("GKP", "DEF"):
+        upside -= PRE_SEASON_DEF_PENALTY
+    return c["xp"] + upside
 
 
-def rank_captains(candidates):
+def rank_captains(candidates, pre_season=False):
     """Pure: rank captain candidates, build reasoning, return the top-5 picks.
 
     Each candidate: {player_id, web_name, position, xp, xminutes, fdr_attack,
-    fixture, xgoals, xassists}. Order: ceiling-adjusted score desc (xp + 0.15×
-    goal involvement), tiebreak xminutes desc, then fdr_attack asc.
-    Returns up to 5 picks: {player_id, web_name, xp, fixture, reason}.
+    fixture, xgoals, xassists}. Order: adjusted score desc (xp + 0.15× goal
+    involvement, minus the pre-season defensive penalty), tiebreak xminutes
+    desc, then fdr_attack asc. Returns up to 5 picks.
     Reason — rank 1: "Highest xP ({xp}) {fixture}. Next best {name} {xp2} —
-    gap {gap}."; when the ceiling term reorders the top pick the reason says
-    "ceiling-adjusted" (B9: notification layer consumes this verbatim).
+    gap {gap}."; when an adjustment reorders the top pick the reason says which
+    adjustment drove it (B9: notification layer consumes this verbatim).
     """
     ranked = sorted(candidates,
-                    key=lambda c: (-_score(c), -c["xminutes"], c["fdr_attack"]))[:5]
+                    key=lambda c: (-_score(c, pre_season), -c["xminutes"], c["fdr_attack"]))[:5]
     picks = []
     max_xp_id = max(candidates, key=lambda c: c["xp"])["player_id"] if candidates else None
     for i, c in enumerate(ranked):
@@ -41,9 +49,16 @@ def rank_captains(candidates):
                           f"Next best {s['web_name']} {s['xp']} — gap {round(c['xp'] - s['xp'], 1)}.")
             else:
                 ceiling = round(CEILING_WEIGHT * (c.get("xgoals", 0.0) + c.get("xassists", 0.0)), 2)
-                reason = (f"Ceiling-adjusted top pick: {c['web_name']} {c['xp']} xP "
-                          f"+{ceiling} upside {c['fixture']}. Next best {s['web_name']} "
-                          f"{s['xp']} — gap {round(c['xp'] - s['xp'], 1)}.")
+                if pre_season:
+                    reason = (f"Pre-season adjusted top pick: {c['web_name']} {c['xp']} xP "
+                              f"+{ceiling} upside, defensive penalty "
+                              f"{PRE_SEASON_DEF_PENALTY} {c['fixture']}. "
+                              f"Next best {s['web_name']} {s['xp']} — "
+                              f"gap {round(c['xp'] - s['xp'], 1)}.")
+                else:
+                    reason = (f"Ceiling-adjusted top pick: {c['web_name']} {c['xp']} xP "
+                              f"+{ceiling} upside {c['fixture']}. Next best {s['web_name']} "
+                              f"{s['xp']} — gap {round(c['xp'] - s['xp'], 1)}.")
         elif i == 0:
             reason = f"Highest xP ({c['xp']}) {c['fixture']}."
         else:
@@ -120,7 +135,12 @@ def get_captain_picks(conn):
         return {"picks": [], "vice_player_id": None, "confidence": None}
     candidates = [c for c in (_build_candidate(conn, pid, gw)
                               for pid in _squad_element_ids(conn)) if c is not None]
-    picks = rank_captains(candidates)
+    # v0.21: pre-season = the current season has no databank rows yet (projections
+    # lean entirely on last season) — GKP/DEF captain scores take the penalty.
+    pre_season = conn.execute(
+        "SELECT COUNT(*) AS n FROM player_stats WHERE source LIKE 'fpl_databank:2026-27:%'"
+    ).fetchone()["n"] == 0
+    picks = rank_captains(candidates, pre_season=pre_season)
     if not picks:
         return {"picks": [], "vice_player_id": None, "confidence": None}
     vice = picks[1]["player_id"] if len(picks) > 1 else None
