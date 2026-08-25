@@ -45,6 +45,10 @@ UNDERSTAT_JSON = {"2024-25": DATABANK_DIR / "understat_2024.json",
 
 # ---------- local-file source for the production client ----------
 
+class _GwMissing(Exception):
+    """Signal from rows_for_gw that the live season has no further GWs."""
+
+
 class _LocalSession:
     """Serves the production DatabankClient from local CSVs (no network)."""
 
@@ -159,6 +163,51 @@ def upsert_rows(sc, season, gw, rows):
     repository.upsert_databank_stats(sc.conn, season, gw, rows)
 
 
+def upsert_players_only(sc, season, gw, rows):
+    """Create player rows for a season's GW without writing databank stats
+    (mirrors production: bootstrap-static creates every current-season player)."""
+    for r in rows:
+        tid = sc.teams_by_name.get(r["team"])
+        if tid is None:
+            continue
+        pos = {"GK": "GKP", "AM": "MID"}.get(r["position"], r["position"])
+        sc.conn.execute(
+            "INSERT INTO players (id, name, web_name, team_id, position, price, status, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,'t') ON CONFLICT(id) DO NOTHING",
+            (r["element"], r["name"], r["name"], tid, pos, 5.0, "a"))
+    sc.conn.commit()
+
+
+def _live_payload_rows(rows, gw):
+    """Map databank-shaped rows to an FPL event/{gw}/live payload (settlement input)."""
+    elements = {}
+    for r in rows:
+        el = elements.setdefault(r["element"], {"id": r["element"], "stats": {
+            "minutes": 0, "goals_scored": 0, "assists": 0, "clean_sheets": 0,
+            "bonus": 0, "total_points": 0, "starts": 0, "saves": 0, "bps": 0,
+            "expected_goals": 0.0, "expected_assists": 0.0,
+            "expected_goals_conceded": 0.0, "defensive_contribution": 0,
+            "yellow_cards": 0, "red_cards": 0}, "explain": []})
+        st = el["stats"]
+        st["minutes"] += r["minutes"]
+        st["goals_scored"] += r.get("goals_scored", 0)
+        st["assists"] += r.get("assists", 0)
+        st["clean_sheets"] += r.get("clean_sheets", 0)
+        st["bonus"] += r.get("bonus", 0)
+        st["total_points"] += r.get("total_points", 0)
+        st["starts"] = max(st["starts"], r.get("starts", 0))
+        st["saves"] += r.get("saves", 0)
+        st["bps"] += r.get("bps", 0)
+        st["expected_goals"] += r.get("expected_goals", 0.0)
+        st["expected_assists"] += r.get("expected_assists", 0.0)
+        st["expected_goals_conceded"] += r.get("expected_goals_conceded", 0.0)
+        st["defensive_contribution"] += r.get("dc", 0)
+        st["yellow_cards"] += r.get("yellow_cards", 0)
+        st["red_cards"] += r.get("red_cards", 0)
+        el["explain"].append({"fixture": gw, "stats": []})
+    return {"elements": list(elements.values())}
+
+
 # ---------- fixtures for one GW from its rows ----------
 
 def fixtures_for_gw(sc, rows):
@@ -191,6 +240,71 @@ def fixtures_for_gw(sc, rows):
             else:
                 collisions += 1
     return fixtures, collisions
+
+
+def run_simulation(sc, prior_season, live_season, rows_for_gw, max_gw=38, feed_live=True):
+    """Blend simulation (v0.23): prior_season feeds the databank, live_season is fed
+    GW-by-GW as live rows through the production settlement path (player_gw_stats).
+    Each live GW is predicted with live rows strictly BEFORE it (no leakage).
+    `rows_for_gw(gw)` returns databank-shaped rows or raises _GwMissing. Returns
+    per-GW GWResults. feed_live=False runs the pure-prior baseline (identical loop,
+    no live rows ever inserted)."""
+    results = []
+    for gw in range(1, max_gw + 1):
+        try:
+            rows = rows_for_gw(gw)
+        except _GwMissing:
+            break
+        if not rows:
+            break
+        team_ratings, la = ratings.compute_team_ratings(sc.conn, live_season=live_season)
+        fixtures, _collisions = fixtures_for_gw(sc, rows)
+        mults = {x["team_id"]: x for x in fdr.compute_fdr_v2(team_ratings, la, fixtures, {})}
+        player_rates = ratings.compute_player_rates(sc.conn, live_season=live_season)
+
+        pred, act = [], []
+        for r in rows:
+            tid = sc.teams_by_name.get(r["team"])
+            if tid is None:
+                continue
+            venue = "H" if r["was_home"] else "A"
+            pr = player_rates.get(r["element"])
+            if pr is None or tid not in mults:
+                continue
+            opp_id = None
+            for fx in fixtures:
+                if fx["home_team_id"] == tid:
+                    opp_id = fx["away_team_id"]
+                elif fx["away_team_id"] == tid:
+                    opp_id = fx["home_team_id"]
+            if opp_id is None:
+                continue
+            opp_r = team_ratings.get(opp_id)
+            dc_ratio = ratings.damp(opp_r.dc90 / la.dc90) if opp_r and la.dc90 else 1.0
+            team_xgc90 = team_ratings.get(tid).xgc90 if tid in team_ratings else la.xgc90
+            res = xp.compute_player_xp_v2(
+                pr.position, "a", 1.0, pr.starts, pr.squads_made,
+                pr.xg_per_start, pr.xa_per_start, pr.dc_hit_rate,
+                pr.saves_per_90, pr.yc_per_90, pr.rc_per_90, pr.p60,
+                team_xgc90, xg_ratio=mults[tid]["fdr_defense_mult"],
+                xgc_ratio=mults[tid]["fdr_attack_mult"],
+                dc_ratio=dc_ratio, venue=venue)
+            pred.append((r["element"], res["xp"]))
+            act.append((r["element"], int(r["total_points"])))
+
+        if pred and act:
+            act_map = dict(act)
+            p2 = [p for e, p in pred if e in act_map]
+            a2 = [act_map[e] for e, _p in pred if e in act_map]
+            results.append(GWResult(season=live_season, gw=gw, n=len(a2),
+                                    mae_v2=_mae(p2, a2), mae_v1=0.0,
+                                    bias_v2=(sum(p2) - sum(a2)) / len(a2) if a2 else 0.0,
+                                    bias_v1=0.0, cap_v2=0.0, cap_v1=0.0,
+                                    cap_win_v2=None, cap_v2c=0.0, cap_win_v2c=None))
+        if feed_live:
+            upsert_players_only(sc, live_season, gw, rows)
+            repository.upsert_player_gw_stats(sc.conn, gw, _live_payload_rows(rows, gw))
+    return results
 
 
 # ---------- v1 inputs ----------
@@ -257,7 +371,76 @@ def _mae(pred, act):
     return sum(abs(a - p) for p, a in zip(pred, act)) / len(pred) if act else 0.0
 
 
+def _report_sim(blend, prior, buckets=((1, 2), (3, 5), (6, 38))):
+    """Per-bucket blend vs pure-prior comparison (v0.23 simulation)."""
+    print("=== blend simulation: natural-window live rows vs pure prior ===")
+    for lo, hi in buckets:
+        bs = [r for r in blend if lo <= r.gw <= hi and r.n > 0]
+        ps = [r for r in prior if lo <= r.gw <= hi and r.n > 0]
+        if not bs:
+            continue
+        n = sum(r.n for r in bs)
+        mae_b = sum(r.mae_v2 * r.n for r in bs) / n
+        mae_p = sum(r.mae_v2 * r.n for r in ps) / n
+        bias_b = sum(r.bias_v2 * r.n for r in bs) / n
+        bias_p = sum(r.bias_v2 * r.n for r in ps) / n
+        print(f"  live-GWs {lo}-{hi}: MAE blend {mae_b:.3f} vs prior {mae_p:.3f} "
+              f"({'blend better' if mae_b < mae_p else 'prior better'}), "
+              f"bias blend {bias_b:+.3f} vs prior {bias_p:+.3f}")
+
+
+def simulate(args):
+    """--simulate: prior season as databank, live season fed GW-by-GW as live rows."""
+    season_maps, canonical = _season_team_maps()
+    sc = build_scratch(canonical)
+    client = DatabankClient(session=_LocalSession())
+    for gw in range(1, 39):
+        try:
+            raw = client.fetch_gw(args.prior, gw)
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                break
+            raise
+        upsert_rows(sc, args.prior, gw, _canonicalize_rows(
+            args.prior, raw, season_maps[args.prior][1], canonical))
+
+    def rows_for_gw(gw):
+        try:
+            raw = client.fetch_gw(args.live, gw)
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                raise _GwMissing from exc
+            raise
+        return _canonicalize_rows(args.live, raw, season_maps[args.live][1], canonical)
+
+    blend = run_simulation(sc, args.prior, args.live, rows_for_gw, args.max_gw, feed_live=True)
+    sc2 = build_scratch(canonical)
+    for gw in range(1, 39):
+        try:
+            raw = client.fetch_gw(args.prior, gw)
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                break
+            raise
+        upsert_rows(sc2, args.prior, gw, _canonicalize_rows(
+            args.prior, raw, season_maps[args.prior][1], canonical))
+    prior = run_simulation(sc2, args.prior, args.live, rows_for_gw, args.max_gw, feed_live=False)
+    _report_sim(blend, prior)
+    return blend, prior
+
+
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description="xP backtest (default) or blend simulation (v0.23)")
+    ap.add_argument("--simulate", action="store_true",
+                    help="blend simulation: prior season as databank, live season fed as live rows")
+    ap.add_argument("--prior", default="2024-25")
+    ap.add_argument("--live", default="2025-26")
+    ap.add_argument("--max-gw", type=int, default=38)
+    args = ap.parse_args()
+    if args.simulate:
+        simulate(args)
+        return
     client = DatabankClient(session=_LocalSession())
     season_maps, canonical = _season_team_maps()
     sc = build_scratch(canonical)
