@@ -10,6 +10,8 @@ B4 activity-log entry.
 """
 from dataclasses import dataclass
 
+from .. import config
+
 LF_GW_COUNT = 38
 SF_GW_COUNT = 6
 LF_WEIGHT = 0.8
@@ -46,17 +48,70 @@ class LeagueAverage:
     dc90: float
 
 
-def _databank_rows(conn):
-    return conn.execute(
-        """SELECT ps.source, ps.gw, ps.minutes, ps.xg, ps.xgc, ps.dc, p.team_id
-           FROM player_stats ps JOIN players p ON p.id = ps.player_id
-           WHERE ps.source LIKE 'fpl_databank:%'""").fetchall()
+LIVE_SOURCE_PREFIX = "fpl_live:"
+
+
+def _season_year(source):
+    """'fpl_databank:2024-25' | 'fpl_live:2026-27' -> 2024 | 2026 (window ordering key)."""
+    return int(source.rsplit(":", 1)[1].split("-")[0])
 
 
 def _window_keys(rows, gw_count):
     """The last `gw_count` distinct (source, gw) pairs across all rows, season-ordered."""
-    keys = sorted({(r["source"], r["gw"]) for r in rows})
+    keys = sorted({(r["source"], r["gw"]) for r in rows},
+                  key=lambda k: (_season_year(k[0]), k[1]))
     return set(keys[-gw_count:]) if gw_count > 0 else set()
+
+
+def _rating_sources(conn, live_season=None):
+    """(db_rows, live_rows) — the unified rating-window row set (v0.23).
+
+    db_rows: databank rows (player_stats). For any season whose live rows are present,
+    that season's databank rows are excluded — live is authoritative in-season (R9).
+    live_rows: player_gw_stats aggregated per (player_id, gw), synthetic source
+    'fpl_live:<season>'; rows not yet backfilled (starts IS NULL) are skipped.
+    """
+    season = live_season or config.current_season()
+    live_agg = {}
+    for r in conn.execute(
+            """SELECT player_id, gw, minutes, starts, saves, bps,
+                      expected_goals, expected_assists, expected_goals_conceded,
+                      defensive_contribution, yellow_cards, red_cards,
+                      p.team_id, p.position
+               FROM player_gw_stats gs JOIN players p ON p.id = gs.player_id
+               WHERE gs.starts IS NOT NULL"""):
+        key = (r["player_id"], r["gw"])
+        a = live_agg.setdefault(key, {"minutes": 0.0, "starts": 0, "saves": 0, "bps": 0,
+                                      "xg": 0.0, "xa": 0.0, "xgc": 0.0, "dc": 0,
+                                      "yellow_cards": 0, "red_cards": 0,
+                                      "team_id": r["team_id"], "position": r["position"]})
+        a["minutes"] += r["minutes"]
+        a["starts"] = max(a["starts"], r["starts"])   # started >=1 fixture (0/1)
+        a["saves"] += r["saves"]
+        a["bps"] += r["bps"]
+        a["xg"] += r["expected_goals"]
+        a["xa"] += r["expected_assists"]
+        a["xgc"] += r["expected_goals_conceded"]
+        a["dc"] += r["defensive_contribution"]
+        a["yellow_cards"] += r["yellow_cards"]
+        a["red_cards"] += r["red_cards"]
+    live_rows = [dict(source=f"{LIVE_SOURCE_PREFIX}{season}", gw=gw, player_id=pid, **a)
+                 for (pid, gw), a in sorted(live_agg.items())]
+    db_rows = conn.execute(
+        """SELECT ps.source, ps.gw, ps.minutes, ps.xg, ps.xgc, ps.dc, ps.starts, ps.xa,
+                  ps.saves, ps.yellow_cards, ps.red_cards,
+                  p.id AS player_id, p.team_id, p.position
+           FROM player_stats ps JOIN players p ON p.id = ps.player_id
+           WHERE ps.source LIKE 'fpl_databank:%'""").fetchall()
+    db_rows = [dict(r) for r in db_rows]
+    if live_rows:
+        db_rows = [r for r in db_rows if r["source"] != f"fpl_databank:{season}"]
+    return db_rows, live_rows
+
+
+def _rating_rows(conn, live_season=None):
+    db_rows, live_rows = _rating_sources(conn, live_season=live_season)
+    return db_rows + live_rows
 
 
 def _aggregate(rows, keys):
@@ -107,13 +162,15 @@ def _blend(lf, sf):
             for tid in lf}
 
 
-def compute_team_ratings(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT):
-    """Per-team blended LF/SF rates + league averages from databank rows.
+def compute_team_ratings(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT,
+                         live_season=None):
+    """Per-team blended LF/SF rates + league averages from the unified row set
+    (databank + current-season live rows, v0.23).
 
     Returns (ratings: dict[team_id -> TeamRating], la: LeagueAverage).
-    Teams with no databank rows are absent (promoted-team overrides handle them).
+    Teams with no rating rows are absent (promoted-team overrides handle them).
     """
-    rows = _databank_rows(conn)
+    rows = _rating_rows(conn, live_season=live_season)
     lf_keys = _window_keys(rows, lf_gw_count)
     sf_keys = _window_keys(rows, sf_gw_count)
     lf = _team_rates(_aggregate(rows, lf_keys))
@@ -214,18 +271,16 @@ def _player_agg(rows, keys):
     return out
 
 
-def compute_player_rates(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT):
-    """Per-player rates for xP v2 from databank rows. Returns {player_id: PlayerRates}.
+def compute_player_rates(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT,
+                         live_season=None):
+    """Per-player rates for xP v2 from the unified row set (databank + live, v0.23).
+    Returns {player_id: PlayerRates}.
 
     DC hits are counted per start against the position threshold (DEF 10, MID/FWD 12).
     p60 uses the LF window only; all other rates blend LF 0.8 / SF 0.2.
     """
-    rows = conn.execute(
-        """SELECT ps.source, ps.gw, ps.minutes, ps.xg, ps.xa, ps.dc, ps.saves,
-                  ps.starts, ps.yellow_cards, ps.red_cards,
-                  p.id AS player_id, p.team_id, p.position
-           FROM player_stats ps JOIN players p ON p.id = ps.player_id
-           WHERE ps.source LIKE 'fpl_databank:%'""").fetchall()
+    rows, live_rows = _rating_sources(conn, live_season=live_season)
+    rows = rows + live_rows  # union: windows/aggregation span both sources
     lf_keys = _window_keys(rows, lf_gw_count)
     sf_keys = _window_keys(rows, sf_gw_count)
     lf = _player_agg(rows, lf_keys)

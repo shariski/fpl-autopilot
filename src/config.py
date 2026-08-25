@@ -35,6 +35,13 @@ def databank_seasons(cfg=None):
     return cfg.get("databank", {}).get("seasons", ["2025-26", "2026-27"])
 
 
+def current_season(cfg=None):
+    """Current FPL season label in databank form ('2026-27'), from config season start year."""
+    cfg = cfg if cfg is not None else load_config()
+    start = int(cfg.get("season", "2026"))
+    return f"{start}-{str((start + 1) % 100).zfill(2)}"
+
+
 def mode(cfg=None):
     cfg = cfg if cfg is not None else load_config()
     override = _mode_override(cfg)
