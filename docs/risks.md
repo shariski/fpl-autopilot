@@ -194,6 +194,13 @@ known-good CSVs from disk instead of GitHub; treat live-GitHub databank fetches 
 suspect until the upstream files recover. Never delete the local `data/databank/`
 snapshot (gitignored — it is the only full copy).
 
+**Partial materialisation 2026-08-25:** the hourly job re-fetched 25-26 from the
+live GitHub (which now carries a different partial revision — 17,016 rows vs the
+19,074-row trusted snapshot) and silently shifted some xP values. **Resolution:**
+`config.yaml` `databank.seasons` is now `["2026-27"]` only — past seasons are
+frozen in the DB; live fetching is restricted to the current season. Re-ingest
+restores the trusted 25-26 rows.
+
 ---
 
 ## Q1 — User risk tolerance for auto-execution ✅ RESOLVED

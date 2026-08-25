@@ -7,6 +7,12 @@ storage:
 understat:
   season: "2026"   # Understat uses the start year; "2026" = the 2026/27 season
 
+databank:
+  # Live fetch ONLY the current season (R9): past seasons are frozen in the DB
+  # from the trusted local snapshot — the live GitHub files are revision-unstable
+  # (a partial re-fetch of 25-26 silently shifted xP values on 2026-08-25).
+  seasons: ["2026-27"]
+
 mode:
   current: manual  # auto | manual | hybrid
 
