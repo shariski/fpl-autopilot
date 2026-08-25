@@ -164,3 +164,42 @@ def test_team_ratings_include_live_gws():
     r_after, _ = ratings.compute_team_ratings(conn, lf_gw_count=5, sf_gw_count=2)
     assert r_after[1].gw_count == 6                # 5 prior + 1 live
     assert r_after[1].xg90 > r_before[1].xg90
+
+
+def test_new_signing_rates_shrink_toward_position_average():
+    """v0.23 guard: a player with no prior databank rows and one extreme live GW
+    gets w=1/3 live + 2/3 pooled position average (MIN_LIVE_RATE_GWS = 3).
+
+    The pool is Σ stat ÷ Σ denominator over the LF window rows — it includes the
+    player's own live row (standard shrinkage: pool = 105's prior 0.3×4 + own 1.5
+    over 5 starts = 0.54)."""
+    conn = connect(":memory:")
+    init_db(conn)
+    _seed(conn, prior_gws=5)                          # FWDs at 0.3 xg/start (105)
+    _live_row(conn, 103, 1, 42, xg=1.5, starts=1, minutes=90)   # FWD new signing
+    rates = _rates(conn, lf_gw_count=5, sf_gw_count=2)
+    pr = rates[103]
+    pool = (0.3 * 4 + 1.5) / 5                        # 105 in-window gw2-5 + own live
+    expected = (1 / 3) * 1.5 + (2 / 3) * pool
+    assert pr.xg_per_start == pytest.approx(expected, abs=0.02)
+
+
+def test_new_signing_guard_off_after_three_live_gws():
+    conn = connect(":memory:")
+    init_db(conn)
+    _seed(conn, prior_gws=5)
+    for gw in (1, 2, 3):
+        _live_row(conn, 103, gw, gw + 100, xg=1.0, starts=1, minutes=90)
+    rates = _rates(conn, lf_gw_count=5, sf_gw_count=2)
+    assert 103 in rates
+    assert rates[103].xg_per_start == pytest.approx(1.0, abs=0.02)   # w = 1.0
+
+
+def test_guard_does_not_touch_players_with_prior_rows():
+    conn = connect(":memory:")
+    init_db(conn)
+    _seed(conn, prior_gws=5)
+    _live_row(conn, 101, 1, 42, xg=1.5)               # 101 has 5 prior GWs
+    rates = _rates(conn, lf_gw_count=5, sf_gw_count=2)
+    pr = rates[101]
+    assert pr.xg_per_start < 1.5                       # natural blend, no shrink

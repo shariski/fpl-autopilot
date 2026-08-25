@@ -25,6 +25,11 @@ MIN_GWS_FOR_RATING = 5
 PROMOTED_XG90 = {"COV": 1.9, "IPS": 1.72, "HUL": 1.3}
 PROMOTED_XGC90 = 1.55
 
+# v0.23 new-signing guard: players with no prior databank rows have pure-live rates —
+# a single GW can be extreme (e.g. a 1.5 xG debut). Shrink toward pooled position
+# league averages until MIN_LIVE_RATE_GWS live GWs (decision-engine.md v0.23).
+MIN_LIVE_RATE_GWS = 3
+
 
 def damp(x):
     """Damp extreme multipliers: |x| <= 1.55 passes through, excess decays at 40%."""
@@ -279,8 +284,8 @@ def compute_player_rates(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT,
     DC hits are counted per start against the position threshold (DEF 10, MID/FWD 12).
     p60 uses the LF window only; all other rates blend LF 0.8 / SF 0.2.
     """
-    rows, live_rows = _rating_sources(conn, live_season=live_season)
-    rows = rows + live_rows  # union: windows/aggregation span both sources
+    db_rows, live_rows = _rating_sources(conn, live_season=live_season)
+    rows = db_rows + live_rows  # union: windows/aggregation span both sources
     lf_keys = _window_keys(rows, lf_gw_count)
     sf_keys = _window_keys(rows, sf_gw_count)
     lf = _player_agg(rows, lf_keys)
@@ -311,6 +316,55 @@ def compute_player_rates(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT,
             rc_per_90=round(_blend_rates(l[7], s[7], l[0], s[0], per90=True), 4),
             p60=round(l[8] / l[9], 4) if l[9] else 0.0,
         )
+
+    # v0.23 new-signing guard (see MIN_LIVE_RATE_GWS above)
+    if live_rows:
+        prior_players = {r["player_id"] for r in db_rows}
+        live_counts = {}
+        for r in live_rows:
+            live_counts[r["player_id"]] = live_counts.get(r["player_id"], 0) + 1
+        pos_agg = {}
+        for r in rows:
+            if (r["source"], r["gw"]) not in lf_keys:
+                continue
+            a = pos_agg.setdefault(r["position"], [0.0] * 10)
+            a[0] += r["minutes"]
+            a[1] += r["starts"]
+            a[2] += r["xg"]
+            a[3] += r["xa"]
+            if r["starts"] and r["dc"] >= DC_THRESHOLD.get(r["position"], 9999):
+                a[4] += 1
+            a[5] += r["saves"]
+            a[6] += r["yellow_cards"]
+            a[7] += r["red_cards"]
+            if r["minutes"] > 0:
+                a[8] += 1 if r["minutes"] >= 60 else 0
+                a[9] += 1
+        pos_avgs = {}
+        for pos, a in pos_agg.items():
+            starts = a[1] or 1.0
+            mins = a[0] or 1.0
+            pos_avgs[pos] = {
+                "xg": a[2] / starts, "xa": a[3] / starts, "dc": a[4] / starts,
+                "saves": a[5] / mins * 90, "yc": a[6] / mins * 90,
+                "rc": a[7] / mins * 90, "p60": a[8] / a[9] if a[9] else 0.0,
+            }
+        for pid, pr in out.items():
+            if pid in prior_players:
+                continue
+            avg = pos_avgs.get(pr.position)
+            if avg is None:
+                continue
+            w = min(1.0, live_counts.get(pid, 0) / MIN_LIVE_RATE_GWS)
+            if w >= 1.0:
+                continue
+            pr.xg_per_start = round(w * pr.xg_per_start + (1 - w) * avg["xg"], 4)
+            pr.xa_per_start = round(w * pr.xa_per_start + (1 - w) * avg["xa"], 4)
+            pr.dc_hit_rate = round(w * pr.dc_hit_rate + (1 - w) * avg["dc"], 4)
+            pr.saves_per_90 = round(w * pr.saves_per_90 + (1 - w) * avg["saves"], 4)
+            pr.yc_per_90 = round(w * pr.yc_per_90 + (1 - w) * avg["yc"], 4)
+            pr.rc_per_90 = round(w * pr.rc_per_90 + (1 - w) * avg["rc"], 4)
+            pr.p60 = round(w * pr.p60 + (1 - w) * avg["p60"], 4)
     return out
 
 
