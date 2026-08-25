@@ -172,9 +172,15 @@ dc_ratio = damped(opponent DC/90 ÷ LA DC/90, team-level)
 ```
 
 - **Rates** (xG/St, xA/St, DC/St, saves/90, YC/90, RC/90, starts, p60) come from
-  `player_stats` databank rows, `LF = last 38 GW`, `SF = last 6 GW`, blend 0.8/0.2.
-  Pre-season the windows span the last complete season (25-26). Per-start rates are
-  `Σ stat ÷ Σ starts` (per-90 for saves/YC/RC).
+  `player_stats` databank rows **and** current-season live rows (`player_gw_stats`,
+  synthetic source `fpl_live:<season>`, aggregated per (player, gw): DGW stats summed,
+  starts = started ≥1 fixture), `LF = last 38 GW`, `SF = last 6 GW`, blend 0.8/0.2,
+  windows ordered by season then gw (v0.23). Live rows are authoritative in-season:
+  databank rows of a season with live rows present are excluded (R9). Rows not yet
+  backfilled (`starts IS NULL`) are skipped. Pre-season (no live rows) the windows
+  span the last complete season (25-26). Per-start rates are `Σ stat ÷ Σ starts`
+  (per-90 for saves/YC/RC). Players with no prior databank rows shrink toward pooled
+  position averages until `MIN_LIVE_RATE_GWS` = 3 live GWs.
 - **squads_made** = the player's team's databank GW count in the window (one match per
   team per GW).
 - **λ** uses the player's own team's LF/SF-blended xGC/90, damped. The +0.04/+0.045
@@ -425,3 +431,4 @@ Every decision writes one row:
 | v0.20 | 2026-08-20 | Two model refinements (both recalibrations of v2, same formula structure — v2 stays the consumed model, constants re-pinned here). **(a) Bonus recalibrated per position** from the 25-26 databank: the flat 0.29/start under-credited forwards (25-26 actuals: FWD 0.580, MID 0.306, GK 0.212, DEF 0.211) — now `BONUS_PER_START = {GKP: 0.21, DEF: 0.21, MID: 0.31, FWD: 0.58}`. **(b) Captaincy ceiling term**: the ranker now scores `xp + 0.15 × (xgoals + xassists)` (`CEILING_WEIGHT = 0.15`) — GKP/DEF have ~zero goal involvement, so the term prefers premium attackers when the xP gap is small; rank-1 reason says "Ceiling-adjusted top pick" when the term reorders. Backtest re-run 2026-08-21 (no leakage): MAE unchanged in substance (v2 1.215/1.357 vs v1 2.163/2.144); captain-proxy improves — 24-25 plain v2 top-pick 4.89 (was 4.51 with the old bonus) and ceiling pick 5.35; 25-26 ceiling pick 3.11 vs plain 2.89. Follow-up: FPL's 26/27 bonus rebalance is directional; re-calibrate from 26-27 databank once ~6 GWs are in. |
 | v0.21 | 2026-08-21 | Pre-season defensive-captain penalty (live-GW evidence): while the current season has no databank rows (all projections lean on last season + lineup risk is invisible), GKP/DEF captain scores get `PRE_SEASON_DEF_PENALTY = 1.5`. GW1 26/27 live: the top-xP captain (Dubravka, 8.86) was benched → 0 pts; the whole-GW review showed v2 under-predicting (MAE 2.38, bias −0.44 on 245 players — v1: 2.88, +0.60), with the worst misses on upside events (proj 2.5-3.6 → actual 11-17). Pre-season detection: `player_stats` has no `fpl_databank:<current season>` rows. The penalty flips only close calls; a huge keeper cushion still wins. Backtest proxy updated (penalty applied to each season's GW1); no regression (ceiling-proxy 5.35/3.11 unchanged). |
 | v0.22 | 2026-08-25 | Fix: `chance_of_playing` scale bug — FPL stores it 0-100 but the p_start formula assumed 0-1. `min(1.0, cop × starts/squads)` with cop=100 capped every available player's start probability at 1.0, nullifying BOTH rotation risk (starts/squads) and the doubt haircut. Observed live: Brooks (13/37 starts, 34%) got a guaranteed 90-minute 7.1 xP projection, inflating his transfer-EP delta against a doubtful Anderson. The backtest passed cop=1.0 (0-1 scale) so it priced rotation correctly — production had diverged. Fix: values >1.0 are normalized /100 at the formula boundary (0-1 callers unchanged). Recompute + transfer re-check follow. |
+| v0.23 | 2026-08-25 | In-season data source (Vaastav-free learning): ratings now blend current-season per-GW stats captured from FPL's own `event/{id}/live` (already fetched hourly by settlement) with the databank. `player_gw_stats` gains starts/saves/bps/xG/xA/xGC/DC/YC/RC (verified present in the live payload 2026-08-25); GWs settled pre-change are auto-backfilled (GW1 heals on the first refresh). The LF(38)/SF(6) windows span both sources, ordered by season then gw — natural window, no new blend constants; live rows authoritative in-season (R9). New-signing guard `MIN_LIVE_RATE_GWS = 3` (live-only rates shrink toward pooled position averages). The v0.21 defensive-captain penalty now auto-off once the SF window has ≥ 3 live pairs (`SF_LIVE_MIN = 3`; was: databank-rows detection). Backtest: blend simulation (prior 24-25, live 25-26, strict no-leakage) — verdict: SEE TASK 7 (append after the run). |

@@ -172,6 +172,10 @@ mis-assigned (B6). Re-ingested 25-26 from the local full CSVs via
 rates and no xP v2 (e.g. foreign-league imports) — they are simply absent from the
 pool, which can shrink the candidate pool. Monitor pool size each refresh.
 
+**Residual risk (updated v0.23):** new signings gain rates from `player_gw_stats`
+(`event/{id}/live`) as soon as they play — still noisy until 3 live GWs (rates shrink
+toward pooled position averages until then, `MIN_LIVE_RATE_GWS`).
+
 **Second fix (2026-08-20, same incident):** team/league xG·90 and DC·90 were
 normalized per player-minute, deflating them ~13× (la.xg90 0.132 vs true ~1.35)
 because player xG sums to the team match total once while minutes count every
