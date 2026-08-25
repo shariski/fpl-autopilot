@@ -62,6 +62,18 @@ def _migrate_player_stats(conn):
             conn.execute(f"ALTER TABLE player_stats ADD COLUMN {name} {decl}")
 
 
+def _migrate_player_gw_stats(conn):
+    """v0.23: full per-GW stat capture on player_gw_stats (idempotent)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(player_gw_stats)")}
+    for name, decl in [("starts", "INTEGER"), ("saves", "INTEGER"), ("bps", "INTEGER"),
+                       ("expected_goals", "REAL"), ("expected_assists", "REAL"),
+                       ("expected_goals_conceded", "REAL"),
+                       ("defensive_contribution", "INTEGER"),
+                       ("yellow_cards", "INTEGER"), ("red_cards", "INTEGER")]:
+        if name not in cols:
+            conn.execute(f"ALTER TABLE player_gw_stats ADD COLUMN {name} {decl}")
+
+
 def _migrate_fdr(conn):
     """v0.12: continuous FDR v2 multipliers on fdr (idempotent)."""
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(fdr)")}
@@ -84,6 +96,7 @@ def init_db(conn):
     _migrate_gameweeks(conn)
     _migrate_players(conn)
     _migrate_player_stats(conn)
+    _migrate_player_gw_stats(conn)
     _migrate_fdr(conn)
     _migrate_xp(conn)
     conn.commit()

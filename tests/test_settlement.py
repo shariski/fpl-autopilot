@@ -50,6 +50,15 @@ def _live_payload(elements):
                     "clean_sheets": el.get("clean_sheets", 0),
                     "bonus": el.get("bonus", 0),
                     "total_points": el.get("total_points", 0),
+                    "starts": el.get("starts", 0),
+                    "saves": el.get("saves", 0),
+                    "bps": el.get("bps", 0),
+                    "expected_goals": el.get("expected_goals", 0.0),
+                    "expected_assists": el.get("expected_assists", 0.0),
+                    "expected_goals_conceded": el.get("expected_goals_conceded", 0.0),
+                    "defensive_contribution": el.get("defensive_contribution", 0),
+                    "yellow_cards": el.get("yellow_cards", 0),
+                    "red_cards": el.get("red_cards", 0),
                 },
                 "explain": [{"fixture": el["fixture_id"], "stats": []}]
                 if el.get("fixture_id") is not None else [],
@@ -175,3 +184,33 @@ def test_settlement_swallows_per_gw_errors():
 
     gws_settled = set(r["gw"] for r in conn.execute("SELECT DISTINCT gw FROM player_gw_stats"))
     assert gws_settled == {3, 5}
+
+
+def test_settlement_writes_full_stat_set():
+    """v0.23: settlement captures the full per-GW stat set, not just points."""
+    conn = _db()
+    _seed_gameweeks(conn, finished_gws=[3])
+    client = StubFPLClient({3: _live_payload([
+        {"player_id": 1, "fixture_id": 42, "minutes": 90, "total_points": 9,
+         "starts": 1, "saves": 2, "bps": 28,
+         "expected_goals": 0.5, "expected_assists": 0.2,
+         "expected_goals_conceded": 1.4, "defensive_contribution": 3,
+         "yellow_cards": 1, "red_cards": 0},
+    ])})
+
+    written = settlement.settlement_run(conn, client)
+    assert written == 1
+
+    row = conn.execute(
+        "SELECT starts, saves, bps, expected_goals, expected_assists, "
+        "expected_goals_conceded, defensive_contribution, yellow_cards, red_cards "
+        "FROM player_gw_stats WHERE player_id=1 AND gw=3").fetchone()
+    assert row["starts"] == 1
+    assert row["saves"] == 2
+    assert row["bps"] == 28
+    assert row["expected_goals"] == 0.5
+    assert row["expected_assists"] == 0.2
+    assert row["expected_goals_conceded"] == 1.4
+    assert row["defensive_contribution"] == 3
+    assert row["yellow_cards"] == 1
+    assert row["red_cards"] == 0

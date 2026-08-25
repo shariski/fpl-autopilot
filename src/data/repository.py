@@ -470,6 +470,15 @@ def upsert_player_gw_stats(conn, gw, payload):
                 stats.get("clean_sheets", 0),
                 stats.get("bonus", 0),
                 stats.get("total_points", 0),
+                stats.get("starts", 0),
+                stats.get("saves", 0),
+                stats.get("bps", 0),
+                stats.get("expected_goals", 0.0),
+                stats.get("expected_assists", 0.0),
+                stats.get("expected_goals_conceded", 0.0),
+                stats.get("defensive_contribution", 0),
+                stats.get("yellow_cards", 0),
+                stats.get("red_cards", 0),
                 was_sub,
                 now,
             ))
@@ -478,8 +487,11 @@ def upsert_player_gw_stats(conn, gw, payload):
     cur = conn.executemany(
         """INSERT OR IGNORE INTO player_gw_stats
              (player_id, gw, fixture_id, minutes, goals_scored, assists,
-              clean_sheets, bonus, total_points, was_substituted_in, settled_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+              clean_sheets, bonus, total_points, starts, saves, bps,
+              expected_goals, expected_assists, expected_goals_conceded,
+              defensive_contribution, yellow_cards, red_cards,
+              was_substituted_in, settled_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         rows,
     )
     conn.commit()
