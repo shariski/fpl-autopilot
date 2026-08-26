@@ -177,8 +177,9 @@ Failure (provider error or gate rejected) → `E_RUNTIME`.
 ### refresh
 
     fpl-autopilot refresh --json [--full] [--source fpl|understat]
+    fpl-autopilot refresh --full-cycle --json
 
-Pulls FPL/Understat and reports what changed (suppresses progress prints in `--json`):
+Plain `refresh` pulls FPL/Understat and reports what changed (suppresses progress prints in `--json`):
 
     data: {"fpl": {"bootstrap_static": {"players": 587, "teams": 20} | null,
                    "fixtures": 380 | null, "my_team": {"gw": 1, "picks": 15} | null,
@@ -187,6 +188,16 @@ Pulls FPL/Understat and reports what changed (suppresses progress prints in `--j
                          "unmapped_teams": 2} | null,
            "rematch": 0, "cleanup": {"gw_stats": 0, "my_team": 0},
            "warnings": [...], "data_basis": {...}}
+
+`--full-cycle` (v0.25) runs the complete scheduler tick as a one-shot — fetch + FDR v1/v2
+recompute + xP v1/v2 recompute + settlement/backfill — and reports the recompute counts:
+
+    data: {<same fetch report>, "recompute": {"fdr_v1": 20, "fdr_v2": 20,
+           "xp_v1": 90, "xp_v2": 90}, "settlement_written": 610, "data_basis": {...}}
+
+The authed my-team snapshot runs only when the daemon's master key is available
+(env `MASTER_PASSWORD`); otherwise a warning is printed and the public path completes.
+Use this after a deploy instead of waiting for the hourly job.
 
 ### freeze-status / auth-status
 

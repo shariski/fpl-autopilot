@@ -1426,8 +1426,11 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     p_refresh = sub.add_parser("refresh", help="fetch FPL + Understat + databank data into the local DB")
     p_refresh.add_argument("--full", action="store_true", help="ignore cache, fetch everything")
+    p_refresh.add_argument("--full-cycle", action="store_true",
+                           help="run the complete scheduler cycle: fetch + FDR/xP recompute "
+                                "+ settlement (one-shot manual tick; like the hourly job)")
     p_refresh.add_argument("--source", choices=["fpl", "understat", "databank"], default=None,
-                           help="restrict to one source (default: all three)")
+                           help="restrict to one source (default: all three; ignored with --full-cycle)")
     p_refresh.add_argument("--json", action="store_true",
                            help="output the JSON envelope (agent contract)")
     p_serve = sub.add_parser("serve", help="run the FastAPI server")
@@ -1515,11 +1518,31 @@ def main(argv=None):
                         "route-gameweek", "undo-transfer"):
         _live_requires_tty(args.live)
     if args.command == "refresh":
-        sources = (args.source,) if args.source else ("fpl", "understat", "databank")
-        if args.json:
+        if args.full_cycle:
+            # one-shot manual tick: the same full cycle the hourly scheduler runs
+            # (fetch + FDR/xP recompute + settlement), keyed for the authed snapshot
+            # only when MASTER_PASSWORD is present — never prompt (non-interactive).
+            # --source is ignored (full cycle).
+            import os
+            from .scheduler import refresh_and_recompute
+            key = None
+            if os.getenv("MASTER_PASSWORD"):
+                from .scheduler import _maybe_load_key
+                try:
+                    key = _maybe_load_key()
+                except Exception as exc:  # noqa: BLE001 — authed snapshot is best-effort
+                    print(f"WARNING: authed my-team snapshot skipped — master key unavailable ({exc})")
+            report = refresh_and_recompute(report=True, key=key)
+            if args.json:
+                _json_ok("refresh", report)
+            else:
+                _render_pretty(report)
+        elif args.json:
+            sources = (args.source,) if args.source else ("fpl", "understat", "databank")
             report = refresh(full=args.full, sources=sources, report=True)
             _json_ok("refresh", report)
         else:
+            sources = (args.source,) if args.source else ("fpl", "understat", "databank")
             refresh(full=args.full, sources=sources)
     elif args.command == "serve":
         serve(host=args.host, port=args.port, scheduler=not args.no_scheduler)

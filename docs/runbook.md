@@ -692,6 +692,10 @@ next GW + deadline, pending decisions, and the operating rules in one call.
 **Stale data:** run `docker compose --project-directory /opt/fpl-autopilot run --rm -T app refresh --json` before judging;
 `data_basis.as_of_utc` in every decision payload tells you how stale things are.
 
+**Manual full cycle (after a deploy, instead of waiting for the hourly job):**
+`docker compose --project-directory /opt/fpl-autopilot run --rm -T app refresh --full-cycle --json` —
+fetch + FDR/xP recompute + settlement in one shot (v0.25; see `docs/agent-contract.md`).
+
 **Useful one-liners on jumbo:**
 
 ```bash

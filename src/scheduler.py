@@ -21,7 +21,7 @@ def _ping_healthcheck():
 
 
 def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=None,
-                          databank_client=None, key=None):
+                          databank_client=None, key=None, report=False):
     """Public refresh + analytics recompute + settlement + healthcheck. With key, also authed snapshot.
 
     Public path always runs. Authed step is best-effort: failures are logged but do not crash the
@@ -31,6 +31,9 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
     failures are swallowed inside settlement_run so they cannot block the rest of the refresh.
 
     B5 parallel-run: FDR v2 + xP v2 run alongside v1; nothing consumes v2 yet.
+
+    With report=True, returns the refresh report (same shape as `refresh --json`) plus
+    recompute counts and the settlement row count (used by `refresh --full-cycle`).
     """
     from .cli import refresh  # lazy import: avoids a cycle (cli.serve imports this module)
     from .data import settlement
@@ -42,20 +45,21 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
     try:
         # injury/status watcher: squad availability BEFORE the fetch, diffed after
         before = status_watch.squad_status_snapshot(conn)
-        refresh(cfg=cfg, conn=conn, client=client, understat_client=understat_client,
-                databank_client=databank_client)
+        rpt = refresh(cfg=cfg, conn=conn, client=client, understat_client=understat_client,
+                      databank_client=databank_client, report=report)
         try:
             status_watch.run_watch(conn, before)
         except Exception:
             log.exception("status_watch.failed")
-        fdr.compute_and_store(conn)
-        fdr.compute_and_store_v2(conn)
-        xp.compute_and_store(conn)
-        xp.compute_and_store_v2(conn)
+        fdr_n = fdr.compute_and_store(conn)
+        fdr_v2_n = fdr.compute_and_store_v2(conn)
+        xp_n = xp.compute_and_store(conn)
+        xp_v2_n = xp.compute_and_store_v2(conn)
         try:
-            settlement.settlement_run(conn, client or FPLClient())
+            settle_n = settlement.settlement_run(conn, client or FPLClient())
         except Exception:
             log.exception("settlement.run_failed")
+            settle_n = 0
         if config.ai_enabled(cfg):
             try:
                 from src.ai import jobs as ai_jobs
@@ -69,6 +73,11 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
         _ping_healthcheck()
         if key is not None:
             _refresh_authed_my_team(conn, key)
+        if report:
+            return {**(rpt or {}),
+                    "recompute": {"fdr_v1": fdr_n, "fdr_v2": fdr_v2_n,
+                                  "xp_v1": xp_n, "xp_v2": xp_v2_n},
+                    "settlement_written": settle_n}
     finally:
         if owns:
             conn.close()

@@ -562,3 +562,73 @@ def test_clear_stale_season_rows_clears_pre_season_data(db):
     assert (n_gw, n_team) == (1, 1)
     assert db.execute("SELECT COUNT(*) c FROM player_gw_stats").fetchone()["c"] == 1
     assert db.execute("SELECT gw FROM my_team").fetchall()[0]["gw"] == 1
+
+
+def test_refresh_full_cycle_dispatch(monkeypatch, capsys):
+    """refresh --full-cycle runs the scheduler's full cycle (fetch + recompute +
+    settlement) and reports the counts in the JSON envelope."""
+    import json as _json
+    from src import scheduler
+
+    monkeypatch.setenv("MASTER_PASSWORD", "x")   # key path active (no prompt)
+    seen = {}
+    monkeypatch.setattr(scheduler, "_maybe_load_key", lambda: "test-key")
+
+    def fake_full_cycle(**kw):
+        seen.update(kw)
+        return {"fpl": {"bootstrap_static": None}, "understat": None, "databank": None,
+                "rematch": 0, "cleanup": {"gw_stats": 0, "my_team": 0}, "warnings": [],
+                "recompute": {"fdr_v1": 20, "fdr_v2": 20, "xp_v1": 90, "xp_v2": 90},
+                "settlement_written": 610}
+
+    monkeypatch.setattr(scheduler, "refresh_and_recompute", fake_full_cycle)
+    cli.main(["refresh", "--full-cycle", "--json"])
+    out = _json.loads(capsys.readouterr().out)
+    data = out["data"]
+    assert out["ok"] is True
+    assert data["recompute"] == {"fdr_v1": 20, "fdr_v2": 20, "xp_v1": 90, "xp_v2": 90}
+    assert data["settlement_written"] == 610
+    assert seen.get("report") is True   # the report dict is requested
+    assert seen.get("key") == "test-key"
+
+
+def test_refresh_full_cycle_no_prompt_without_env(monkeypatch, capsys):
+    """Without MASTER_PASSWORD the handler never prompts and never calls the key
+    loader — the cycle still runs with key=None (non-interactive safe)."""
+    import json as _json
+    from src import scheduler
+
+    monkeypatch.delenv("MASTER_PASSWORD", raising=False)
+    called = {"key_loader": False}
+    monkeypatch.setattr(scheduler, "_maybe_load_key",
+                        lambda: called.update(key_loader=True))
+    seen = {}
+    monkeypatch.setattr(scheduler, "refresh_and_recompute",
+                        lambda **kw: (seen.update(kw) or {"recompute": {}, "settlement_written": 0}))
+    cli.main(["refresh", "--full-cycle", "--json"])
+    captured = capsys.readouterr()
+    assert called["key_loader"] is False
+    assert "master key unavailable" not in captured.out
+    data = _json.loads(captured.out.splitlines()[-1])["data"]
+    assert data["recompute"] == {}
+    assert seen["key"] is None
+
+
+def test_refresh_full_cycle_key_fallback(monkeypatch, capsys):
+    """With MASTER_PASSWORD set but the key loader failing (e.g. wrong password),
+    the cycle still runs with key=None and warns instead of prompting/failing."""
+    import json as _json
+    from src import scheduler
+
+    monkeypatch.setenv("MASTER_PASSWORD", "x")
+    monkeypatch.setattr(scheduler, "_maybe_load_key",
+                        lambda: (_ for _ in ()).throw(RuntimeError("bad password")))
+    seen = {}
+    monkeypatch.setattr(scheduler, "refresh_and_recompute",
+                        lambda **kw: (seen.update(kw) or {"recompute": {}, "settlement_written": 0}))
+    cli.main(["refresh", "--full-cycle", "--json"])
+    captured = capsys.readouterr()
+    assert "master key unavailable" in captured.out
+    data = _json.loads(captured.out.splitlines()[-1])["data"]
+    assert data["recompute"] == {}
+    assert seen["key"] is None
