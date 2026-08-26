@@ -152,7 +152,8 @@ xP_v2[player, gw] =
     [ start% × (1 + p60 + saves + yc + rc + bonus + assist + goal + cs + twogc + dc)
       + (1 − start%) × sub_total ] × venue_mult
 
-start%   = min(1, chance_of_playing × starts ÷ squads_made)          # manual override allowed
+start%   = min(1, cop × blend(starts ÷ squads_made, recent_starts ÷ recent_squads))  # v0.24
+           where blend(a, b) = (1 − w) × a + w × b,  w = min(1, recent_squads ÷ 3)
 sub_total = (yc + rc + bonus + assist + goal + twogc) × 0.30         # Mn/Sub ÷ Mn/St league const
 
 venue_mult = attack 1.15 home / 0.87 away, defense 0.88 / 1.12,
@@ -183,6 +184,17 @@ dc_ratio = damped(opponent DC/90 ÷ LA DC/90, team-level)
   position averages until `MIN_LIVE_RATE_GWS` = 3 live GWs.
 - **squads_made** = the player's team's databank GW count in the window (one match per
   team per GW).
+- **Recent-window start term (v0.24):** next-GW start probability is not a season-long
+  rate — a GW1 benching is far more predictive of GW2 than a GW38-25 benching was.
+  Once live rows exist, start% blends toward the player's starts in the live GWs of
+  the LF window (`recent_starts ÷ recent_squads`, same team-match semantics), weight
+  `w = min(1, recent_squads ÷ RECENT_PSTART_GWS)` with `RECENT_PSTART_GWS = 3`. At 1
+  live GW the recent term has 1/3 weight (a GW1 benching moves 1.00 → ~0.65, not
+  0.97); at ≥3 live GWs start% is the current-season rate alone. `chance_of_playing`
+  and status still multiply the blended rate. Pre-season (no live rows) unchanged.
+  Rationale (GW2 26/27 live): the natural window (v0.23) left p_start ~97% prior —
+  Garner, benched GW1, was priced as a near-certain GW2 starter. Backtest verdict:
+  see v0.24 changelog entry.
 - **λ** uses the player's own team's LF/SF-blended xGC/90, damped. The +0.04/+0.045
   corrections compensate Poisson over-dispersion vs real goals (calibrated 24-25/25-26).
 - **Status** multiplies start% (a=1.0, d=0.5, i/s/u=0.0) — unchanged from v1.
@@ -432,3 +444,4 @@ Every decision writes one row:
 | v0.21 | 2026-08-21 | Pre-season defensive-captain penalty (live-GW evidence): while the current season has no databank rows (all projections lean on last season + lineup risk is invisible), GKP/DEF captain scores get `PRE_SEASON_DEF_PENALTY = 1.5`. GW1 26/27 live: the top-xP captain (Dubravka, 8.86) was benched → 0 pts; the whole-GW review showed v2 under-predicting (MAE 2.38, bias −0.44 on 245 players — v1: 2.88, +0.60), with the worst misses on upside events (proj 2.5-3.6 → actual 11-17). Pre-season detection: `player_stats` has no `fpl_databank:<current season>` rows. The penalty flips only close calls; a huge keeper cushion still wins. Backtest proxy updated (penalty applied to each season's GW1); no regression (ceiling-proxy 5.35/3.11 unchanged). |
 | v0.22 | 2026-08-25 | Fix: `chance_of_playing` scale bug — FPL stores it 0-100 but the p_start formula assumed 0-1. `min(1.0, cop × starts/squads)` with cop=100 capped every available player's start probability at 1.0, nullifying BOTH rotation risk (starts/squads) and the doubt haircut. Observed live: Brooks (13/37 starts, 34%) got a guaranteed 90-minute 7.1 xP projection, inflating his transfer-EP delta against a doubtful Anderson. The backtest passed cop=1.0 (0-1 scale) so it priced rotation correctly — production had diverged. Fix: values >1.0 are normalized /100 at the formula boundary (0-1 callers unchanged). Recompute + transfer re-check follow. |
 | v0.23 | 2026-08-25 | In-season data source (Vaastav-free learning): ratings now blend current-season per-GW stats captured from FPL's own `event/{id}/live` (already fetched hourly by settlement) with the databank. `player_gw_stats` gains starts/saves/bps/xG/xA/xGC/DC/YC/RC (verified present in the live payload 2026-08-25); GWs settled pre-change are auto-backfilled (GW1 heals on the first refresh). The LF(38)/SF(6) windows span both sources, ordered by season then gw — natural window, no new blend constants; live rows authoritative in-season (R9). New-signing guard `MIN_LIVE_RATE_GWS = 3` (live-only rates shrink toward pooled position averages). The v0.21 defensive-captain penalty now auto-off once the SF window has ≥ 3 live pairs (`SF_LIVE_MIN = 3`; was: databank-rows detection). Backtest: blend simulation (prior 24-25, live 25-26, strict no-leakage) — verdict: blend beats pure prior at every stage (MAE 1.302 vs 1.714 on live-GWs 6+, 1.713 vs 1.825 on 3-5, 1.835 vs 1.864 on 1-2); bias blend +0.130 vs prior +0.092 (mild over-prediction, same sign as v2's known bias). |
+| v0.24 | 2026-08-26 | Early-season start-probability fix (live-GW evidence, GW2 26/27): the v0.23 natural window left p_start ~97% prior-season — Garner (benched GW1, 11 min) was priced as a near-certain GW2 starter with 0.97 start probability, inflating his transfer EP delta (13.75) on a case that GW1 contradicted. **Recent-window term:** start% now blends toward the player's starts in the live GWs of the LF window (`recent_starts ÷ recent_squads`), weight `w = min(1, recent_squads ÷ RECENT_PSTART_GWS = 3)`; `chance_of_playing` and status multiply the blended rate (v0.22 normalization preserved). Pre-season (no live rows) unchanged. Also (a) `PlayerRates` exposes `recent_starts`/`recent_squads`; (b) transfer suggestions gain an early-season `caveat` (data-basis note + "started 0 of N live GWs" when the buy has not started) and an `EARLY_SEASON_CONF_PENALTY = 15` on confidence while live pairs < 3 (deadguard's confidence floor now correctly blocks early-season transfers). Backtest: blend simulation re-run — verdict: SEE v0.24 SIM VERDICT (append after run). |

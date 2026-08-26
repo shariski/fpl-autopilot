@@ -127,6 +127,12 @@ Decision-grade outputs, shapes documented in `docs/decision-engine.md`, each enr
 
     fpl-autopilot captain --json        data: {"picks": [...], "vice_player_id": ..., "confidence": ..., "data_basis": {...}}
     fpl-autopilot transfers --json      data: {"suggestions": [...], "empty_reason": ..., "free_transfers": ..., "data_basis": {...}}
+
+Each transfer suggestion may carry a `caveat` (v0.24, present only while fewer than 3
+live GWs are settled): a data-basis note that start probabilities lean on 25-26 data,
+plus — when the buy has live GWs but zero starts — "started 0 of N live GWs". Confidence
+carries an early-season penalty (−15) over the same gate; treat sub-70 confidence as
+"verify before acting".
     fpl-autopilot chips --json          data: {"recommendation": {...} | null, "data_basis": {...}}
 
 ### squad / squad --candidates
