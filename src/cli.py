@@ -78,6 +78,8 @@ def _fmt_transfers(data):
             print(f"  {i}. {s['out']['web_name']} ({s['out']['price']}m) -> "
                   f"{s['in']['web_name']} ({s['in']['price']}m) | EP delta "
                   f"{s.get('ep_delta_5gw')} | conf {s.get('confidence')}{hit}")
+            if s.get("caveat"):
+                print(f"     ⚠ {s['caveat']}")
     if data.get("free_transfers") is not None:
         print(f"  free_transfers: {data['free_transfers']}")
     _render_pretty({k: v for k, v in data.items()

@@ -265,6 +265,10 @@ class PlayerRates:
     yc_per_90: float
     rc_per_90: float
     p60: float             # P(minutes >= 60 | minutes > 0), LF window
+    # v0.24 recent-window start term: starts/squads from the LIVE rows of the LF
+    # window (0 when no live rows yet) — feeds the xP v2 start% blend.
+    recent_starts: int = 0
+    recent_squads: int = 0
 
 
 def _player_agg(rows, keys):
@@ -309,6 +313,16 @@ def compute_player_rates(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT,
         if (r["source"], r["gw"]) in lf_keys:
             teams_squads.setdefault(r["team_id"], set()).add((r["source"], r["gw"]))
 
+    # v0.24 recent-window term: starts + team matches from the LIVE rows of the LF
+    # window (rotation signal for the xP v2 start% blend; empty pre-season).
+    live_recent_starts = {}
+    live_team_squads = {}
+    for r in live_rows:
+        if (r["source"], r["gw"]) not in lf_keys:
+            continue
+        live_recent_starts[r["player_id"]] = live_recent_starts.get(r["player_id"], 0) + r["starts"]
+        live_team_squads.setdefault(r["team_id"], set()).add((r["source"], r["gw"]))
+
     out = {}
     info = {r["player_id"]: r for r in rows}
     for pid in lf:
@@ -328,6 +342,8 @@ def compute_player_rates(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT,
             yc_per_90=round(_blend_rates(l[6], s[6], l[0], s[0], per90=True), 4),
             rc_per_90=round(_blend_rates(l[7], s[7], l[0], s[0], per90=True), 4),
             p60=round(l[8] / l[9], 4) if l[9] else 0.0,
+            recent_starts=live_recent_starts.get(pid, 0),
+            recent_squads=len(live_team_squads.get(info[pid]["team_id"], set())),
         )
 
     # v0.23 new-signing guard (see MIN_LIVE_RATE_GWS above)

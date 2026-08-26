@@ -7,12 +7,14 @@ from src.data import repository
 def _v2(position="FWD", status="a", chance_of_playing=1.0, starts=30, squads_made=38,
         xg_per_start=0.5, xa_per_start=0.2, dc_hit_rate=0.1, saves_per_90=0.0,
         yc_per_90=0.2, rc_per_90=0.01, p60=0.9, team_xgc90=1.4,
-        xg_ratio=1.0, xgc_ratio=1.0, dc_ratio=1.0, venue="H"):
+        xg_ratio=1.0, xgc_ratio=1.0, dc_ratio=1.0, venue="H",
+        recent_starts=0, recent_squads=0):
     return xp.compute_player_xp_v2(
         position, status, chance_of_playing, starts, squads_made,
         xg_per_start, xa_per_start, dc_hit_rate, saves_per_90,
         yc_per_90, rc_per_90, p60, team_xgc90,
-        xg_ratio=xg_ratio, xgc_ratio=xgc_ratio, dc_ratio=dc_ratio, venue=venue)
+        xg_ratio=xg_ratio, xgc_ratio=xgc_ratio, dc_ratio=dc_ratio, venue=venue,
+        recent_starts=recent_starts, recent_squads=recent_squads)
 
 
 def test_v2_home_advantage_attack():
@@ -176,3 +178,55 @@ def test_v2_removes_stale_rows_for_missing_rates(db, load):
     n = xp.compute_and_store_v2(db, horizon=1)
     assert n == 0
     assert db.execute("SELECT COUNT(*) c FROM xp").fetchone()["c"] == 0
+
+
+# ---------- v0.24: recent-window start% term ----------
+
+def _v24(position="FWD", status="a", chance_of_playing=1.0, starts=38, squads_made=38,
+         recent_starts=0, recent_squads=0, **kw):
+    return _v2(position=position, status=status, chance_of_playing=chance_of_playing,
+               starts=starts, squads_made=squads_made,
+               recent_starts=recent_starts, recent_squads=recent_squads, **kw)
+
+
+def test_v24_no_live_rows_unchanged():
+    """Pre-season (recent_squads=0): the v0.22 behavior is byte-identical."""
+    old = _v2(chance_of_playing=0.75, starts=30, squads_made=38)
+    new = _v24(chance_of_playing=0.75, starts=30, squads_made=38)
+    assert new["p_start"] == old["p_start"]          # both rounded identically
+    assert new["p_start"] == pytest.approx(round(0.75 * 30 / 38, 4), abs=1e-9)
+    assert new["xp"] == old["xp"]
+
+
+def test_v24_benched_live_gw_halves_the_prior():
+    """v0.24: a 37/38 prior-season starter benched in the ONE live GW drops from
+    0.97 to ~0.65, not 0.97 (the v0.23 natural-window blind spot)."""
+    r = _v24(starts=37, squads_made=38, recent_starts=0, recent_squads=1)
+    w = 1 / 3
+    expected = (1 - w) * (37 / 38) + w * 0.0
+    assert r["p_start"] == pytest.approx(expected, abs=1e-3)
+    assert r["p_start"] < 0.70
+
+
+def test_v24_started_live_gw_raises_the_rate():
+    r = _v24(starts=25, squads_made=38, recent_starts=1, recent_squads=1)
+    w = 1 / 3
+    expected = (1 - w) * (25 / 38) + w * 1.0
+    assert r["p_start"] == pytest.approx(expected, abs=1e-3)
+    assert r["p_start"] > 25 / 38
+
+
+def test_v24_full_recent_weight_at_three_live_gws():
+    """At >= 3 live GWs start% is the current-season rate alone."""
+    r = _v24(starts=37, squads_made=38, recent_starts=3, recent_squads=3)
+    assert r["p_start"] == pytest.approx(1.0)
+    r2 = _v24(starts=37, squads_made=38, recent_starts=0, recent_squads=3)
+    assert r2["p_start"] == pytest.approx(0.0)
+
+
+def test_v24_cop_applies_after_the_blend():
+    """The doubt haircut applies to the blended rate, not just the prior term."""
+    base = _v24(starts=37, squads_made=38, recent_starts=0, recent_squads=1)
+    doubt = _v24(starts=37, squads_made=38, recent_starts=0, recent_squads=1,
+                 chance_of_playing=0.75)
+    assert doubt["p_start"] == pytest.approx(base["p_start"] * 0.75, abs=1e-3)

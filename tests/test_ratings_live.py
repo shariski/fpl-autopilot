@@ -218,3 +218,17 @@ def test_sf_live_pairs_penalty_gate():
     _live_row(conn, 101, 3, 44)
     assert ratings.sf_live_pairs(conn) == 3
     assert ratings.sf_live_pairs(conn) >= ratings.SF_LIVE_MIN
+
+
+def test_recent_starts_squads_exposed():
+    """v0.24: PlayerRates exposes the live-GW starts/squads for the recent term."""
+    conn = connect(":memory:")
+    init_db(conn)
+    _seed(conn, prior_gws=5)
+    _live_row(conn, 101, 1, 42, starts=1, minutes=90)
+    _live_row(conn, 102, 1, 42, starts=0, minutes=0, xg=0.0, xa=0.0, xgc=0.0, dc=0)
+    rates = _rates(conn, lf_gw_count=5, sf_gw_count=2)
+    assert rates[101].recent_starts == 1 and rates[101].recent_squads == 1
+    assert rates[102].recent_starts == 0 and rates[102].recent_squads == 1
+    # pre-season players without live rows
+    assert rates[105].recent_starts == 0 and rates[105].recent_squads == 0

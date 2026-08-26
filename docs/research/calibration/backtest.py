@@ -288,7 +288,8 @@ def run_simulation(sc, prior_season, live_season, rows_for_gw, max_gw=38, feed_l
                 pr.saves_per_90, pr.yc_per_90, pr.rc_per_90, pr.p60,
                 team_xgc90, xg_ratio=mults[tid]["fdr_defense_mult"],
                 xgc_ratio=mults[tid]["fdr_attack_mult"],
-                dc_ratio=dc_ratio, venue=venue)
+                dc_ratio=dc_ratio, venue=venue,
+                recent_starts=pr.recent_starts, recent_squads=pr.recent_squads)
             pred.append((r["element"], res["xp"]))
             act.append((r["element"], int(r["total_points"])))
 
@@ -499,7 +500,8 @@ def main():
                     pr.saves_per_90, pr.yc_per_90, pr.rc_per_90, pr.p60,
                     team_xgc90, xg_ratio=mults[tid]["fdr_defense_mult"],
                     xgc_ratio=mults[tid]["fdr_attack_mult"],
-                    dc_ratio=dc_ratio, venue=venue)
+                    dc_ratio=dc_ratio, venue=venue,
+                recent_starts=pr.recent_starts, recent_squads=pr.recent_squads)
                 pred_v2.append((r["element"], res["xp"], res["xgoals"], res["xassists"],
                                 pr.position))
                 act.append((r["element"], int(r["total_points"])))

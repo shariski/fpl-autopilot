@@ -246,9 +246,12 @@ def test_get_transfer_suggestions_integration(db):
     assert s["hit_cost"] == 0
     assert isinstance(s["confidence"], int) and 0 <= s["confidence"] <= 100
     # exact contract shape
-    assert set(s.keys()) == {"out", "in", "ep_delta_5gw", "hit_cost", "confidence"}
+    assert set(s.keys()) == {"out", "in", "ep_delta_5gw", "hit_cost", "confidence", "caveat"}
     assert set(s["out"].keys()) == {"player_id", "web_name", "price"}
     assert set(s["in"].keys()) == {"player_id", "web_name", "price"}
+    # no live GWs settled -> early season: caveat present, confidence penalized
+    assert isinstance(s["caveat"], str) and "lean on 25-26" in s["caveat"]
+    assert s["confidence"] <= 75 - transfers.EARLY_SEASON_CONF_PENALTY
 
 
 def test_get_transfer_suggestions_empty_reason(db):
@@ -304,3 +307,58 @@ def test_get_transfer_suggestions_includes_free_transfers(db, load):
     result = transfers.get_transfer_suggestions(db)
     assert "free_transfers" in result
     assert result["free_transfers"] == 3
+
+
+# ── Task 7 (v0.24): early-season caveat + confidence penalty ──────────────────
+
+def _live_gws(db, player_id, starts_by_gw):
+    """Insert settled live GW rows for a player: {gw: starts} (1 or 0)."""
+    for gw, starts in starts_by_gw.items():
+        db.execute(
+            """INSERT INTO player_gw_stats (player_id, gw, fixture_id, minutes,
+               goals_scored, assists, clean_sheets, bonus, total_points, starts, saves,
+               bps, expected_goals, expected_assists, expected_goals_conceded,
+               defensive_contribution, yellow_cards, red_cards, settled_at)
+               VALUES (?,?,?,?,0,0,0,0,5,?,0,20,0.3,0.1,1.4,2,0,0,'t')""",
+            (player_id, gw, gw, 90 if starts else 0, starts))
+    db.commit()
+
+
+def test_caveat_flags_buy_with_zero_live_starts(db):
+    """v0.24: early season (1 live GW) + the buy has live GWs but 0 starts -> the
+    caveat names the player; confidence carries the early-season penalty."""
+    players = [
+        {"id": 1, "web_name": "Out", "position": "FWD", "team_id": 1, "price": 8.0, "status": "a", "xp5": 5.0},
+        {"id": 2, "web_name": "KeepMid", "position": "MID", "team_id": 2, "price": 7.0, "status": "a", "xp5": 30.0},
+        {"id": 3, "web_name": "KeepDef", "position": "DEF", "team_id": 3, "price": 5.0, "status": "a", "xp5": 25.0},
+        {"id": 4, "web_name": "In", "position": "FWD", "team_id": 4, "price": 8.0, "status": "a", "xp5": 25.0},
+        {"id": 5, "web_name": "PremFwd", "position": "FWD", "team_id": 5, "price": 12.0, "status": "a", "xp5": 40.0},
+    ]
+    _seed_db(db, players, squad_ids=[1, 2, 3], bank=1.0)
+    _live_gws(db, 4, {1: 0})   # the buy was benched in the one live GW
+    out = transfers.get_transfer_suggestions(db)
+    s = out["suggestions"][0]
+    assert s["in"]["player_id"] == 4
+    assert "1 live GW" in s["caveat"]
+    assert "started 0 of 1 live GWs" in s["caveat"]
+
+
+def test_no_caveat_after_three_live_gws(db):
+    """v0.24: once 3 live GWs are settled the caveat disappears and confidence is
+    unpenalized (the recent-window start% term is fully current-season by then)."""
+    from datetime import datetime, timezone
+    db.execute("INSERT INTO cache_meta (resource, last_fetched_utc) VALUES (?, ?)",
+               ("bootstrap-static", datetime.now(timezone.utc).isoformat()))
+    players = [
+        {"id": 1, "web_name": "Out", "position": "FWD", "team_id": 1, "price": 8.0, "status": "a", "xp5": 5.0},
+        {"id": 2, "web_name": "KeepMid", "position": "MID", "team_id": 2, "price": 7.0, "status": "a", "xp5": 30.0},
+        {"id": 3, "web_name": "KeepDef", "position": "DEF", "team_id": 3, "price": 5.0, "status": "a", "xp5": 25.0},
+        {"id": 4, "web_name": "In", "position": "FWD", "team_id": 4, "price": 8.0, "status": "a", "xp5": 25.0},
+        {"id": 5, "web_name": "PremFwd", "position": "FWD", "team_id": 5, "price": 12.0, "status": "a", "xp5": 40.0},
+    ]
+    _seed_db(db, players, squad_ids=[1, 2, 3], bank=1.0)
+    _live_gws(db, 4, {1: 1, 2: 1, 3: 1})   # 3 settled live GWs
+    out = transfers.get_transfer_suggestions(db)
+    s = out["suggestions"][0]
+    assert s["caveat"] is None
+    assert s["confidence"] == 75            # fresh data, no early-season penalty

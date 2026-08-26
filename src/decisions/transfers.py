@@ -1,6 +1,7 @@
 import json
 from statistics import median
 
+from src.analytics import ratings
 from src.decisions import confidence as confidence_mod
 
 POSITIONS = ("GKP", "DEF", "MID", "FWD")
@@ -8,6 +9,12 @@ MAX_PER_CLUB = 3
 HORIZON = 5
 EMPTY_REASON = "No transfers worth making this GW."
 _EPS = 1e-9
+
+# v0.24: while fewer than 3 live GWs are settled, start probabilities lean on the
+# prior season (recent-window term at partial weight) — surface it and discount
+# confidence (decision-engine.md v0.24). The deadguard's confidence floor then
+# correctly blocks early-season transfers.
+EARLY_SEASON_CONF_PENALTY = 15
 
 
 def xp_5gw_by_player(xp_rows, start_gw, horizon=HORIZON):
@@ -163,15 +170,37 @@ def get_transfer_suggestions(conn):
 
     pairs = suggest_transfers(squad_players, all_players, bank)
     staleness = confidence_mod.hours_since_refresh(conn)
+    # v0.24 early-season gate: while the SF window is not majority-live, start
+    # probabilities lean on 25-26 data — caveat the suggestions and discount conf.
+    early_season = ratings.sf_live_pairs(conn) < ratings.SF_LIVE_MIN
+    live_starts = {}
+    if early_season and pairs:
+        ids = [pr["in"]["player_id"] for pr in pairs]
+        ph = ",".join("?" * len(ids))
+        for r in conn.execute(
+                f"""SELECT player_id, COUNT(DISTINCT gw) AS gws, COALESCE(SUM(starts),0) AS st
+                    FROM player_gw_stats WHERE starts IS NOT NULL
+                      AND player_id IN ({ph}) GROUP BY player_id""", ids):
+            live_starts[r["player_id"]] = (r["gws"], r["st"])
     suggestions = []
     for i, pr in enumerate(pairs):
         gap = pr["ep_delta_5gw"] - pairs[i + 1]["ep_delta_5gw"] if i + 1 < len(pairs) else None
         conf = confidence_mod.score(staleness_hours=staleness,
                                     statuses=[pr["in"]["status"], pr["out"]["status"]], gap=gap)
+        caveat = None
+        if early_season:
+            conf -= EARLY_SEASON_CONF_PENALTY
+            conf = max(0, min(100, conf))
+            caveat = (f"early season: {ratings.sf_live_pairs(conn)} live GW(s) settled; "
+                      f"start probabilities lean on 25-26 data until 3 settle")
+            gws, st = live_starts.get(pr["in"]["player_id"], (0, 0))
+            if gws and st == 0:
+                caveat += f"; {pr['in']['web_name']} started 0 of {gws} live GWs"
         suggestions.append(
             {"out": {k: pr["out"][k] for k in ("player_id", "web_name", "price")},
              "in":  {k: pr["in"][k] for k in ("player_id", "web_name", "price")},
-             "ep_delta_5gw": pr["ep_delta_5gw"], "hit_cost": pr["hit_cost"], "confidence": conf})
+             "ep_delta_5gw": pr["ep_delta_5gw"], "hit_cost": pr["hit_cost"],
+             "confidence": conf, "caveat": caveat})
     return {"suggestions": suggestions,
             "empty_reason": None if suggestions else EMPTY_REASON,
             "free_transfers": free_transfers}

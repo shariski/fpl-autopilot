@@ -120,7 +120,8 @@ def main():
                 pr.yc_per_90, pr.rc_per_90, pr.p60, txc,
                 xg_ratio=mults[tid]["fdr_defense_mult"],
                 xgc_ratio=mults[tid]["fdr_attack_mult"],
-                dc_ratio=dc_ratio, venue="H" if r["was_home"] else "A")
+                dc_ratio=dc_ratio, venue="H" if r["was_home"] else "A",
+                recent_starts=pr.recent_starts, recent_squads=pr.recent_squads)
             pool.append({"pid": r["element"], "pos": pr.position, "xp": res["xp"],
                          "actual": int(r["total_points"]), "price": r["value"],
                          "team": r["team"]})

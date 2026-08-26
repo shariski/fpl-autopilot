@@ -23,6 +23,12 @@ VENUE_DEFENSE = {"H": 0.88, "A": 1.12}    # CS + 2+GC (+ bonus for GK/DEF)
 VENUE_SAVES = {"H": 0.86, "A": 1.14}      # GK saves (home GKs face fewer shots)
 VENUE_STARTS = {"H": 1.0, "A": 1.0}
 
+# v0.24 recent-window start term: next-GW start probability is not a season-long
+# rate — once live GWs exist, start% blends toward the player's starts in those
+# live GWs, weight min(1, recent_squads / RECENT_PSTART_GWS). At 3 live GWs the
+# start% is current-season alone (decision-engine.md v0.24).
+RECENT_PSTART_GWS = 3
+
 
 def _clamp(x, lo, hi):
     return max(lo, min(hi, x))
@@ -109,11 +115,15 @@ def _twogc(position, lam):
 def compute_player_xp_v2(position, status, chance_of_playing, starts, squads_made,
                          xg_per_start, xa_per_start, dc_hit_rate, saves_per_90,
                          yc_per_90, rc_per_90, p60, team_xgc90,
-                         xg_ratio=1.0, xgc_ratio=1.0, dc_ratio=1.0, venue="H"):
-    """xP v2 for one player in one fixture (decision-engine.md v0.13).
+                         xg_ratio=1.0, xgc_ratio=1.0, dc_ratio=1.0, venue="H",
+                         recent_starts=0, recent_squads=0):
+    """xP v2 for one player in one fixture (decision-engine.md v0.13/v0.24).
 
     Returns {p_start, xminutes, xgoals, xassists, xcs, xbonus, xdc, xcs_lambda, xp}.
     All rates are per-start (per-90 for saves/YC/RC); ratios are damped FDR v2 multipliers.
+    v0.24: recent_starts/recent_squads (live-GW starts/team-matches) blend into the
+    raw start rate at weight min(1, recent_squads / RECENT_PSTART_GWS); chance_of_playing
+    and status multiply the blended rate. 0/0 keeps the pre-v0.24 behavior.
     """
     import math
     # chance_of_playing arrives on the FPL 0-100 scale from the DB but the model
@@ -122,7 +132,14 @@ def compute_player_xp_v2(position, status, chance_of_playing, starts, squads_mad
     # rotation risk (starts/squads) and the doubt haircut (observed 2026-08-25:
     # Brooks — a 13/37 starter — got a guaranteed 90-minute, 7.1 xP projection).
     cop = chance_of_playing / 100.0 if chance_of_playing > 1.0 else chance_of_playing
-    raw_start = min(1.0, cop * starts / squads_made) if squads_made else 0.0
+    rate_window = (starts / squads_made) if squads_made else 0.0
+    # v0.24 recent-window blend: the next-GW start rate favors the live GWs once
+    # they exist (a GW1 benching is more predictive of GW2 than a 25-26 one was).
+    if recent_squads:
+        rate_recent = recent_starts / recent_squads
+        w = min(1.0, recent_squads / RECENT_PSTART_GWS)
+        rate_window = (1.0 - w) * rate_window + w * rate_recent
+    raw_start = min(1.0, cop * rate_window)
     p_start = raw_start * STATUS_MULT.get(status, 1.0)
     lam = team_xgc90 * xg_ratio
     if p_start <= 0:
@@ -233,7 +250,8 @@ def compute_and_store_v2(conn, horizon=6):
                 pr.starts, pr.squads_made, pr.xg_per_start, pr.xa_per_start,
                 pr.dc_hit_rate, pr.saves_per_90, pr.yc_per_90, pr.rc_per_90, pr.p60,
                 team_xgc90, xg_ratio=fdr[1], xgc_ratio=fdr[0],
-                dc_ratio=_dc_ratio(pl["team_id"], gw), venue=venue)
+                dc_ratio=_dc_ratio(pl["team_id"], gw), venue=venue,
+                recent_starts=pr.recent_starts, recent_squads=pr.recent_squads)
             rows.append({"player_id": pl["player_id"], "gw": gw,
                          "model_version": MODEL_VERSION_V2, **res})
     joined_ids = set(rates)
