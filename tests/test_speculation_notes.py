@@ -24,8 +24,8 @@ def test_note_list_joins_teams_and_players(db):
     repository.add_speculation_note(db, "loose note")
     notes = repository.list_speculation_notes(db)
     assert len(notes) == 2
-    assert notes[0]["team_short"] == "NEW"      # newest first
-    assert notes[1]["team_short"] is None
+    assert notes[0]["team_short"] is None        # "loose note" added second -> newest first
+    assert notes[1]["team_short"] == "NEW"
 
 
 def test_note_deactivate(db):
