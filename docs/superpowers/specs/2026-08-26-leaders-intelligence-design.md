@@ -118,6 +118,33 @@ Empty state when no snapshots yet ("first snapshot lands after the next GW settl
 
 Chip-recommender priors from leader patterns (B4-documented follow-up after the user studies the insights); mobile layout optimization (desktop-first, enhance later); previous-season per-GW data (unavailable in the API).
 
+## 11b. Increment 2 (approved 2026-08-31): progression charts + squad capture
+
+### Motivation
+
+The user wants (a) trend charts tracking individual leader progression, and (b) the leaders' actual squads stored for deep analysis — not just chips/transfers/timing.
+
+### A. Progression & retention (existing data)
+
+- `progression(conn)` — per-entry rank series (from `leader_gw_snapshots`), exposed for the top-5 by current rank + all sustained-elite entries: `{"series": [{entry_id, player_name, points: [{gw, rank}]}]}`.
+- `retention(conn)` — cohort survival: the GW1 top-100 cohort (entries snapshotted at gw=1) and, per subsequent GW, the share of them still snapshotted at that GW **and** ranked ≤ 100: `{"gw1_cohort": n, "by_gw": [{gw, retained, pct}]}`.
+- Dashboard: a "Progression" line chart (entry selector: top-5 + sustained elite, log-scale rank) + a "Retention" line chart (% surviving per GW).
+
+### B. Squad capture
+
+- New table `leader_gw_picks` (PK (entry_id, gw)): `picks_json TEXT` (raw FPL picks list: element/position/multiplier/is_captain/is_vice_captain), `captain_id`, `vice_id`, `formation` ("D-M-F" from position counts), `fetched_at`.
+- `FPLClient.entry_picks(entry_id, gw)` (public endpoint; schema assert: picks is a list).
+- `fetch_leader_snapshot` extended: after upserting an entry's GW snapshot, fetch its picks for the target GW **only when not already stored** (idempotent; backfill-safe). Snapshot cost grows to ~200 requests (~3.5 min once per GW).
+- Analysis:
+  - `ownership(conn, gw)` — per player: count + pct of cohort owning them; `differential` flag when pct < 10%.
+  - `captaincy(conn, gw)` — captain_id → player name + count.
+  - `formations(conn, gw)` — formation → count histogram.
+- API payload gains: `patterns.ownership`, `patterns.captaincy`, `patterns.formations`, `patterns.progression`, `patterns.retention`. CLI pretty output gains one-line summaries. Dashboard gains: Most-owned table (with differential markers), Captaincy bar, Formations bars, Progression + Retention line charts (ECharts).
+
+### Guard
+
+All new analysis functions return empty structures with no picks data (the page shows "picks arrive with the next snapshot"). B4 untouched.
+
 ## 12. Definition of done (B14)
 
 - Code implements this doc; tests pass; full suite green (pytest + vitest).
