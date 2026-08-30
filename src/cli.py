@@ -964,8 +964,10 @@ def _cmd_speculate_cli(conn=None, cfg=None):
             in_squad = {pk["element"] for pk in json.loads(snap["picks_json"])}
         differentials = [s for s in signals.get("spikes", [])
                          if s["player_id"] not in in_squad]
+        from .ai.squad.theses import build_theses
         _json_ok("speculate", {"gw": gw, "signals": signals,
                                "differentials": differentials,
+                               "theses": build_theses(conn),
                                "data_basis": _data_basis(conn, cfg)})
     finally:
         if owns:

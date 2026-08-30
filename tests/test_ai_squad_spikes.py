@@ -161,3 +161,28 @@ def test_spikes_provider_failure_returns_none(db, monkeypatch):
             raise RuntimeError("down")
 
     assert spikes_mod.generate_spike_signals(db, provider=Boom(), model_id="m") is None
+
+
+def test_spikes_prompt_includes_insights():
+    notes = [{"note": "xabi alonso is pretty good", "team": "CHE", "player": None}]
+    prompt = build_spikes_prompt(_digest(), insights=notes)
+    assert "User insights" in prompt
+    assert "xabi alonso is pretty good" in prompt
+
+
+def test_spikes_prompt_without_insights_unchanged():
+    prompt = build_spikes_prompt(_digest())
+    assert "User insights" not in prompt
+
+
+def test_spikes_grounding_still_rejects_insight_numbers():
+    """Insight text is context only: a reason citing a number NOT in the player
+    digest is still rejected; citing edge numbers + mentioning the insight passes."""
+    payload = {"spikes": [{"player_id": 0, "level": "high",
+                           "reason": "10.5 long shots with the new-manager thesis"}],
+               "drops": [], "market_read": "m"}
+    problems = spikes_mod.validate_signals(payload, _pool(), _digest())
+    assert any("not in player data" in p for p in problems)
+    payload["spikes"][0]["reason"] = "in 100000 transfers with the new-manager thesis"
+    problems = spikes_mod.validate_signals(payload, _pool(), _digest())
+    assert problems == []

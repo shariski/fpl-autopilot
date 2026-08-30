@@ -12,6 +12,7 @@ from pathlib import Path
 from src.ai import cache, grounding
 from src.ai.insight.runner import extract_json_object
 from src.ai.squad.digest import build_squad_digest
+from src.data import repository
 from src.decisions.squad_builder import build_candidate_pool
 
 logger = logging.getLogger(__name__)
@@ -28,9 +29,17 @@ _GW_RE = re.compile(r"\b(?:gw|game\s?week)\s?\d+\b", re.IGNORECASE)
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
 
-def build_spikes_prompt(digest: dict) -> str:
+def build_spikes_prompt(digest: dict, insights=None) -> str:
     template = (_PROMPTS_DIR / "spikes.md").read_text()
-    return template.replace("<DIGEST_JSON>", json.dumps(digest, sort_keys=True, indent=2))
+    prompt = template.replace("<DIGEST_JSON>", json.dumps(digest, sort_keys=True, indent=2))
+    if insights:
+        prompt += ("\n\n## User insights (qualitative context only)\n"
+                   "The user watches the matches and may hold manager/cohesion/trait "
+                   "reads. You MAY reference an insight qualitatively in a reason, but "
+                   "every number you cite must still come from the DIGEST JSON above "
+                   "(copy verbatim).\n"
+                   + json.dumps(insights, sort_keys=True, indent=2))
+    return prompt
 
 
 def _per_player_text(digest):
@@ -113,11 +122,16 @@ def generate_spike_signals(conn, *, provider, model_id, max_tokens: int = 2000,
     gw = digest.get("next_gw")
     if gw is None:
         return None
-    rec_hash = cache.recommendation_hash(digest)
+    # v0.26: user-curated speculation insights are qualitative prompt context;
+    # they participate in the cache key so new notes invalidate stale signals.
+    notes = repository.list_speculation_notes(conn)
+    insights = [{"note": n["note"], "team": n["team_short"], "player": n["player_name"]}
+                for n in notes]
+    rec_hash = cache.recommendation_hash({"digest": digest, "insights": insights})
     hit = cache.get(conn, gw, PANE_TYPE, rec_hash)
     if hit is not None:
         return extract_json_object(hit["prose"])
-    prompt = build_spikes_prompt(digest)
+    prompt = build_spikes_prompt(digest, insights=insights)
     problems_seen = []
     attempts_log = []
     for attempt in range(MAX_ATTEMPTS):
