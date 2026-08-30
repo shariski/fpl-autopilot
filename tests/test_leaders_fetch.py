@@ -13,7 +13,7 @@ class StubClient:
 
     def leagues_classic(self, league_id, page=1):
         self.calls.append(("standings", page))
-        return {"standings": {"results": self._standings[page]}}
+        return {"standings": {"results": self._standings[page - 1]}}
 
     def entry_history(self, entry_id):
         self.calls.append(("history", entry_id))
