@@ -609,6 +609,8 @@ def test_refresh_and_recompute_uses_next_gw_not_current(monkeypatch):
     monkeypatch.setattr(auth_session, "ensure_session", lambda *a, **k: object())
     monkeypatch.setattr(executor, "fetch_my_team_authed",
                         lambda sess, entry: {"picks": [], "transfers": {"bank": 0, "value": 1000, "limit": 1}, "chips": []})
+    from src.data import leaders as leaders_data
+    monkeypatch.setattr(leaders_data, "fetch_leader_snapshot", lambda conn, client: (0, 0))
 
     captured = []
     monkeypatch.setattr(repository, "snapshot_my_team_authed",
