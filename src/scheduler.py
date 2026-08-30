@@ -60,6 +60,12 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
         except Exception:
             log.exception("settlement.run_failed")
             settle_n = 0
+        try:
+            from .data.leaders import fetch_leader_snapshot
+            n_le, n_ls = fetch_leader_snapshot(conn, client or FPLClient())
+        except Exception:
+            log.exception("leaders.snapshot_failed")
+            n_le = n_ls = 0
         if config.ai_enabled(cfg):
             try:
                 from src.ai import jobs as ai_jobs
@@ -77,7 +83,8 @@ def refresh_and_recompute(cfg=None, conn=None, client=None, understat_client=Non
             return {**(rpt or {}),
                     "recompute": {"fdr_v1": fdr_n, "fdr_v2": fdr_v2_n,
                                   "xp_v1": xp_n, "xp_v2": xp_v2_n},
-                    "settlement_written": settle_n}
+                    "settlement_written": settle_n,
+                    "leaders": {"entries": n_le, "snapshots": n_ls}}
     finally:
         if owns:
             conn.close()
