@@ -33,6 +33,19 @@ Verified data context (2026-08-26, system's own DB):
 
 Minimal by design: no confidence ratings, no kind tags (the AI tags kinds when consuming). Insight content is the user's; verification is the system's.
 
+### 3.1 Initial seed (the user's GW1-26/27 insights, entered by the system — no re-typing)
+
+The user shared these during design; they are seeded on first deploy (a one-shot script + documented seed, idempotent by content hash). The notes keep the user's own wording:
+
+1. `"newcastle are incredibly good at playing and scoring goals.. from newcastle there are some players that really good like wissa"` → team NEW
+2. `"from chelsea there's a lot including morgan rogers, joao pedro, neto, palmer.. but the most promising one is morgan rogers"` → team CHE
+3. `"chelsea and newcastle had new manager, chelsea had xabi alonso and that's pretty good"` → team CHE
+4. `"that new good manager combined with good player transfers like morgan rogers create really good cohesion and good performance"` → team CHE
+5. `"this manager had really good track record, chelsea appointed him for new season, we speculate that chelsea under that manager will perform really well, so we choose players from chelsea"` → team CHE
+6. `"morgan rogers is really good when playing in previous season and oftenly take long shot so he had really high chances of scoring and expected goals, plus under xabi alonso there'll be really good performance of him"` → team CHE + player Rogers
+
+Verified against the system's data at seed time (2026-08-26): CHE won 3-2 at FUL (Rogers, João Pedro, Palmer scored); NEW drew 2-2 LIV (Elanga, Willock scored; Wissa 90 min, 1.0 xG); Rogers xG/90 0.597, João Pedro 0.675. The theses cross-check reproduces these from the DB on every `speculate` call.
+
 Repository functions (`src/data/repository.py`):
 - `add_speculation_note(conn, note, team_id=None, player_id=None) -> id`
 - `list_speculation_notes(conn, active_only=True) -> list[dict]`
