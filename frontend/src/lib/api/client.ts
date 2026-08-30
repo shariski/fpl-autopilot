@@ -9,7 +9,8 @@ import type {
 	Planner,
 	Activity,
 	AuditReport,
-	SpeculationNote
+	SpeculationNote,
+	LeadersPayload
 } from '../types';
 import { fullMock } from '../mocks/full';
 import { launchMock } from '../mocks/launch';
@@ -153,4 +154,8 @@ export async function postNote(
 export async function deleteNote(id: number, fetchFn: Fetch = fetch): Promise<void> {
 	const res = await fetchFn(`${API_BASE}/api/speculation/notes/${id}`, { method: 'DELETE' });
 	if (!res.ok) throw new Error(`DELETE /api/speculation/notes/${id} failed: ${res.status}`);
+}
+
+export async function fetchLeaders(fetchFn: Fetch = fetch): Promise<LeadersPayload> {
+	return getJson<LeadersPayload>('/api/leaders', fetchFn);
 }

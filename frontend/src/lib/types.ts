@@ -254,3 +254,30 @@ export interface SpeculationNote {
 	created_at: string;
 	active: boolean;
 }
+
+export interface LeaderCohortRow {
+	entry_id: number;
+	player_name: string;
+	entry_name: string;
+	rank: number;
+	total: number;
+	last_gw_points: number | null;
+	transfers: number | null;
+	hit_cost: number | null;
+	bank: number | null;
+	value: number | null;
+	chips_used: string[];
+	past_rank: number | null;
+}
+
+export interface LeadersPayload {
+	cohort: LeaderCohortRow[];
+	patterns: {
+		chip_timing: { rows: { chip: string; gw: number; count: number }[]; first_chip: Record<string, { gw: number; count: number }> };
+		transfers: { mean_per_gw: number | null; median_per_gw: number | null; hit_freq: number | null;
+					 mean_hit_cost: number | null; histogram: { transfers: number; count: number }[] };
+		bank_value: { bank: { gw: number; mean: number; median: number }[]; value: { gw: number; mean: number; median: number }[] };
+		momentum: { top_movers: { entry_id: number; player_name?: string; from_gw: number; to_gw: number; rank_gain: number }[];
+					sustained_elite: number[] };
+	};
+}
