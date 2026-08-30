@@ -100,7 +100,7 @@ Adds to the status shape:
                       "insight <player_id> --json / speculate --json — player analysis",
                       "propose a plan; the human executes writes (--live) via the CLI"],
       "agent_safe_commands": ["status", "resume", "log", "captain", "transfers", "chips",
-                              "squad", "insight", "speculate", "refresh",
+                              "squad", "insight", "speculate", "refresh", "note",
                               "freeze-status", "auth-status", "review"],
       "human_only_commands": ["execute-lineup", "execute-transfer", "apply-squad",
                               "route-gameweek", "undo-transfer", "refresh-my-team",
@@ -198,6 +198,20 @@ recompute + xP v1/v2 recompute + settlement/backfill — and reports the recompu
 The authed my-team snapshot runs only when the daemon's master key is available
 (env `MASTER_PASSWORD`); otherwise a warning is printed and the public path completes.
 Use this after a deploy instead of waiting for the hourly job.
+
+### note (speculation insights, v0.26)
+
+    fpl-autopilot note add "newcastle are incredibly good at playing and scoring goals" [--team NEW] [--player Wissa] [--json]
+    fpl-autopilot note list [--json]
+    fpl-autopilot note rm <id> [--json]
+
+User-curated qualitative knowledge for the AI speculation layer (manager effects,
+transfer cohesion, player traits). Agent-safe: writes the local DB only, never FPL.
+`--team`/`--player` resolve by short_name/web_name from the DB (club data is never
+assumed). `speculate --json` cross-checks each active note against the system's
+stats in a `theses` section: {"theses": [{note_id, note, team_short, player_name,
+verdict: "matches"|"contradicts"|"neutral", checks: {...}}]} — verdicts are
+deterministic code, never the AI.
 
 ### freeze-status / auth-status
 
