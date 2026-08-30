@@ -21,9 +21,11 @@ class StubClient:
 
     def entry_picks(self, entry_id, gw):
         self.calls.append(("picks", entry_id, gw))
-        return {"picks": [{"element": 7, "position": 3, "multiplier": 2,
+        return {"picks": [{"element": 7, "position": 1, "multiplier": 2,
                            "is_captain": True, "is_vice_captain": False},
-                          {"element": 9, "position": 2, "multiplier": 1,
+                          {"element": 8, "position": 2, "multiplier": 1,
+                           "is_captain": False, "is_vice_captain": False},
+                          {"element": 9, "position": 3, "multiplier": 1,
                            "is_captain": False, "is_vice_captain": True}]}
 
 
@@ -43,6 +45,11 @@ def _standings(per_page):
 
 def test_fetch_snapshots_latest_settled_gw():
     conn = _db()
+    conn.executemany("INSERT INTO players (id, name, web_name, team_id, position, status) "
+                     "VALUES (?,?,?,?,?, 'a')",
+                     [(7, "Rogers", "Rogers", 1, "MID"), (8, "Palmer", "Palmer", 1, "MID"),
+                      (9, "Wissa", "Wissa", 2, "FWD")])
+    conn.commit()
     hist = {i: {"current": [{"event": 1, "points": 90, "total_points": 200,
                              "overall_rank": i, "bank": 10, "value": 1000,
                              "event_transfers": 1, "event_transfers_cost": 0}],
@@ -55,7 +62,7 @@ def test_fetch_snapshots_latest_settled_gw():
     assert row["gw"] == 1 and row["chip_played"] == "3xc" and row["points"] == 90
     pk = conn.execute("SELECT * FROM leader_gw_picks WHERE entry_id=1 AND gw=1").fetchone()
     assert pk["captain_id"] == 7 and pk["vice_id"] == 9
-    assert pk["formation"] == "1-1-0"
+    assert pk["formation"] == "0-2-1"  # starters (slots 1-3): MID MID FWD
     ent = conn.execute("SELECT * FROM leader_entries WHERE entry_id=1").fetchone()
     assert ent["past_season_rank"] == 1000000 and ent["last_rank"] == 1
     # idempotent: re-run snapshots nothing new (gw2 unfinished)

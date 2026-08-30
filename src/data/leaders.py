@@ -79,11 +79,16 @@ def _fetch_picks(conn, client, entry_id, gw):
             captain = pk.get("element")
         if pk.get("is_vice_captain"):
             vice = pk.get("element")
+    # FPL picks: positions 1-15 = squad slots, slots 1-11 = the starting XI,
+    # 12-15 = bench (verified live 2026-08-31: a 5-4-1 with bench GK/FWD/MID/FWD).
+    # Element types come from the players table (the picks payload carries only
+    # element ids + slots). Formation = DEF-MID-FWD among the starters.
     pos_counts = {"GKP": 0, "DEF": 0, "MID": 0, "FWD": 0}
-    pos_map = {1: "GKP", 2: "DEF", 3: "MID", 4: "FWD"}
-    for pk in picks:
-        pos = pos_map.get(pk.get("position"))
-        if pos:
+    for pk in picks[:11]:
+        row = conn.execute("SELECT position FROM players WHERE id=?",
+                           (pk.get("element"),)).fetchone()
+        pos = row["position"] if row else None
+        if pos in pos_counts:
             pos_counts[pos] += 1
     formation = f"{pos_counts['DEF']}-{pos_counts['MID']}-{pos_counts['FWD']}"
     repository.upsert_leader_picks(conn, entry_id, gw, json.dumps(picks, sort_keys=True),
