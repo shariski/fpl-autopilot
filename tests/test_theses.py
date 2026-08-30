@@ -13,6 +13,8 @@ def _seed(db):
     db.execute("INSERT INTO gameweeks (id, name, finished) VALUES (1,'GW1',1),(2,'GW2',0)")
     db.execute("INSERT INTO fixtures (id, gw, home_team_id, away_team_id, finished, "
                "home_score, away_score) VALUES (1,1,2,1,1,2,3)")
+    db.execute("INSERT INTO fixtures (id, gw, home_team_id, away_team_id, finished, "
+               "home_score, away_score) VALUES (2,2,1,2,0,NULL,NULL)")
     db.execute("INSERT INTO fdr (team_id, gw, fdr_attack, fdr_defense, computed_at) "
                "VALUES (1,2,3,3,'t'),(2,2,2,4,'t')")
     db.executemany(
