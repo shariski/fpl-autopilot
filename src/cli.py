@@ -227,7 +227,7 @@ def _operating_rules():
                         "insight <player_id> --json / speculate --json — player analysis",
                         "propose a plan; the human executes writes (--live) via the CLI"],
         "agent_safe_commands": ["status", "resume", "log", "captain", "transfers", "chips",
-                                "squad", "insight", "speculate", "refresh", "note",
+                                "squad", "insight", "speculate", "refresh", "note", "leaders",
                                 "freeze-status", "auth-status", "review"],
         "human_only_commands": ["execute-lineup", "execute-transfer", "apply-squad",
                                 "route-gameweek", "undo-transfer", "refresh-my-team",
@@ -1039,6 +1039,49 @@ def _cmd_note_cli(args, conn=None, cfg=None):
             conn.close()
 
 
+
+
+def _cmd_leaders_cli(args, conn=None, cfg=None):
+    """leaders — top-100 cohort analytics (v0.27). --refresh pulls a fresh snapshot."""
+    from .analytics import leaders as leaders_analytics
+    from .data import leaders as leaders_data
+    from .data.fpl_client import FPLClient
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        if args.refresh:
+            try:
+                leaders_data.fetch_leader_snapshot(conn, FPLClient())
+            except Exception as exc:  # noqa: BLE001 — never break the read path
+                return _json_err("leaders", "E_RUNTIME",
+                                 f"leader snapshot failed ({exc})",
+                                 "retry later; the stored data is still readable")
+        payload = leaders_analytics.analyze(conn)
+        if args.json:
+            _json_ok("leaders", payload)
+        else:
+            print("== leaders (global top-100) ==")
+            print(f"  entries: {len(payload['cohort'])}")
+            ct = payload["patterns"]["chip_timing"]
+            print(f"  chips played: {len(ct['rows'])} leader-GWs" +
+                  ("; first: " + "; ".join(f"{c} @GW{r['gw']} x{r['count']}"
+                                           for c, r in ct["first_chip"].items()) if ct["first_chip"] else ""))
+            tr = payload["patterns"]["transfers"]
+            if tr["mean_per_gw"] is not None:
+                print(f"  transfers: mean {tr['mean_per_gw']}/GW, median {tr['median_per_gw']}, "
+                      f"hit freq {tr['hit_freq']}, mean hit cost {tr['mean_hit_cost']}")
+            else:
+                print("  transfers: no snapshots yet")
+            for c in payload["cohort"][:10]:
+                print(f"  #{c['rank']:<4} {c['player_name']:<18} {c['total']} pts "
+                      f"{c['chips_used'] or ''}")
+    finally:
+        if owns:
+            conn.close()
+
+
 def _player_identity(conn, player_id):
     row = conn.execute(
         "SELECT p.name, p.web_name, p.position, p.price, t.short_name AS team "
@@ -1573,6 +1616,11 @@ def main(argv=None):
     p_note_rm = note_sub.add_parser("rm", help="deactivate a speculation insight by id")
     p_note_rm.add_argument("id", type=int)
     p_note_rm.add_argument("--json", action="store_true")
+    p_leaders = sub.add_parser("leaders", help="top-100 cohort analytics (chip timing, transfers, bank, momentum)")
+    p_leaders.add_argument("--refresh", action="store_true",
+                           help="pull a fresh snapshot (standings + histories) before reading")
+    p_leaders.add_argument("--json", action="store_true",
+                           help="output the machine-readable JSON envelope (agent contract)")
     p_insight = sub.add_parser("insight", help="per-player AI deep-dive (pretty; --json for the envelope)")
     p_insight.add_argument("player_id", type=int, help="FPL player id")
     p_insight.add_argument("--json", action="store_true",
@@ -1646,6 +1694,8 @@ def main(argv=None):
         _cmd_speculate_cli()
     elif args.command == "note":
         _cmd_note_cli(args)
+    elif args.command == "leaders":
+        _cmd_leaders_cli(args)
     elif args.command == "insight":
         _cmd_insight_cli(args.player_id)
     elif args.command == "status":
