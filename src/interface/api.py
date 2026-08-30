@@ -276,6 +276,14 @@ def speculation_teams(conn=Depends(get_db)):
 def speculation_players(team_id: int, conn=Depends(get_db)):
     return {"players": [dict(r) for r in conn.execute(
         "SELECT id, web_name FROM players WHERE team_id=? ORDER BY web_name", (team_id,))]}
+from src.analytics import leaders as leaders_analytics
+
+
+@app.get("/api/leaders")
+def leaders(conn=Depends(get_db)):
+    return leaders_analytics.analyze(conn)
+
+
 # --- Static frontend (SvelteKit adapter-static build) ---
 # Mounted at "/" so the dashboard PWA is served from the same FastAPI
 # process in production. Conditional on the directory existing so local
