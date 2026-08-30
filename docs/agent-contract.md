@@ -100,7 +100,7 @@ Adds to the status shape:
                       "insight <player_id> --json / speculate --json — player analysis",
                       "propose a plan; the human executes writes (--live) via the CLI"],
       "agent_safe_commands": ["status", "resume", "log", "captain", "transfers", "chips",
-                              "squad", "insight", "speculate", "refresh", "note",
+                              "squad", "insight", "speculate", "refresh", "note", "leaders",
                               "freeze-status", "auth-status", "review"],
       "human_only_commands": ["execute-lineup", "execute-transfer", "apply-squad",
                               "route-gameweek", "undo-transfer", "refresh-my-team",
@@ -212,6 +212,17 @@ assumed). `speculate --json` cross-checks each active note against the system's
 stats in a `theses` section: {"theses": [{note_id, note, team_short, player_name,
 verdict: "matches"|"contradicts"|"neutral", checks: {...}}]} — verdicts are
 deterministic code, never the AI.
+
+### leaders (top-100 cohort analytics)
+
+    fpl-autopilot leaders [--refresh] [--json]
+
+Tracks the global top-100 managers' per-GW behavior: chip timing, transfers/hits,
+bank & value, rank momentum (deterministic statistics, no AI). `--refresh` pulls a
+fresh snapshot (standings + histories, ~102 requests once per settled GW); without
+it, reads the stored data. Agent-safe: `--refresh` writes the local DB only, never FPL.
+Shape: {"cohort": [...], "patterns": {"chip_timing", "transfers", "bank_value", "momentum"}} —
+same shape as GET /api/leaders.
 
 ### freeze-status / auth-status
 

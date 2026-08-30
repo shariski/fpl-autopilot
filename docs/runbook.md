@@ -683,7 +683,7 @@ next GW + deadline, pending decisions, and the operating rules in one call.
 
 **Read-safe (agents may run these):** `status`, `resume`, `log`, `captain`, `transfers`,
 `chips`, `squad`, `squad --candidates`, `insight <player_id>`, `speculate`, `refresh`,
-`note`, `freeze-status`, `auth-status`, `review` — always with `--json` where offered.
+`note`, `leaders`, `freeze-status`, `auth-status`, `review` — always with `--json` where offered.
 
 **Human-only (writes or secrets):** `execute-lineup`, `execute-transfer`, `apply-squad`,
 `route-gameweek`, `undo-transfer`, `refresh-my-team`, `init-master-password`, `init-fpl`,
@@ -695,6 +695,9 @@ next GW + deadline, pending decisions, and the operating rules in one call.
 **Manual full cycle (after a deploy, instead of waiting for the hourly job):**
 `docker compose --project-directory /opt/fpl-autopilot run --rm -T app refresh --full-cycle --json` —
 fetch + FDR/xP recompute + settlement in one shot (v0.25; see `docs/agent-contract.md`).
+
+**Leader analytics:** `docker compose --project-directory /opt/fpl-autopilot run --rm -T app leaders --json` —
+the global top-100's chip timing, transfer discipline, bank/value and rank momentum patterns.
 
 **Speculation insights:** `docker compose --project-directory /opt/fpl-autopilot run --rm -T app note list --json` —
 the user's curated reads (manager/cohesion/traits); `speculate --json` shows their data cross-check in `theses`.
