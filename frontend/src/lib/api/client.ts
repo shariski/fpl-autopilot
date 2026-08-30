@@ -8,7 +8,8 @@ import type {
 	Chips,
 	Planner,
 	Activity,
-	AuditReport
+	AuditReport,
+	SpeculationNote
 } from '../types';
 import { fullMock } from '../mocks/full';
 import { launchMock } from '../mocks/launch';
@@ -129,4 +130,27 @@ import type { SquadBuilder } from '../types';
 
 export async function fetchSquadBuilder(fetchFn: Fetch = fetch): Promise<SquadBuilder> {
 	return getJson<SquadBuilder>('/api/squad/builder', fetchFn);
+}
+
+export async function fetchNotes(fetchFn: Fetch = fetch): Promise<SpeculationNote[]> {
+	const data = await getJson<{ notes: SpeculationNote[] }>('/api/speculation/notes', fetchFn);
+	return data.notes;
+}
+
+export async function postNote(
+	payload: { note: string; team_id: number | null; player_id: number | null },
+	fetchFn: Fetch = fetch
+): Promise<SpeculationNote> {
+	const res = await fetchFn(`${API_BASE}/api/speculation/notes`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload)
+	});
+	if (!res.ok) throw new Error(`POST /api/speculation/notes failed: ${res.status}`);
+	return (await res.json()).note as SpeculationNote;
+}
+
+export async function deleteNote(id: number, fetchFn: Fetch = fetch): Promise<void> {
+	const res = await fetchFn(`${API_BASE}/api/speculation/notes/${id}`, { method: 'DELETE' });
+	if (!res.ok) throw new Error(`DELETE /api/speculation/notes/${id} failed: ${res.status}`);
 }

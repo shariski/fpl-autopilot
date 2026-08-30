@@ -243,3 +243,14 @@ export interface SquadBuilder {
 	generated_at: string | null;
 	data_basis?: { as_of_utc: string | null; xp_model_version: string };
 }
+
+export interface SpeculationNote {
+	id: number;
+	note: string;
+	team_id: number | null;
+	player_id: number | null;
+	team_short: string | null;
+	player_name: string | null;
+	created_at: string;
+	active: boolean;
+}
