@@ -560,3 +560,40 @@ def deactivate_speculation_note(conn, note_id):
         "UPDATE speculation_notes SET active=0 WHERE id=? AND active=1", (note_id,))
     conn.commit()
     return cur.rowcount > 0
+
+def upsert_leader_entry(conn, entry_id, player_name, entry_name, past_rank, past_pts,
+                        first_gw, rank, total):
+    conn.execute(
+        """INSERT INTO leader_entries (entry_id, player_name, entry_name, past_season_rank,
+           past_season_pts, first_seen_gw, last_rank, last_total, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(entry_id) DO UPDATE SET
+             player_name=excluded.player_name, entry_name=excluded.entry_name,
+             past_season_rank=excluded.past_season_rank,
+             past_season_pts=excluded.past_season_pts,
+             last_rank=excluded.last_rank, last_total=excluded.last_total,
+             updated_at=excluded.updated_at""",
+        (entry_id, player_name, entry_name, past_rank, past_pts, first_gw, rank, total, _now()))
+    conn.commit()
+
+
+def upsert_leader_snapshot(conn, entry_id, gw, points, total_points, overall_rank,
+                           bank, value, transfers, hit_cost, chip_played):
+    conn.execute(
+        """INSERT INTO leader_gw_snapshots (entry_id, gw, points, total_points,
+           overall_rank, bank, value, event_transfers, hit_cost, chip_played)
+           VALUES (?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(entry_id, gw) DO UPDATE SET
+             points=excluded.points, total_points=excluded.total_points,
+             overall_rank=excluded.overall_rank, bank=excluded.bank,
+             value=excluded.value, event_transfers=excluded.event_transfers,
+             hit_cost=excluded.hit_cost,
+             chip_played=COALESCE(excluded.chip_played, leader_gw_snapshots.chip_played)""",
+        (entry_id, gw, points, total_points, overall_rank, bank, value,
+         transfers, hit_cost, chip_played))
+    conn.commit()
+
+
+def latest_leader_gw(conn):
+    row = conn.execute("SELECT MAX(gw) AS gw FROM leader_gw_snapshots").fetchone()
+    return row["gw"] if row else None

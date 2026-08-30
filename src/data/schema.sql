@@ -234,3 +234,30 @@ CREATE TABLE IF NOT EXISTS speculation_notes (
   created_at TIMESTAMP,
   active BOOLEAN NOT NULL DEFAULT 1
 );
+
+
+CREATE TABLE IF NOT EXISTS leader_entries (
+  entry_id INTEGER PRIMARY KEY,
+  player_name TEXT,
+  entry_name TEXT,
+  past_season_rank INTEGER,
+  past_season_pts INTEGER,
+  first_seen_gw INTEGER,
+  last_rank INTEGER,
+  last_total INTEGER,
+  updated_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS leader_gw_snapshots (
+  entry_id INTEGER NOT NULL,
+  gw INTEGER NOT NULL,
+  points INTEGER,
+  total_points INTEGER,
+  overall_rank INTEGER,
+  bank INTEGER,
+  value INTEGER,
+  event_transfers INTEGER,
+  hit_cost INTEGER,
+  chip_played TEXT,
+  PRIMARY KEY (entry_id, gw)
+);
