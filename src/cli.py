@@ -227,7 +227,7 @@ def _operating_rules():
                         "insight <player_id> --json / speculate --json — player analysis",
                         "propose a plan; the human executes writes (--live) via the CLI"],
         "agent_safe_commands": ["status", "resume", "log", "captain", "transfers", "chips",
-                                "squad", "insight", "speculate", "refresh",
+                                "squad", "insight", "speculate", "refresh", "note",
                                 "freeze-status", "auth-status", "review"],
         "human_only_commands": ["execute-lineup", "execute-transfer", "apply-squad",
                                 "route-gameweek", "undo-transfer", "refresh-my-team",
@@ -972,6 +972,71 @@ def _cmd_speculate_cli(conn=None, cfg=None):
             conn.close()
 
 
+def _cmd_note_cli(args, conn=None, cfg=None):
+    """note add/list/rm — user-curated speculation insights (v0.26)."""
+    from .data import repository
+    cfg = cfg or load_config()
+    owns = conn is None
+    conn = conn or connect(cfg_db_path(cfg))
+    init_db(conn)
+    try:
+        if args.note_command == "add":
+            team_id = player_id = None
+            if args.team:
+                row = conn.execute("SELECT id FROM teams WHERE short_name=?",
+                                   (args.team,)).fetchone()
+                if row is None:
+                    return _json_err("note", "E_NOT_FOUND", f"unknown team {args.team!r}",
+                                     "use a short_name from the DB (e.g. CHE)")
+                team_id = row["id"]
+            if args.player:
+                q = "SELECT id FROM players WHERE web_name=?"
+                qp = [args.player]
+                if team_id is not None:
+                    q += " AND team_id=?"
+                    qp.append(team_id)
+                row = conn.execute(q, qp).fetchone()
+                if row is None:
+                    return _json_err("note", "E_NOT_FOUND", f"unknown player {args.player!r}",
+                                     "use a web_name from the DB (club data is never assumed)")
+                player_id = row["id"]
+            nid = repository.add_speculation_note(conn, args.note,
+                                                  team_id=team_id, player_id=player_id)
+            repository.log_activity(conn, decision_type="speculation", mode="manual",
+                                    action_taken=f"note add: {args.note[:80]}", executed=True,
+                                    inputs={"note_id": nid})
+            row = [n for n in repository.list_speculation_notes(conn) if n["id"] == nid][0]
+            if args.json:
+                _json_ok("note", {"note": row})
+            else:
+                print(f"  note #{row['id']} added: {row['note']}")
+                if row["team_short"]:
+                    print(f"    team: {row['team_short']}" +
+                          (f", player: {row['player_name']}" if row["player_name"] else ""))
+        elif args.note_command == "list":
+            notes = repository.list_speculation_notes(conn)
+            if args.json:
+                _json_ok("note", {"notes": notes})
+            else:
+                for n in notes:
+                    scope = " | ".join(x for x in (n["team_short"], n["player_name"]) if x)
+                    print(f"  #{n['id']} [{scope}] {n['note']}")
+        elif args.note_command == "rm":
+            if not repository.deactivate_speculation_note(conn, args.id):
+                return _json_err("note", "E_NOT_FOUND", f"note {args.id} not found",
+                                 "note ids come from 'note list'")
+            repository.log_activity(conn, decision_type="speculation", mode="manual",
+                                    action_taken=f"note rm: id {args.id}", executed=True,
+                                    inputs={"note_id": args.id})
+            if args.json:
+                _json_ok("note", {"removed": True})
+            else:
+                print(f"  note #{args.id} removed")
+    finally:
+        if owns:
+            conn.close()
+
+
 def _player_identity(conn, player_id):
     row = conn.execute(
         "SELECT p.name, p.web_name, p.position, p.price, t.short_name AS team "
@@ -1494,6 +1559,18 @@ def main(argv=None):
     p_speculate = sub.add_parser("speculate", help="AI spike/drop signals (pretty; --json for the envelope)")
     p_speculate.add_argument("--json", action="store_true",
                              help="output the machine-readable JSON envelope (agent contract)")
+    p_note = sub.add_parser("note", help="speculation insights (user-curated; agent-safe)")
+    note_sub = p_note.add_subparsers(dest="note_command", required=True)
+    p_note_add = note_sub.add_parser("add", help="add a speculation insight")
+    p_note_add.add_argument("note", help="free text, e.g. 'xabi alonso is pretty good'")
+    p_note_add.add_argument("--team", help="team short name (e.g. CHE)")
+    p_note_add.add_argument("--player", help="player web_name (e.g. Rogers)")
+    p_note_add.add_argument("--json", action="store_true")
+    p_note_list = note_sub.add_parser("list", help="list active speculation insights")
+    p_note_list.add_argument("--json", action="store_true")
+    p_note_rm = note_sub.add_parser("rm", help="deactivate a speculation insight by id")
+    p_note_rm.add_argument("id", type=int)
+    p_note_rm.add_argument("--json", action="store_true")
     p_insight = sub.add_parser("insight", help="per-player AI deep-dive (pretty; --json for the envelope)")
     p_insight.add_argument("player_id", type=int, help="FPL player id")
     p_insight.add_argument("--json", action="store_true",
@@ -1565,6 +1642,8 @@ def main(argv=None):
         _cmd_squad_cli(candidates_only=args.candidates)
     elif args.command == "speculate":
         _cmd_speculate_cli()
+    elif args.command == "note":
+        _cmd_note_cli(args)
     elif args.command == "insight":
         _cmd_insight_cli(args.player_id)
     elif args.command == "status":
