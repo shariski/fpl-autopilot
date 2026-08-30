@@ -71,6 +71,66 @@
 		};
 	}
 
+	function progressionOption() {
+		const series = payload?.patterns.progression.series ?? [];
+		if (series.length === 0) return {};
+		const gws = [...new Set(series.flatMap((s) => s.points.map((p) => p.gw)))].sort((a, b) => a - b);
+		return {
+			tooltip: { trigger: 'axis' },
+			legend: { type: 'scroll', data: series.map((s) => s.player_name) },
+			grid: { left: 70, right: 20, top: 30, bottom: 30 },
+			xAxis: { type: 'category', data: gws.map((g) => `GW${g}`) },
+			yAxis: { type: 'log', name: 'rank' },
+			series: series.map((s) => ({
+				name: s.player_name, type: 'line', smooth: true,
+				data: gws.map((g) => {
+					const pt = s.points.find((p) => p.gw === g);
+					return pt ? pt.rank : null;
+				})
+			}))
+		};
+	}
+
+	function retentionOption() {
+		const byGw = payload?.patterns.retention.by_gw ?? [];
+		if (byGw.length === 0) return {};
+		return {
+			tooltip: { trigger: 'axis' },
+			grid: { left: 50, right: 20, top: 20, bottom: 30 },
+			xAxis: { type: 'category', data: byGw.map((b) => `GW${b.gw}`) },
+			yAxis: { type: 'value', name: '% retained', max: 100 },
+			series: [{
+				name: 'GW1 cohort still top-100', type: 'line', smooth: true,
+				data: byGw.map((b) => b.pct * 100), itemStyle: { color: '#00e6a8' },
+				areaStyle: { color: 'rgba(0,230,168,0.15)' }
+			}]
+		};
+	}
+
+	function captaincyOption() {
+		const rows = payload?.patterns.captaincy.rows ?? [];
+		if (rows.length === 0) return {};
+		return {
+			tooltip: {},
+			grid: { left: 100, right: 20, top: 20, bottom: 30 },
+			xAxis: { type: 'value' },
+			yAxis: { type: 'category', data: rows.slice(0, 8).map((r) => r.web_name) },
+			series: [{ type: 'bar', data: rows.slice(0, 8).map((r) => r.count), itemStyle: { color: '#1f6feb' } }]
+		};
+	}
+
+	function formationsOption() {
+		const rows = payload?.patterns.formations.rows ?? [];
+		if (rows.length === 0) return {};
+		return {
+			tooltip: {},
+			grid: { left: 50, right: 20, top: 20, bottom: 30 },
+			xAxis: { type: 'category', data: rows.map((r) => r.formation) },
+			yAxis: { type: 'value' },
+			series: [{ type: 'bar', data: rows.map((r) => r.count), itemStyle: { color: '#ffb454' } }]
+		};
+	}
+
 	function hasSnapshots() { return (payload?.cohort.length ?? 0) > 0; }
 </script>
 
@@ -139,6 +199,65 @@
 						{/each}
 					</tbody>
 				</table>
+			{/if}
+		</section>
+
+		<section class="card">
+			<h2 class="section-label">Progression</h2>
+			{#if payload?.patterns.progression.series.length}
+				<LeaderChart option={progressionOption()} height="300px" />
+				<p class="muted small">Rank over GWs (log scale) — top-5 by current rank + sustained elite.</p>
+			{:else}
+				<p class="muted small">Rank series appear after the second GW settles.</p>
+			{/if}
+		</section>
+
+		<section class="card">
+			<h2 class="section-label">Retention</h2>
+			{#if payload?.patterns.retention.by_gw.length}
+				<LeaderChart option={retentionOption()} height="220px" />
+				<p class="muted small">Of the GW1 top-100, how many are still top-100.</p>
+			{:else}
+				<p class="muted small">Needs at least two settled GWs.</p>
+			{/if}
+		</section>
+
+		<section class="card">
+			<h2 class="section-label">Most-owned</h2>
+			{#if payload?.patterns.ownership.rows.length}
+				<div class="table-wrap">
+					<table class="cohort">
+						<thead>
+							<tr><th>Player</th><th>Team</th><th>Owned by</th><th>%</th><th></th></tr>
+						</thead>
+						<tbody>
+							{#each payload.patterns.ownership.rows.slice(0, 20) as o}
+								<tr>
+									<td>{o.web_name}</td>
+									<td class="muted">{o.team_short}</td>
+									<td class="tnum">{o.count}/{payload.patterns.ownership.cohort}</td>
+									<td class="tnum">{(o.pct * 100).toFixed(0)}%</td>
+									<td>{#if o.differential}<span class="chip diff">differential</span>{/if}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{:else}
+				<p class="muted small">Squads arrive with the next snapshot.</p>
+			{/if}
+		</section>
+
+		<section class="card">
+			<h2 class="section-label">Captaincy &amp; formations</h2>
+			{#if payload?.patterns.captaincy.rows.length}
+				<LeaderChart option={captaincyOption()} height="220px" />
+			{/if}
+			{#if payload?.patterns.formations.rows.length}
+				<LeaderChart option={formationsOption()} height="180px" />
+			{/if}
+			{#if !payload?.patterns.captaincy.rows.length && !payload?.patterns.formations.rows.length}
+				<p class="muted small">Squads arrive with the next snapshot.</p>
 			{/if}
 		</section>
 
@@ -274,6 +393,10 @@
 	}
 	.gain {
 		color: var(--accent);
+	}
+	.chip.diff {
+		background: color-mix(in srgb, var(--warning) 20%, var(--surface-2));
+		color: var(--warning);
 	}
 	.movers {
 		max-width: 420px;

@@ -30,7 +30,15 @@ const payload = {
 					 histogram: [{ transfers: 0, count: 410 }] },
 		bank_value: { bank: [{ gw: 1, mean: 3.2, median: 2.5 }], value: [{ gw: 1, mean: 1005, median: 1004 }] },
 		momentum: { top_movers: [{ entry_id: 1, player_name: 'Harman Messi', from_gw: 1, to_gw: 2, rank_gain: 900 }],
-					sustained_elite: [] }
+					sustained_elite: [] },
+		ownership: { gw: 1, cohort: 1, rows: [
+			{ player_id: 7, web_name: 'Rogers', team_short: 'CHE', count: 1, pct: 1.0, differential: false },
+			{ player_id: 9, web_name: 'Wissa', team_short: 'NEW', count: 0, pct: 0.05, differential: true }
+		] },
+		captaincy: { gw: 1, rows: [{ player_id: 7, web_name: 'Rogers', team_short: 'CHE', count: 1 }] },
+		formations: { gw: 1, rows: [{ formation: '3-5-2', count: 1 }] },
+		progression: { series: [{ entry_id: 1, player_name: 'Harman Messi', points: [{ gw: 1, rank: 11 }, { gw: 2, rank: 12 }] }] },
+		retention: { gw1_cohort: 1, by_gw: [{ gw: 1, retained: 1, pct: 1.0 }] }
 	}
 };
 
@@ -40,7 +48,12 @@ const emptyPayload = {
 		chip_timing: { rows: [], first_chip: {} },
 		transfers: { mean_per_gw: null, median_per_gw: null, hit_freq: null, mean_hit_cost: null, histogram: [] },
 		bank_value: { bank: [], value: [] },
-		momentum: { top_movers: [], sustained_elite: [] }
+		momentum: { top_movers: [], sustained_elite: [] },
+		ownership: { gw: 1, cohort: 0, rows: [] },
+		captaincy: { gw: 1, rows: [] },
+		formations: { gw: 1, rows: [] },
+		progression: { series: [] },
+		retention: { gw1_cohort: 0, by_gw: [] }
 	}
 };
 
@@ -60,7 +73,7 @@ describe('leaders page', () => {
 		expect(screen.getByText(/Transfer discipline/)).toBeInTheDocument();
 		expect(screen.getByText(/Bank & value/)).toBeInTheDocument();
 		expect(screen.getByText(/Rank momentum/)).toBeInTheDocument();
-		expect(screen.getByText(/1.1/)).toBeInTheDocument();           // mean transfers/GW stat
+		expect(screen.getAllByText(/1.1/).length).toBeGreaterThan(0);           // mean transfers/GW stat
 		expect(screen.getByText(/TC/)).toBeInTheDocument();            // chip label in cohort
 	});
 });

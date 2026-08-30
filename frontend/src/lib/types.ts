@@ -279,5 +279,10 @@ export interface LeadersPayload {
 		bank_value: { bank: { gw: number; mean: number; median: number }[]; value: { gw: number; mean: number; median: number }[] };
 		momentum: { top_movers: { entry_id: number; player_name?: string; from_gw: number; to_gw: number; rank_gain: number }[];
 					sustained_elite: number[] };
+		ownership: { gw: number; cohort: number; rows: { player_id: number; web_name: string; team_short: string; count: number; pct: number; differential: boolean }[] };
+		captaincy: { gw: number; rows: { player_id: number; web_name: string; team_short: string; count: number }[] };
+		formations: { gw: number; rows: { formation: string; count: number }[] };
+		progression: { series: { entry_id: number; player_name: string; points: { gw: number; rank: number }[] }[] };
+		retention: { gw1_cohort: number; by_gw: { gw: number; retained: number; pct: number }[] };
 	};
 }
