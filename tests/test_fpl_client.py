@@ -121,3 +121,24 @@ def test_raises_after_exhausting_retries():
     with pytest.raises(requests.HTTPError):
         client.bootstrap_static()
     assert len(session.calls) == 4
+
+
+def test_leagues_classic_returns_standings():
+    client = _client([FakeResponse(200, {"standings": {"results": [
+        {"entry": 1, "rank": 1, "player_name": "A", "entry_name": "B", "total": 227}]}})])
+    out = client.leagues_classic(314, page=2)
+    assert out["standings"]["results"][0]["entry"] == 1
+    url, params = client._session.calls[0]
+    assert "leagues-classic/314/standings" in url
+    assert params == {"page_standings": 2}
+
+
+def test_entry_history_returns_current_and_past():
+    client = _client([FakeResponse(200, {
+        "current": [{"event": 1, "points": 91}],
+        "past": [{"season_name": "2025/26", "rank": 12310989}]})])
+    out = client.entry_history(4829085)
+    assert out["current"][0]["event"] == 1
+    assert out["past"][0]["season_name"] == "2025/26"
+    url, _ = client._session.calls[0]
+    assert "entry/4829085/history" in url

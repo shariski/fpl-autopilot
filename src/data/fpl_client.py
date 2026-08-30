@@ -69,3 +69,13 @@ class FPLClient:
         # `elements[*].stats.total_points` + `elements[*].explain[*].fixture` slots are used by
         # the settlement consumer). Schema assertions live in the consumer (repository.upsert).
         return self._get(f"event/{event_id}/live/")
+
+    def leagues_classic(self, league_id, page=1):
+        # Raw standings payload (schema assertions live in the leaders consumer, B6).
+        return self._get(f"leagues-classic/{league_id}/standings/",
+                         params={"page_standings": page})
+
+    def entry_history(self, entry_id):
+        # Raw per-GW history payload: current[] (per-GW stats), past[] (season
+        # summaries), chips[] (name + event). Schema assertions live in the consumer.
+        return self._get(f"entry/{entry_id}/history/")
