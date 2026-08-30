@@ -81,3 +81,20 @@ def test_teams_and_players_endpoints(client):
     assert [t["short_name"] for t in r.json()["teams"]] == ["CHE"]
     r = tc.get("/api/speculation/players?team_id=1")
     assert [p["web_name"] for p in r.json()["players"]] == ["Rogers"]
+
+
+def test_speculation_notes_not_shadowed_by_spa_mount(tmp_path, client):
+    """The SPA catch-all mount must never shadow the API routes (observed on jumbo:
+    /api/speculation/notes served 200.html instead of JSON)."""
+    tc, _ = client
+    (tmp_path / "200.html").write_text("fallback")
+    from starlette.staticfiles import StaticFiles
+    from src.interface import api
+    n_before = len(api.app.routes)
+    api.app.mount("/", StaticFiles(directory=str(tmp_path), html=True), name="test_spa")
+    try:
+        r = tc.get("/api/speculation/notes")
+        assert r.status_code == 200
+        assert r.json() == {"notes": []}
+    finally:
+        del api.app.routes[n_before:]

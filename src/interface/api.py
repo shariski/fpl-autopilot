@@ -236,6 +236,46 @@ def audit_for_gw(gw: int):
     return reports._to_jsonable(report)
 
 
+@app.get("/api/speculation/notes")
+def speculation_notes(conn=Depends(get_db)):
+    return {"notes": repository.list_speculation_notes(conn)}
+
+
+@app.post("/api/speculation/notes")
+def add_speculation_note(payload: dict, conn=Depends(get_db)):
+    note = str((payload or {}).get("note") or "").strip()
+    if not note:
+        return JSONResponse(status_code=400, content={"detail": "note must be non-empty"})
+    team_id = (payload or {}).get("team_id")
+    player_id = (payload or {}).get("player_id")
+    nid = repository.add_speculation_note(conn, note, team_id=team_id, player_id=player_id)
+    repository.log_activity(conn, decision_type="speculation", mode="manual",
+                            action_taken=f"note add: {note[:80]}", executed=True,
+                            inputs={"note_id": nid})
+    row = [n for n in repository.list_speculation_notes(conn) if n["id"] == nid]
+    return {"note": row[0] if row else None}
+
+
+@app.delete("/api/speculation/notes/{note_id}")
+def delete_speculation_note(note_id: int, conn=Depends(get_db)):
+    if not repository.deactivate_speculation_note(conn, note_id):
+        return JSONResponse(status_code=404, content={"detail": "note not found"})
+    repository.log_activity(conn, decision_type="speculation", mode="manual",
+                            action_taken=f"note rm: id {note_id}", executed=True,
+                            inputs={"note_id": note_id})
+    return {"ok": True}
+
+
+@app.get("/api/speculation/teams")
+def speculation_teams(conn=Depends(get_db)):
+    return {"teams": [dict(r) for r in conn.execute(
+        "SELECT id, short_name FROM teams ORDER BY short_name")]}
+
+
+@app.get("/api/speculation/players")
+def speculation_players(team_id: int, conn=Depends(get_db)):
+    return {"players": [dict(r) for r in conn.execute(
+        "SELECT id, web_name FROM players WHERE team_id=? ORDER BY web_name", (team_id,))]}
 # --- Static frontend (SvelteKit adapter-static build) ---
 # Mounted at "/" so the dashboard PWA is served from the same FastAPI
 # process in production. Conditional on the directory existing so local
@@ -280,44 +320,3 @@ def _mount_frontend(target_app, build_dir=None):
 
 
 _mount_frontend(app)
-
-@app.get("/api/speculation/notes")
-def speculation_notes(conn=Depends(get_db)):
-    return {"notes": repository.list_speculation_notes(conn)}
-
-
-@app.post("/api/speculation/notes")
-def add_speculation_note(payload: dict, conn=Depends(get_db)):
-    note = str((payload or {}).get("note") or "").strip()
-    if not note:
-        return JSONResponse(status_code=400, content={"detail": "note must be non-empty"})
-    team_id = (payload or {}).get("team_id")
-    player_id = (payload or {}).get("player_id")
-    nid = repository.add_speculation_note(conn, note, team_id=team_id, player_id=player_id)
-    repository.log_activity(conn, decision_type="speculation", mode="manual",
-                            action_taken=f"note add: {note[:80]}", executed=True,
-                            inputs={"note_id": nid})
-    row = [n for n in repository.list_speculation_notes(conn) if n["id"] == nid]
-    return {"note": row[0] if row else None}
-
-
-@app.delete("/api/speculation/notes/{note_id}")
-def delete_speculation_note(note_id: int, conn=Depends(get_db)):
-    if not repository.deactivate_speculation_note(conn, note_id):
-        return JSONResponse(status_code=404, content={"detail": "note not found"})
-    repository.log_activity(conn, decision_type="speculation", mode="manual",
-                            action_taken=f"note rm: id {note_id}", executed=True,
-                            inputs={"note_id": note_id})
-    return {"ok": True}
-
-
-@app.get("/api/speculation/teams")
-def speculation_teams(conn=Depends(get_db)):
-    return {"teams": [dict(r) for r in conn.execute(
-        "SELECT id, short_name FROM teams ORDER BY short_name")]}
-
-
-@app.get("/api/speculation/players")
-def speculation_players(team_id: int, conn=Depends(get_db)):
-    return {"players": [dict(r) for r in conn.execute(
-        "SELECT id, web_name FROM players WHERE team_id=? ORDER BY web_name", (team_id,))]}
