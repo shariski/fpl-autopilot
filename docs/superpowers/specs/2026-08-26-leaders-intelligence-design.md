@@ -88,15 +88,15 @@ Guard: functions return empty structures when no snapshots exist (pre-season pag
 
 ## 8. Dashboard page — `/leaders` (desktop-first)
 
-Dependency-free SVG charts (a small `Chart.svelte` toolkit: bars, lines, heatmap grid), matching the dark design system (--surface cards, --accent, --radius):
+Charts via **ECharts** (`echarts/core` with tree-shaken imports: LineChart, BarChart, HeatmapChart, GridComponent, TooltipComponent, CanvasRenderer — one library for all three chart types, native dark theme; no Chart.js matrix-plugin dependency). A thin `LeaderChart.svelte` wrapper (`echarts.init(el, 'dark')` on mount, `setOption`, `dispose` on destroy — no React wrapper needed).
 
 1. **Cohort table** — rank, player, team name, total, last GW pts, transfers, bank, value, chips used, past-rank badge ("elite" marker).
-2. **Chip timing heatmap** — chips × GWs grid, cell intensity = count of leaders (tooltip on hover).
-3. **Transfer discipline** — histogram bars (leader-GWs by transfer count) + mean/median/hit-frequency stat chips.
-4. **Bank & value lines** — mean/median over GWs.
+2. **Chip timing heatmap** — ECharts heatmap, chips × GWs, cell intensity = count of leaders (tooltip on hover).
+3. **Transfer discipline** — ECharts bar histogram (leader-GWs by transfer count) + mean/median/hit-frequency stat chips.
+4. **Bank & value lines** — ECharts line chart, mean/median over GWs.
 5. **Rank momentum** — top movers table + sustained-elite summary.
 
-Empty state when no snapshots yet ("first snapshot lands after the next GW settles"). Page + component tests with fixture data (vitest).
+Empty state when no snapshots yet ("first snapshot lands after the next GW settles"). Component tests mock `echarts` (jsdom has no canvas) and assert data wiring + containers render; the payload-shape tests live in the API tests.
 
 ## 9. Tests
 
