@@ -531,3 +531,32 @@ def backfill_player_gw_stats(conn, gw, payload):
     )
     conn.commit()
     return cur.rowcount
+
+def add_speculation_note(conn, note, team_id=None, player_id=None):
+    """Store a user-curated speculation insight (v0.26). Returns the new id."""
+    cur = conn.execute(
+        "INSERT INTO speculation_notes (note, team_id, player_id, created_at, active) "
+        "VALUES (?,?,?,?,1)",
+        (note, team_id, player_id, _now()))
+    conn.commit()
+    return cur.lastrowid
+
+
+def list_speculation_notes(conn, active_only=True):
+    """Speculation notes joined for display (team short + player web_name), newest first."""
+    where = "WHERE n.active=1" if active_only else ""
+    return [dict(r) for r in conn.execute(
+        f"""SELECT n.id, n.note, n.team_id, n.player_id, n.created_at, n.active,
+                   t.short_name AS team_short, p.web_name AS player_name
+            FROM speculation_notes n
+            LEFT JOIN teams t ON t.id = n.team_id
+            LEFT JOIN players p ON p.id = n.player_id
+            {where} ORDER BY n.created_at DESC, n.id DESC""")]
+
+
+def deactivate_speculation_note(conn, note_id):
+    """Soft-delete a speculation note. True when a row was deactivated."""
+    cur = conn.execute(
+        "UPDATE speculation_notes SET active=0 WHERE id=? AND active=1", (note_id,))
+    conn.commit()
+    return cur.rowcount > 0

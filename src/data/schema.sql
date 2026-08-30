@@ -224,3 +224,13 @@ CREATE TABLE IF NOT EXISTS player_gw_stats (
 
 CREATE INDEX IF NOT EXISTS idx_player_gw_stats_gw
   ON player_gw_stats (gw);
+
+
+CREATE TABLE IF NOT EXISTS speculation_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  note TEXT NOT NULL,
+  team_id INTEGER,
+  player_id INTEGER,
+  created_at TIMESTAMP,
+  active BOOLEAN NOT NULL DEFAULT 1
+);
