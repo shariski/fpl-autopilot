@@ -28,9 +28,10 @@ def _db():
     return conn
 
 
-def _standings(n):
+def _standings(per_page):
     return [[{"entry": i, "rank": i, "player_name": f"P{i}", "entry_name": f"E{i}",
-              "total": 200 - i} for i in range(1, n + 1)] for _ in range(2)]
+              "total": 200 - i} for i in range(offset + 1, offset + per_page + 1)]
+            for offset in (0, per_page)]
 
 
 def test_fetch_snapshots_latest_settled_gw():
@@ -39,10 +40,10 @@ def test_fetch_snapshots_latest_settled_gw():
                              "overall_rank": i, "bank": 10, "value": 1000,
                              "event_transfers": 1, "event_transfers_cost": 0}],
                 "past": [{"season_name": "2025/26", "rank": 1000000, "total_points": 2000}],
-                "chips": [{"name": "3xc", "event": 1}]} for i in range(1, 4)}
+                "chips": [{"name": "3xc", "event": 1}]} for i in range(1, 7)}
     client = StubClient(_standings(3), hist)
     n_e, n_s = leaders.fetch_leader_snapshot(conn, client, pages=2)
-    assert n_e == 3 and n_s == 3
+    assert n_e == 6 and n_s == 6
     row = conn.execute("SELECT * FROM leader_gw_snapshots WHERE entry_id=1").fetchone()
     assert row["gw"] == 1 and row["chip_played"] == "3xc" and row["points"] == 90
     ent = conn.execute("SELECT * FROM leader_entries WHERE entry_id=1").fetchone()
