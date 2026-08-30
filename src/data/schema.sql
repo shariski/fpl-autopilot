@@ -261,3 +261,15 @@ CREATE TABLE IF NOT EXISTS leader_gw_snapshots (
   chip_played TEXT,
   PRIMARY KEY (entry_id, gw)
 );
+
+
+CREATE TABLE IF NOT EXISTS leader_gw_picks (
+  entry_id INTEGER NOT NULL,
+  gw INTEGER NOT NULL,
+  picks_json TEXT,
+  captain_id INTEGER,
+  vice_id INTEGER,
+  formation TEXT,
+  fetched_at TIMESTAMP,
+  PRIMARY KEY (entry_id, gw)
+);

@@ -64,3 +64,78 @@ def test_analyze_empty_db_guards(db):
     out = la.analyze(db)
     assert out["cohort"] == [] and out["patterns"]["chip_timing"]["rows"] == []
     assert out["patterns"]["transfers"]["mean_per_gw"] is None
+
+
+# ---------- Increment 2: squad + progression ----------
+
+def _seed_picks(db, gw=1):
+    db.execute("INSERT INTO players (id, name, web_name, team_id, position, status) "
+               "VALUES (7,'Rogers','Rogers',1,'MID','a'),"
+               "(8,'Palmer','Palmer',1,'MID','a'),"
+               "(9,'Wissa','Wissa',2,'FWD','a')")
+    db.execute("INSERT INTO teams (id, name, short_name) VALUES (1,'Chelsea','CHE'),(2,'Newcastle','NEW')")
+    import json as _json
+    for eid in (1, 2, 3):
+        picks = [{"element": 7, "position": 3, "multiplier": 1, "is_captain": False,
+                  "is_vice_captain": False},
+                 {"element": 8, "position": 3, "multiplier": 1, "is_captain": False,
+                  "is_vice_captain": False},
+                 {"element": 9, "position": 4, "multiplier": 1, "is_captain": False,
+                  "is_vice_captain": False}]
+        captain = vice = None
+        if eid == 1:
+            picks[0]["multiplier"] = 2
+            picks[0]["is_captain"] = True
+            captain, vice = 7, 8
+        repository.upsert_leader_picks(db, eid, gw, _json.dumps(picks, sort_keys=True),
+                                       captain_id=captain, vice_id=vice, formation="2-0-1")
+    db.commit()
+
+
+def test_ownership_counts_picks(db):
+    _seed(db)
+    _seed_picks(db)
+    out = la.ownership(db, gw=1)
+    assert out["cohort"] == 3
+    by_name = {r["web_name"]: r for r in out["rows"]}
+    assert by_name["Rogers"]["count"] == 3 and by_name["Rogers"]["pct"] == 1.0
+    assert by_name["Rogers"]["differential"] is False
+    assert by_name["Wissa"]["team_short"] == "NEW"
+
+
+def test_captaincy(db):
+    _seed(db)
+    _seed_picks(db)
+    out = la.captaincy(db, gw=1)
+    assert out["rows"][0]["web_name"] == "Rogers" and out["rows"][0]["count"] == 1
+
+
+def test_formations(db):
+    _seed(db)
+    _seed_picks(db)
+    out = la.formations(db, gw=1)
+    assert {r["formation"]: r["count"] for r in out["rows"]} == {"2-0-1": 3}
+
+
+def test_progression_series(db):
+    _seed(db)
+    out = la.progression(db)
+    assert len(out["series"]) == 3
+    s1 = next(s for s in out["series"] if s["entry_id"] == 1)
+    assert s1["points"] == [{"gw": 1, "rank": 11}, {"gw": 2, "rank": 12}]
+
+
+def test_retention_curve(db):
+    _seed(db)
+    out = la.retention(db)
+    assert out["gw1_cohort"] == 3
+    # ranks: entry1 11,12; entry2 21,22; entry3 31,32 -> all <= 100 -> 3/3 retained
+    assert out["by_gw"][-1]["retained"] == 3 and out["by_gw"][-1]["pct"] == 1.0
+
+
+def test_analyze_includes_inc2_patterns(db):
+    _seed(db)
+    out = la.analyze(db)
+    assert set(out["patterns"]) == {"chip_timing", "transfers", "bank_value", "momentum",
+                                    "ownership", "captaincy", "formations",
+                                    "progression", "retention"}

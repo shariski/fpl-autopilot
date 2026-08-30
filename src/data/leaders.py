@@ -3,6 +3,7 @@
 Runs once per settled GW (settlement-style trigger). B6: schema drift raises
 ValueError (never a silent partial write); the caller swallows + logs.
 """
+import json
 import logging
 
 log = logging.getLogger(__name__)
@@ -59,5 +60,31 @@ def fetch_leader_snapshot(conn, client, pages=2, league_id=GLOBAL_LEAGUE_ID):
                 row.get("overall_rank"), row.get("bank"), row.get("value"),
                 row.get("event_transfers"), row.get("event_transfers_cost"), chip)
             n_s += 1
+        if repository.leader_picks_stored(conn, eid, gw) is False:
+            _fetch_picks(conn, client, eid, gw)
     log.info("leaders.snapshot gw=%s entries=%s snapshots=%s", gw, n_e, n_s)
     return n_e, n_s
+
+
+def _fetch_picks(conn, client, entry_id, gw):
+    """Fetch one leader's picks for `gw` and store them (v0.27 inc2)."""
+    from . import repository
+    payload = client.entry_picks(entry_id, gw)
+    picks = payload.get("picks")
+    if not isinstance(picks, list):
+        raise ValueError(f"entry/{entry_id} picks payload missing picks[] (schema drift?)")
+    captain = vice = None
+    for pk in picks:
+        if pk.get("is_captain"):
+            captain = pk.get("element")
+        if pk.get("is_vice_captain"):
+            vice = pk.get("element")
+    pos_counts = {"GKP": 0, "DEF": 0, "MID": 0, "FWD": 0}
+    pos_map = {1: "GKP", 2: "DEF", 3: "MID", 4: "FWD"}
+    for pk in picks:
+        pos = pos_map.get(pk.get("position"))
+        if pos:
+            pos_counts[pos] += 1
+    formation = f"{pos_counts['DEF']}-{pos_counts['MID']}-{pos_counts['FWD']}"
+    repository.upsert_leader_picks(conn, entry_id, gw, json.dumps(picks, sort_keys=True),
+                                   captain, vice, formation)

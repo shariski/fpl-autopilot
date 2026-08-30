@@ -597,3 +597,22 @@ def upsert_leader_snapshot(conn, entry_id, gw, points, total_points, overall_ran
 def latest_leader_gw(conn):
     row = conn.execute("SELECT MAX(gw) AS gw FROM leader_gw_snapshots").fetchone()
     return row["gw"] if row else None
+
+
+
+def leader_picks_stored(conn, entry_id, gw):
+    """True when a picks row exists for (entry_id, gw); False when missing."""
+    row = conn.execute("SELECT 1 FROM leader_gw_picks WHERE entry_id=? AND gw=?",
+                       (entry_id, gw)).fetchone()
+    return row is not None
+def upsert_leader_picks(conn, entry_id, gw, picks_json, captain_id, vice_id, formation):
+    """Store one leader's picks for a GW (v0.27 inc2). Idempotent upsert."""
+    conn.execute(
+        """INSERT INTO leader_gw_picks (entry_id, gw, picks_json, captain_id, vice_id,
+           formation, fetched_at) VALUES (?,?,?,?,?,?,?)
+           ON CONFLICT(entry_id, gw) DO UPDATE SET
+             picks_json=excluded.picks_json, captain_id=excluded.captain_id,
+             vice_id=excluded.vice_id, formation=excluded.formation,
+             fetched_at=excluded.fetched_at""",
+        (entry_id, gw, picks_json, captain_id, vice_id, formation, _now()))
+    conn.commit()

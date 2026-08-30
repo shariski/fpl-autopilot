@@ -142,3 +142,13 @@ def test_entry_history_returns_current_and_past():
     assert out["past"][0]["season_name"] == "2025/26"
     url, _ = client._session.calls[0]
     assert "entry/4829085/history" in url
+
+
+def test_entry_picks_returns_picks():
+    client = _client([FakeResponse(200, {"picks": [
+        {"element": 7, "position": 3, "multiplier": 2,
+         "is_captain": True, "is_vice_captain": False}]})])
+    out = client.entry_picks(4829085, 2)
+    assert out["picks"][0]["element"] == 7
+    url, _ = client._session.calls[0]
+    assert "entry/4829085/event/2/picks" in url

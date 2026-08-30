@@ -79,3 +79,8 @@ class FPLClient:
         # Raw per-GW history payload: current[] (per-GW stats), past[] (season
         # summaries), chips[] (name + event). Schema assertions live in the consumer.
         return self._get(f"entry/{entry_id}/history/")
+
+    def entry_picks(self, entry_id, gw):
+        # Raw per-GW picks payload: {"picks": [{element, position, multiplier,
+        # is_captain, is_vice_captain}]}. Schema assertions live in the consumer.
+        return self._get(f"entry/{entry_id}/event/{gw}/picks/")

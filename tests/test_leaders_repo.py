@@ -29,3 +29,11 @@ def test_latest_leader_gw(db):
     repository.upsert_leader_snapshot(db, 1, 1, 0, 0, 0, 0, 0, 0, 0, None)
     repository.upsert_leader_snapshot(db, 1, 3, 0, 0, 0, 0, 0, 0, 0, None)
     assert repository.latest_leader_gw(db) == 3
+
+
+def test_leader_picks_round_trip(db):
+    repository.upsert_leader_picks(db, 1, 2, '[{"element": 7, "position": 3, "multiplier": 2, "is_captain": true, "is_vice_captain": false}]',
+                                   captain_id=7, vice_id=9, formation="4-3-3")
+    row = db.execute("SELECT * FROM leader_gw_picks WHERE entry_id=1 AND gw=2").fetchone()
+    assert row["captain_id"] == 7 and row["formation"] == "4-3-3"
+    assert row["picks_json"] and row["fetched_at"]

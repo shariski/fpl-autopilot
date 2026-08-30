@@ -19,6 +19,13 @@ class StubClient:
         self.calls.append(("history", entry_id))
         return self._histories[entry_id]
 
+    def entry_picks(self, entry_id, gw):
+        self.calls.append(("picks", entry_id, gw))
+        return {"picks": [{"element": 7, "position": 3, "multiplier": 2,
+                           "is_captain": True, "is_vice_captain": False},
+                          {"element": 9, "position": 2, "multiplier": 1,
+                           "is_captain": False, "is_vice_captain": True}]}
+
 
 def _db():
     conn = connect(":memory:")
@@ -46,6 +53,9 @@ def test_fetch_snapshots_latest_settled_gw():
     assert n_e == 6 and n_s == 6
     row = conn.execute("SELECT * FROM leader_gw_snapshots WHERE entry_id=1").fetchone()
     assert row["gw"] == 1 and row["chip_played"] == "3xc" and row["points"] == 90
+    pk = conn.execute("SELECT * FROM leader_gw_picks WHERE entry_id=1 AND gw=1").fetchone()
+    assert pk["captain_id"] == 7 and pk["vice_id"] == 9
+    assert pk["formation"] == "1-1-0"
     ent = conn.execute("SELECT * FROM leader_entries WHERE entry_id=1").fetchone()
     assert ent["past_season_rank"] == 1000000 and ent["last_rank"] == 1
     # idempotent: re-run snapshots nothing new (gw2 unfinished)
