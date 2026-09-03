@@ -1,0 +1,15 @@
+{
+  "gw_range": [
+    1,
+    1
+  ],
+  "generated_at": "2026-08-14T15:35:30.415063+00:00",
+  "model_version": "unknown",
+  "residuals": [],
+  "cluster_counts": {},
+  "aggregate_trends": {},
+  "proposals": [],
+  "narrative": null,
+  "narrative_provider": null,
+  "persisted_path": null
+}

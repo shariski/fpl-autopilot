@@ -1308,7 +1308,8 @@ def _print_formation_preview(conn, body):
         meta = {row[0]: dict(zip(columns, row)) for row in cur.fetchall()}
     else:
         meta = {}
-    for p in picks:
+    for p in sorted(picks, key=lambda p: (p.get("position")
+                                          if isinstance(p.get("position"), int) else 99)):
         m = meta.get(p["element"])
         if m is None:
             m = {"web_name": f"#{p['element']}", "position": "?", "team_short": "?"}

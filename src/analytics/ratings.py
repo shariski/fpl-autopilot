@@ -34,6 +34,18 @@ MIN_LIVE_RATE_GWS = 3
 # has fewer than this many live (season, gw) pairs (i.e. until SF is majority-live).
 SF_LIVE_MIN = 3
 
+# v0.27 in-season window recalibration: once current-season live rows exist, ratings
+# blend LF20/SF6 at 0.6/0.4 instead of LF38/SF6 at 0.8/0.2. Early-season live rows
+# (GW1-2) otherwise carry ~2% of the rate weight, so a team that collapses under a
+# new system keeps its prior-season rating for weeks (observed 26/27: TOT defenders
+# over-predicted -1.8..-5.1/GW while ARS ran +4..+7). A team-level live EMA was
+# backtested and rejected (adds noise at n<=2; see decision-engine.md v0.27).
+# Constants pinned in docs/decision-engine.md — do not change without a B4 entry.
+LIVE_LF_GW_COUNT = 20
+LIVE_SF_GW_COUNT = 6
+LIVE_LF_WEIGHT = 0.6
+LIVE_SF_WEIGHT = 0.4
+
 
 def sf_live_pairs(conn, live_season=None):
     """Live (season, gw) pairs inside the SF window (v0.23 penalty gate)."""
@@ -173,27 +185,42 @@ def _team_rates(agg):
     return out
 
 
-def _blend(lf, sf):
-    return {tid: (LF_WEIGHT * lf[tid][0] + SF_WEIGHT * sf[tid][0],
-                  LF_WEIGHT * lf[tid][1] + SF_WEIGHT * sf[tid][1],
-                  LF_WEIGHT * lf[tid][2] + SF_WEIGHT * sf[tid][2])
+def _blend(lf, sf, lf_w=LF_WEIGHT, sf_w=SF_WEIGHT):
+    return {tid: (lf_w * lf[tid][0] + sf_w * sf[tid][0],
+                  lf_w * lf[tid][1] + sf_w * sf[tid][1],
+                  lf_w * lf[tid][2] + sf_w * sf[tid][2])
             for tid in lf}
 
 
-def compute_team_ratings(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT,
-                         live_season=None):
+def compute_team_ratings(conn, lf_gw_count=None, sf_gw_count=None,
+                         lf_weight=None, sf_weight=None, live_season=None):
     """Per-team blended LF/SF rates + league averages from the unified row set
     (databank + current-season live rows, v0.23).
+
+    v0.27: window defaults are season-aware. With live rows present the blend
+    uses LF20/SF6 at 0.6/0.4 (LIVE_*_WEIGHT); pre-season it stays LF38/SF6 at
+    0.8/0.2. Explicitly-passed counts/weights override the defaults. League
+    averages are computed on the same window params.
 
     Returns (ratings: dict[team_id -> TeamRating], la: LeagueAverage).
     Teams with no rating rows are absent (promoted-team overrides handle them).
     """
-    rows = _rating_rows(conn, live_season=live_season)
+    db_rows, live_rows = _rating_sources(conn, live_season=live_season)
+    live_present = bool(live_rows)
+    if lf_gw_count is None:
+        lf_gw_count = LIVE_LF_GW_COUNT if live_present else LF_GW_COUNT
+    if sf_gw_count is None:
+        sf_gw_count = LIVE_SF_GW_COUNT if live_present else SF_GW_COUNT
+    if lf_weight is None:
+        lf_weight = LIVE_LF_WEIGHT if live_present else LF_WEIGHT
+    if sf_weight is None:
+        sf_weight = LIVE_SF_WEIGHT if live_present else SF_WEIGHT
+    rows = db_rows + live_rows  # union: windows/aggregation span both sources
     lf_keys = _window_keys(rows, lf_gw_count)
     sf_keys = _window_keys(rows, sf_gw_count)
     lf = _team_rates(_aggregate(rows, lf_keys))
     sf = _team_rates(_aggregate(rows, sf_keys))
-    blend = _blend(lf, sf)
+    blend = _blend(lf, sf, lf_w=lf_weight, sf_w=sf_weight)
     ratings = {tid: TeamRating(team_id=tid, xg90=round(v[0], 4), xgc90=round(v[1], 4),
                                dc90=round(v[2], 4), gw_count=len({(r["source"], r["gw"])
                                                                   for r in rows if r["team_id"] == tid}))
@@ -219,9 +246,9 @@ def compute_team_ratings(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT,
         return (x / nm) if nm else 0.0
 
     la = LeagueAverage(
-        xg90=(LF_WEIGHT * _per_match(lf_xg, lf_nm) + SF_WEIGHT * _per_match(sf_xg, sf_nm)),
-        xgc90=(LF_WEIGHT * _per90(lf_xgc, lf_m) + SF_WEIGHT * _per90(sf_xgc, sf_m)),
-        dc90=(LF_WEIGHT * _per_match(lf_dc, lf_nm) + SF_WEIGHT * _per_match(sf_dc, sf_nm)),
+        xg90=(lf_weight * _per_match(lf_xg, lf_nm) + sf_weight * _per_match(sf_xg, sf_nm)),
+        xgc90=(lf_weight * _per90(lf_xgc, lf_m) + sf_weight * _per90(sf_xgc, sf_m)),
+        dc90=(lf_weight * _per_match(lf_dc, lf_nm) + sf_weight * _per_match(sf_dc, sf_nm)),
     )
     return ratings, la
 
@@ -293,15 +320,23 @@ def _player_agg(rows, keys):
     return out
 
 
-def compute_player_rates(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT,
+def compute_player_rates(conn, lf_gw_count=None, sf_gw_count=None,
                          live_season=None):
     """Per-player rates for xP v2 from the unified row set (databank + live, v0.23).
     Returns {player_id: PlayerRates}.
 
     DC hits are counted per start against the position threshold (DEF 10, MID/FWD 12).
-    p60 uses the LF window only; all other rates blend LF 0.8 / SF 0.2.
+    p60 uses the LF window only; all other rates blend LF/SF (v0.27: season-aware
+    window defaults — see compute_team_ratings; pre-season LF 0.8 / SF 0.2).
     """
     db_rows, live_rows = _rating_sources(conn, live_season=live_season)
+    live_present = bool(live_rows)
+    if lf_gw_count is None:
+        lf_gw_count = LIVE_LF_GW_COUNT if live_present else LF_GW_COUNT
+    if sf_gw_count is None:
+        sf_gw_count = LIVE_SF_GW_COUNT if live_present else SF_GW_COUNT
+    lf_w, sf_w = ((LIVE_LF_WEIGHT, LIVE_SF_WEIGHT) if live_present
+                  else (LF_WEIGHT, SF_WEIGHT))
     rows = db_rows + live_rows  # union: windows/aggregation span both sources
     lf_keys = _window_keys(rows, lf_gw_count)
     sf_keys = _window_keys(rows, sf_gw_count)
@@ -335,12 +370,15 @@ def compute_player_rates(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT,
             position=info[pid]["position"],
             starts=int(l[1]),
             squads_made=len(squads),
-            xg_per_start=round(_blend_rates(l[2], s[2], l[1], s[1]), 4),
-            xa_per_start=round(_blend_rates(l[3], s[3], l[1], s[1]), 4),
-            dc_hit_rate=round(_blend_rates(l[4], s[4], l[1], s[1]), 4),
-            saves_per_90=round(_blend_rates(l[5], s[5], l[0], s[0], per90=True), 4),
-            yc_per_90=round(_blend_rates(l[6], s[6], l[0], s[0], per90=True), 4),
-            rc_per_90=round(_blend_rates(l[7], s[7], l[0], s[0], per90=True), 4),
+            xg_per_start=round(_blend_rates(l[2], s[2], l[1], s[1], lf_w=lf_w, sf_w=sf_w), 4),
+            xa_per_start=round(_blend_rates(l[3], s[3], l[1], s[1], lf_w=lf_w, sf_w=sf_w), 4),
+            dc_hit_rate=round(_blend_rates(l[4], s[4], l[1], s[1], lf_w=lf_w, sf_w=sf_w), 4),
+            saves_per_90=round(_blend_rates(l[5], s[5], l[0], s[0], per90=True,
+                                            lf_w=lf_w, sf_w=sf_w), 4),
+            yc_per_90=round(_blend_rates(l[6], s[6], l[0], s[0], per90=True,
+                                         lf_w=lf_w, sf_w=sf_w), 4),
+            rc_per_90=round(_blend_rates(l[7], s[7], l[0], s[0], per90=True,
+                                         lf_w=lf_w, sf_w=sf_w), 4),
             p60=round(l[8] / l[9], 4) if l[9] else 0.0,
             recent_starts=live_recent_starts.get(pid, 0),
             recent_squads=len(live_team_squads.get(info[pid]["team_id"], set())),
@@ -397,10 +435,11 @@ def compute_player_rates(conn, lf_gw_count=LF_GW_COUNT, sf_gw_count=SF_GW_COUNT,
     return out
 
 
-def _blend_rates(lf_val, sf_val, lf_den, sf_den, per90=False):
-    """Blend LF/SF per-unit rates (0.8/0.2), guarding zero denominators."""
+def _blend_rates(lf_val, sf_val, lf_den, sf_den, per90=False,
+                 lf_w=LF_WEIGHT, sf_w=SF_WEIGHT):
+    """Blend LF/SF per-unit rates (default 0.8/0.2), guarding zero denominators."""
     def _rate(v, d):
         if per90:
             return (v / d * 90) if d else 0.0
         return (v / d) if d else 0.0
-    return LF_WEIGHT * _rate(lf_val, lf_den) + SF_WEIGHT * _rate(sf_val, sf_den)
+    return lf_w * _rate(lf_val, lf_den) + sf_w * _rate(sf_val, sf_den)

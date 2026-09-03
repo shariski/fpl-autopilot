@@ -130,3 +130,41 @@ def test_dry_run_prints_pretty_formation(db, capsys):
     assert "Bench:" in out
     assert "BenchGK" in out and "BenchFwd" in out
     assert "{" not in out   # raw dict must not leak
+
+
+def test_preview_bench_renders_slot_order_not_payload_order(db, capsys):
+    """The bench line must render in auto-sub slot order (12->15), even when
+    the payload list is not slot-ordered. A formation-rebalance slot swap
+    (v0.25+) leaves the payload list in pre-swap order, so rendering in
+    list order shows the wrong first sub (observed: Wharton printed before
+    the slot-12 bench GK)."""
+    db.executemany("INSERT INTO teams (id, name, short_name) VALUES (?, ?, ?)",
+                   [(1, "Arsenal", "ARS"), (2, "Chelsea", "CHE"),
+                    (3, "Liverpool", "LIV")])
+    players = [
+        (101, "StarterGK", "GKP", 1),
+        (112, "BenchGK", "GKP", 1),
+        (113, "BenchDef", "DEF", 1),
+        (114, "BenchMid", "MID", 2),
+        (115, "BenchFwd", "FWD", 3),
+    ]
+    db.executemany("INSERT INTO players (id, web_name, position, team_id) VALUES (?,?,?,?)",
+                   players)
+    db.commit()
+
+    # Payload order is deliberately scrambled relative to slots: the slot-13
+    # player leads the list, the slot-12 bench GK trails it (the shape the
+    # rebalancer produces after a 9<->13 slot swap).
+    picks = [
+        {"element": 114, "position": 13, "is_captain": False, "is_vice_captain": False},
+        {"element": 101, "position": 1, "is_captain": False, "is_vice_captain": False},
+        {"element": 112, "position": 12, "is_captain": False, "is_vice_captain": False},
+        {"element": 115, "position": 15, "is_captain": False, "is_vice_captain": False},
+        {"element": 113, "position": 14, "is_captain": False, "is_vice_captain": False},
+    ]
+    cli._print_formation_preview(db, {"picks": picks})
+    out = capsys.readouterr().out
+    bench_line = next(l for l in out.splitlines() if l.startswith("Bench:"))
+    # Slot order is 12=BenchGK, 13=BenchMid, 14=BenchDef, 15=BenchFwd.
+    assert bench_line == ("Bench:  BenchGK (ARS) · BenchMid (CHE) · "
+                          "BenchDef (ARS) · BenchFwd (LIV)")
