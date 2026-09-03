@@ -1272,6 +1272,75 @@ def _cmd_apply_squad(conn=None, salt_path=None, verify_path=None, live=False,
         conn.close()
 
 
+def _fmt_player(name, team, captain=False, vice=False):
+    badge = "(C)" if captain else "(V)" if vice else ""
+    return f"{name}{f' {badge}' if badge else ''} ({team})"
+
+
+def _row_for_position(players_by_pos, pos, width, gk_width):
+    """Render a position row centered across the pitch."""
+    names = [_fmt_player(**p) for p in players_by_pos[pos]]
+    if not names:
+        return ""
+    line = "  ".join(n.ljust(width) for n in names)
+    if pos == "GKP":
+        pad = " " * ((gk_width - len(line)) // 2)
+        return pad + line
+    pad = " " * ((gk_width * 2 - len(line)) // 2)
+    return pad + line
+
+
+def _print_formation_preview(conn, body):
+    """Print an ASCII pitch preview of a lineup payload."""
+    picks = body.get("picks") or []
+    rows = {"GKP": [], "DEF": [], "MID": [], "FWD": []}
+    bench = []
+    player_ids = [p["element"] for p in picks]
+    if player_ids:
+        placeholders = ",".join("?" * len(player_ids))
+        rows_q = (
+            "SELECT p.id, p.web_name, p.position, t.short_name AS team_short "
+            "FROM players p JOIN teams t ON t.id = p.team_id WHERE p.id IN ("
+            + placeholders + ")"
+        )
+        cur = conn.execute(rows_q, player_ids)
+        columns = [c[0] for c in cur.description]
+        meta = {row[0]: dict(zip(columns, row)) for row in cur.fetchall()}
+    else:
+        meta = {}
+    for p in picks:
+        m = meta.get(p["element"])
+        if m is None:
+            m = {"web_name": f"#{p['element']}", "position": "?", "team_short": "?"}
+        info = {"name": m["web_name"], "team": m["team_short"],
+                "captain": bool(p.get("is_captain")),
+                "vice": bool(p.get("is_vice_captain"))}
+        slot = p.get("position")
+        if isinstance(slot, int) and 1 <= slot <= 11:
+            rows.setdefault(m["position"], []).append(info)
+        else:
+            bench.append(info)
+    gkp = rows["GKP"]
+    deff = rows["DEF"]
+    mid = rows["MID"]
+    fwd = rows["FWD"]
+    if not (gkp or deff or mid or fwd):
+        return
+    formation = f"{len(deff)}-{len(mid)}-{len(fwd)}"
+    name_w = max((len(_fmt_player(**p)) for grp in rows.values() for p in grp), default=0)
+    pitch_w = max(name_w * 3 + 8, 40)
+    print(f"Formation: 1-{formation}")
+    print("  " + "-" * (pitch_w - 2))
+    for pos in ("GKP", "DEF", "MID", "FWD"):
+        if not rows[pos]:
+            continue
+        print(_row_for_position(rows, pos, name_w + 4, pitch_w - 4))
+    print("  " + "-" * (pitch_w - 2))
+    if bench:
+        names = [_fmt_player(**p) for p in bench]
+        print("Bench:  " + " · ".join(names))
+
+
 def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
                         session=None, ranker=None, confirm_fn=None):
     from .auth import master
@@ -1308,7 +1377,7 @@ def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
     elif result.dry_run:
         print("DRY-RUN — would POST:")
         print(f"  {result.request['method']} {result.request['url']}")
-        print(f"  body: {result.request['body']}")
+        _print_formation_preview(conn, result.request.get("body") or {})
     elif result.ok:
         print(f"Submitted. HTTP {result.status}.")
         from .data import repository
