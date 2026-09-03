@@ -50,11 +50,10 @@ def run_lineup(conn, key, *, live=False, confirm_fn=None, session=None, ranker=N
     if opt is not None:
         picks, captain_id, vice_id = _apply_optimal_xi(current, opt)
         bench_order = None  # bench is set by the optimizer already
-        # Build a captain dict shape compatible with what ranker returns,
-        # so the activity log + diff formatting stays consistent.
-        caps = {"picks": [{"player_id": captain_id, "xp": 0.0,
-                           "web_name": next((p["web_name"] for p in current
-                                             if p["element"] == captain_id), "")}],
+        # Synthesize a minimal captain dict for the activity log. The
+        # ranker's full output (with web_name/xp/alternatives) is replaced
+        # by the optimizer's choice; we only need player_id for diff/log.
+        caps = {"picks": [{"player_id": captain_id}],
                 "vice_player_id": vice_id}
     else:
         caps = (ranker or captain_mod.get_captain_picks)(conn)
