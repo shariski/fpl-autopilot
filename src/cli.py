@@ -1341,6 +1341,46 @@ def _print_formation_preview(conn, body):
         print("Bench:  " + " · ".join(names))
 
 
+def _print_optimal_xi_note(conn, body):
+    """Surface optimal-XI selection in the dry-run banner.
+
+    Reports the chosen XI's formation + total next-GW xP. The optimizer
+    ran inside run_lineup (v0.26) and reshaped the squad before
+    building the payload — by the time we render the banner, the
+    payload already reflects the optimizer's choices.
+    """
+    from .decisions.transfers import _next_gw
+    pseudo = [{"element": p["element"], "position": p["position"]}
+              for p in (body.get("picks") or [])]
+    if not pseudo or _next_gw(conn) is None:
+        return
+    counts = {"GKP": 0, "DEF": 0, "MID": 0, "FWD": 0}
+    starter_ids = []
+    for p in pseudo:
+        slot = p.get("position")
+        if isinstance(slot, int) and 1 <= slot <= 11:
+            starter_ids.append(p["element"])
+    if not starter_ids:
+        return
+    placeholders = ",".join("?" * len(starter_ids))
+    rows = conn.execute(
+        f"SELECT p.id AS element, p.position FROM players p "
+        f"WHERE p.id IN ({placeholders})", starter_ids).fetchall()
+    pos_map = {r["element"]: r["position"] for r in rows}
+    for eid in starter_ids:
+        counts[pos_map.get(eid, "?")] += 1
+    xi = f"{counts['DEF']}-{counts['MID']}-{counts['FWD']}"
+    gw = _next_gw(conn)
+    total = 0.0
+    for eid in starter_ids:
+        r = conn.execute(
+            "SELECT xp FROM xp WHERE player_id=? AND gw=? AND model_version='v2'",
+            (eid, gw)).fetchone()
+        if r:
+            total += r["xp"]
+    print(f"Optimal XI: {xi} · {len(starter_ids)} starters · {round(total, 2)} total xP")
+
+
 def _print_formation_note(conn, body):
     """Surface cohort-formation rebalance info in the dry-run banner."""
     from .decisions import formation_rebalancer as form_mod
@@ -1397,6 +1437,7 @@ def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
         print("DRY-RUN — would POST:")
         print(f"  {result.request['method']} {result.request['url']}")
         _print_formation_preview(conn, result.request.get("body") or {})
+        _print_optimal_xi_note(conn, result.request.get("body") or {})
         _print_formation_note(conn, result.request.get("body") or {})
     elif result.ok:
         print(f"Submitted. HTTP {result.status}.")
