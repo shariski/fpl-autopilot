@@ -21,7 +21,8 @@ class ExecResult:
     error: str | None = None  # FPL's response body on failure (B6: fail loudly, never silently)
 
 
-def build_lineup_payload(current_picks, captain_id, vice_id, bench_order=None):
+def build_lineup_payload(current_picks, captain_id, vice_id, bench_order=None,
+                          xi_swap=None):
     if captain_id == vice_id:
         raise ExecutorError("captain and vice must be different players")
     elements = {p["element"] for p in current_picks}
@@ -35,6 +36,8 @@ def build_lineup_payload(current_picks, captain_id, vice_id, bench_order=None):
         if set(bench_order) != current_bench:
             raise ExecutorError("bench_order must be exactly the current bench (positions 13-15)")
         pos_override = {element: 13 + i for i, element in enumerate(bench_order)}
+    if xi_swap:
+        pos_override.update(xi_swap)
     picks = [
         {"element": p["element"], "position": pos_override.get(p["element"], p["position"]),
          "is_captain": p["element"] == captain_id,

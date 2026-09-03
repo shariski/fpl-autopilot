@@ -1341,6 +1341,23 @@ def _print_formation_preview(conn, body):
         print("Bench:  " + " · ".join(names))
 
 
+def _print_formation_note(conn, body):
+    """Surface cohort-formation rebalance info in the dry-run banner."""
+    from .decisions import formation_rebalancer as form_mod
+    pseudo = [{"element": p["element"], "position": p["position"]}
+              for p in (body.get("picks") or [])]
+    info = form_mod.formation_info(conn, pseudo)
+    if info["modal"] is None and info["cohort"] < form_mod.COHORT_FORMATION_MIN:
+        return
+    if info["modal"] is None:
+        print(f"Formation note: cohort={info['cohort']} — modal ambiguous, no rebalance.")
+        return
+    if info["current"] == info["modal"]:
+        print(f"Formation note: {info['current']} (already aligned with cohort modal)")
+        return
+    print(f"Formation note: XI={info['current']} · cohort modal={info['modal']} (n={info['cohort']})")
+
+
 def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
                         session=None, ranker=None, confirm_fn=None):
     from .auth import master
@@ -1378,6 +1395,7 @@ def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,
         print("DRY-RUN — would POST:")
         print(f"  {result.request['method']} {result.request['url']}")
         _print_formation_preview(conn, result.request.get("body") or {})
+        _print_formation_note(conn, result.request.get("body") or {})
     elif result.ok:
         print(f"Submitted. HTTP {result.status}.")
         from .data import repository

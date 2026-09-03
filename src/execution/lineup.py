@@ -2,6 +2,7 @@ from src import config
 from src.auth import session as auth_session
 from src.decisions import captain as captain_mod
 from src.decisions import bench as bench_mod
+from src.decisions import formation_rebalancer as form_mod
 from src.execution import executor
 from src.data import repository
 
@@ -12,7 +13,8 @@ def _format_diff(current, captain_id, vice_id):
     return f"captain {cur_c}->{captain_id}, vice {cur_v}->{vice_id}"
 
 
-def run_lineup(conn, key, *, live=False, confirm_fn=None, session=None, ranker=None, optimize_bench=False):
+def run_lineup(conn, key, *, live=False, confirm_fn=None, session=None, ranker=None,
+               optimize_bench=False, rebalance_formation=True):
     session = session or auth_session.ensure_session(conn, key)
     entry = config.team_id()
     current = executor.fetch_current_picks(session, entry)
@@ -22,12 +24,20 @@ def run_lineup(conn, key, *, live=False, confirm_fn=None, session=None, ranker=N
     captain_id = caps["picks"][0]["player_id"]
     vice_id = caps["vice_player_id"]
     bench_order = bench_mod.rank_bench(conn, current) if optimize_bench else None
-    payload = executor.build_lineup_payload(current, captain_id, vice_id, bench_order=bench_order)
+    xi_swap = (form_mod.rebalance(conn, current, captain_id=captain_id, vice_id=vice_id)
+               if rebalance_formation else None)
+    payload = executor.build_lineup_payload(current, captain_id, vice_id,
+                                            bench_order=bench_order, xi_swap=xi_swap)
     diff = _format_diff(current, captain_id, vice_id)
+    if xi_swap:
+        diff += f", xi_swap {xi_swap}"
     inputs = {"captain": caps["picks"][0], "vice_player_id": vice_id,
               "alternatives": caps["picks"][1:]}
     if bench_order is not None:
         inputs["bench_order"] = bench_order  # B10: the applied bench order is part of the action
+    if xi_swap:
+        info = form_mod.formation_info(conn, current)
+        inputs["formation_rebalance"] = {**info, "swap": xi_swap}
     url = executor.MY_TEAM_URL.format(entry=entry)
 
     if live and (confirm_fn is None or not confirm_fn(diff)):
