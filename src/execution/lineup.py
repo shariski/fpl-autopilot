@@ -15,26 +15,29 @@ def _format_diff(current, captain_id, vice_id):
 
 
 def _apply_optimal_xi(current, opt):
-    """Re-shape the squad into starters (slots 1-11) + bench (12-15) per
-    the optimal-XI selection. Captain/vice come from the optimizer when
-    it succeeds; otherwise fall back to existing logic."""
+    """Re-shape the squad into picks ordered by squad slot (1-15). Each
+    pick's `position` is the slot the optimizer assigned — slots 1-11
+    are starters (per FPL's convention), slots 12-15 are the bench in
+    the order chosen by the optimizer (GK first, then xP desc)."""
     starter_slots = opt["starter_slots"]
     bench_slots = opt["bench_slots"]
-    reshaped = []
     captain_id = opt["captain_id"]
     vice_id = opt["vice_id"]
+    slot_to_pick = {}
     for p in current:
         eid = p["element"]
         if eid in starter_slots:
-            reshaped.append({"element": eid, "position": starter_slots[eid],
-                             "is_captain": eid == captain_id,
-                             "is_vice_captain": eid == vice_id})
+            slot_to_pick[starter_slots[eid]] = {
+                "element": eid, "position": starter_slots[eid],
+                "is_captain": eid == captain_id,
+                "is_vice_captain": eid == vice_id,
+            }
         elif eid in bench_slots:
-            reshaped.append({"element": eid, "position": bench_slots[eid],
-                             "is_captain": False, "is_vice_captain": False})
-        # players not in opt (shouldn't happen) are dropped — but if the
-        # squad size isn't 15 we already returned None upstream
-    return reshaped, captain_id, vice_id
+            slot_to_pick[bench_slots[eid]] = {
+                "element": eid, "position": bench_slots[eid],
+                "is_captain": False, "is_vice_captain": False,
+            }
+    return [slot_to_pick[slot] for slot in sorted(slot_to_pick)], captain_id, vice_id
 
 
 def run_lineup(conn, key, *, live=False, confirm_fn=None, session=None, ranker=None,
