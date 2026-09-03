@@ -1352,10 +1352,12 @@ def _print_formation_note(conn, body):
     if info["modal"] is None:
         print(f"Formation note: cohort={info['cohort']} — modal ambiguous, no rebalance.")
         return
+    source = info.get("source_gw")
+    src_tag = f" (prior GW{source})" if source and source != info["gw"] else ""
     if info["current"] == info["modal"]:
-        print(f"Formation note: {info['current']} (already aligned with cohort modal)")
+        print(f"Formation note: {info['current']} (already aligned with cohort modal{src_tag})")
         return
-    print(f"Formation note: XI={info['current']} · cohort modal={info['modal']} (n={info['cohort']})")
+    print(f"Formation note: XI={info['current']} · cohort modal={info['modal']} (n={info['cohort']}{src_tag})")
 
 
 def _execute_lineup_cli(conn=None, salt_path=None, verify_path=None, live=False,

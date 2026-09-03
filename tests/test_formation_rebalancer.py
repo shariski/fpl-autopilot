@@ -29,6 +29,9 @@ def _seed_basics(db):
     # upcoming GW
     db.execute("INSERT INTO gameweeks (id, deadline_utc, is_next, finished) "
                "VALUES (3, '2026-09-04T17:30:00+00:00', 1, 0)")
+    # prior finished GW (the fallback target)
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, is_next, finished) "
+               "VALUES (1, '2026-08-21T17:30:00+00:00', 0, 1)")
     db.commit()
 
 
@@ -141,3 +144,53 @@ def test_formation_info_reports_modal_and_current(db):
     assert info["modal"] == "4-3-3"
     assert info["current"] == "4-4-1"
     assert info["gw"] == 3
+
+
+def test_falls_back_to_prior_finished_gw(db):
+    """Upcoming GW (3) has 0 picks; finished GW1 has 25 picks of 4-3-3 → use GW1."""
+    _seed_basics(db)
+    _seed_cohort(db, 1, ["4-3-3"] * 25 + ["4-4-2"] * 10)
+    # upcoming GW is 3 (from _seed_basics); no picks for GW3 → fallback to GW1
+    info = form_mod.formation_info(db, _picks())
+    assert info["modal"] == "4-3-3"
+    assert info["source_gw"] == 1
+    assert info["gw"] == 3
+
+
+def test_no_fallback_when_prior_below_min(db):
+    """Upcoming empty AND prior finished GW below cohort threshold → no modal."""
+    _seed_basics(db)
+    _seed_cohort(db, 1, ["4-3-3"] * 5)  # below 20
+    info = form_mod.formation_info(db, _picks())
+    assert info["modal"] is None
+    assert info["cohort"] == 0   # no source found → 0
+    assert info["source_gw"] is None
+
+
+def test_no_fallback_beyond_max_age(db):
+    """A finished GW more than MAX_PRIOR_AGE_GWS away is ignored.
+
+    Set up: GW5 is upcoming; GW3 and GW4 are finished but empty;
+    GW1 (4 GWs back) has plenty of picks. The window of MAX_PRIOR_AGE_GWS=3
+    only reaches back to GW4, so GW1's data is too stale to consult.
+    """
+    _seed_basics(db)
+    db.execute("UPDATE gameweeks SET is_next=0, finished=1 WHERE id=3")
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, is_next, finished) "
+               "VALUES (4, '2026-09-12T12:30:00+00:00', 0, 1)")
+    db.execute("INSERT INTO gameweeks (id, deadline_utc, is_next, finished) "
+               "VALUES (5, '2026-09-25T17:30:00+00:00', 1, 0)")
+    db.commit()
+    _seed_cohort(db, 1, ["4-3-3"] * 25 + ["4-4-2"] * 10)
+    info = form_mod.formation_info(db, _picks())
+    assert info["modal"] is None  # GW1 is 4 GWs back, beyond window
+    assert info["gw"] == 5
+
+
+def test_rebalance_uses_prior_gw_swap(db):
+    """End-to-end: empty upcoming, populated prior → swap applied, source_gw logged."""
+    _seed_basics(db)
+    _seed_cohort(db, 1, ["4-3-3"] * 25 + ["4-4-2"] * 10)
+    swap = form_mod.rebalance(db, _picks(), captain_id=12, vice_id=8)
+    assert swap is not None
+    assert len(swap) == 2

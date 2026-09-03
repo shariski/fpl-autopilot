@@ -20,6 +20,7 @@ from src.decisions.transfers import _next_gw
 
 COHORT_FORMATION_MIN = 20     # below this, modal signal is noise
 MODAL_TIE_MARGIN = 1          # modal within 1 vote of runner-up => ambiguous
+MAX_PRIOR_AGE_GWS = 3         # max GWs to look back when upcoming has no picks (v0.26)
 POSITION_ORDER = ("GKP", "DEF", "MID", "FWD")
 FORMATION_LEN = 3             # DEF-MID-FWD (GK is fixed at 1)
 
@@ -27,26 +28,49 @@ XI_SLOTS = set(range(1, 12))  # slots 1..11 = starting XI
 SWAP_BENCH_SLOTS = {13, 14, 15}  # slot 12 = bench GK anchor, never touched
 
 
-def _cohort_formation(conn, gw):
-    """Return (cohort_size, modal_formation_or_None) for the upcoming GW.
+def _cohort_formation(conn, upcoming_gw):
+    """Return (cohort_size, modal_formation, source_gw) for the rebalance.
 
-    Formation stored as 'D-M-F' (e.g. '4-4-2'); modal = the formation with
-    the most votes. Returns (0, None) when no picks are stored for this GW.
+    Modal is the formation with the most votes, computed first from the
+    upcoming GW. If the upcoming GW has no picks, walks back through
+    *finished* GWs (most recent first, up to MAX_PRIOR_AGE_GWS) and uses
+    the first one that has enough signal. Returns (0, None, None) when
+    no qualifying GW is found.
     """
-    rows = conn.execute(
-        "SELECT formation, COUNT(*) AS c FROM leader_gw_picks "
-        "WHERE gw=? AND formation IS NOT NULL GROUP BY formation",
-        (gw,)).fetchall()
-    cohort = conn.execute(
-        "SELECT COUNT(*) AS n FROM leader_gw_picks WHERE gw=?",
-        (gw,)).fetchone()["n"]
-    if cohort < COHORT_FORMATION_MIN or not rows:
-        return cohort, None
-    rows.sort(key=lambda r: -r["c"])
-    modal, top_votes = rows[0]["formation"], rows[0]["c"]
-    if len(rows) > 1 and (top_votes - rows[1]["c"]) <= MODAL_TIE_MARGIN:
-        return cohort, None  # ambiguous
-    return cohort, modal
+    def _query(gw):
+        rows = conn.execute(
+            "SELECT formation, COUNT(*) AS c FROM leader_gw_picks "
+            "WHERE gw=? AND formation IS NOT NULL GROUP BY formation",
+            (gw,)).fetchall()
+        cohort = conn.execute(
+            "SELECT COUNT(*) AS n FROM leader_gw_picks WHERE gw=?",
+            (gw,)).fetchone()["n"]
+        if cohort < COHORT_FORMATION_MIN or not rows:
+            return cohort, None
+        rows.sort(key=lambda r: -r["c"])
+        if len(rows) > 1 and (rows[0]["c"] - rows[1]["c"]) <= MODAL_TIE_MARGIN:
+            return cohort, None  # ambiguous
+        return cohort, rows[0]["formation"]
+
+    cohort, modal = _query(upcoming_gw)
+    if modal is not None:
+        return cohort, modal, upcoming_gw
+    # Walk back through finished GWs. The upcoming GW's own state doesn't
+    # matter here — we only consult the cohort table. Both an absolute
+    # cap (LIMIT) and a relative cap (within MAX_PRIOR_AGE_GWS of upcoming)
+    # are enforced — the SQL cap protects against unbounded scans on
+    # long-running DBs, the relative cap enforces the freshness rule.
+    oldest_allowed = upcoming_gw - MAX_PRIOR_AGE_GWS
+    finished = [r[0] for r in conn.execute(
+        "SELECT id FROM gameweeks WHERE finished=1 ORDER BY id DESC LIMIT ?",
+        (MAX_PRIOR_AGE_GWS,))]
+    for prior in finished:
+        if prior >= upcoming_gw or prior < oldest_allowed:
+            continue
+        cohort, modal = _query(prior)
+        if modal is not None:
+            return cohort, modal, prior
+    return 0, None, None
 
 
 def _parse_formation(formation):
@@ -97,7 +121,7 @@ def rebalance(conn, picks, *, captain_id, vice_id):
     gw = _next_gw(conn)
     if gw is None:
         return None
-    cohort, modal = _cohort_formation(conn, gw)
+    _cohort, modal, _source = _cohort_formation(conn, gw)
     if modal is None:
         return None
     target = _parse_formation(modal)
@@ -161,11 +185,18 @@ def rebalance(conn, picks, *, captain_id, vice_id):
 def formation_info(conn, picks):
     """Diagnostic info for printing in the dry-run banner.
 
-    Returns {'cohort': int, 'modal': str|None, 'current': str, 'swap': [(out_id, in_id)]}.
+    Returns {'cohort', 'modal', 'current', 'gw', 'source_gw'} where
+    'cohort' is the size at the source GW and 'source_gw' is the GW
+    the modal was actually drawn from (may differ from the upcoming GW
+    when a prior fallback was used, v0.26).
     """
     gw = _next_gw(conn)
-    cohort, modal = (_cohort_formation(conn, gw) if gw is not None
-                     else (0, None))
+    if gw is None:
+        cohort, modal, source = 0, None, None
+    else:
+        cohort, modal, source = _cohort_formation(conn, gw)
+        if modal is None:
+            cohort = 0   # banner's "n=" reflects the source cohort, not 0
     cur = Counter()
     ids = [p["element"] for p in picks]
     if ids:
@@ -180,4 +211,5 @@ def formation_info(conn, picks):
                 if pos in ("DEF", "MID", "FWD"):
                     cur[pos] += 1
     current = f"{cur['DEF']}-{cur['MID']}-{cur['FWD']}"
-    return {"cohort": cohort, "modal": modal, "current": current, "gw": gw}
+    return {"cohort": cohort, "modal": modal, "current": current,
+            "gw": gw, "source_gw": source}
