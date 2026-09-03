@@ -34,29 +34,34 @@ def _seed_basics(db):
 
 
 def _squad():
-    return [{"element": pid, "position": pos} for pid, pos in [
-        (1, "GKP"), (2, "GKP"),
-        (3, "DEF"), (4, "DEF"), (5, "DEF"), (6, "DEF"), (7, "DEF"),
-        (8, "MID"), (9, "MID"), (10, "MID"), (11, "MID"), (12, "MID"),
-        (13, "FWD"), (14, "FWD"), (15, "FWD"),
+    """Real FPL payload shape: each pick has an integer squad slot (1-15).
+    The optimizer resolves player positions via the players table, not
+    from this `position` field."""
+    return [{"element": pid, "position": slot, "is_captain": False,
+             "is_vice_captain": False}
+            for pid, slot in [
+        (1, 1), (2, 12),
+        (3, 2), (4, 3), (5, 4), (6, 5), (7, 13),
+        (8, 6), (9, 7), (10, 8), (11, 9), (12, 14),
+        (13, 10), (14, 11), (15, 15),
     ]]
 
 
 def test_can_form_xi_true_when_squad_is_full(db):
     _seed_basics(db)
-    assert opt.can_form_xi(_squad()) is True
+    assert opt.can_form_xi(db, _squad()) is True
 
 
 def test_can_form_xi_false_when_no_gk(db):
     _seed_basics(db)
-    squad = [p for p in _squad() if p["position"] != "GKP"]
-    assert opt.can_form_xi(squad) is False
+    squad = [p for p in _squad() if p["element"] not in (1, 2)]
+    assert opt.can_form_xi(db, squad) is False
 
 
 def test_can_form_xi_false_when_no_fwd_at_all(db):
     _seed_basics(db)
-    squad = [p for p in _squad() if p["position"] != "FWD"]
-    assert opt.can_form_xi(squad) is False
+    squad = [p for p in _squad() if p["element"] not in (13, 14, 15)]
+    assert opt.can_form_xi(db, squad) is False
 
 
 def test_select_returns_none_when_no_gw(db):
@@ -138,6 +143,7 @@ def test_select_returns_none_when_squad_cant_form_xi(db):
     db.execute("INSERT INTO gameweeks (id, deadline_utc, is_next, finished) "
                "VALUES (3, '2026-09-04T17:30:00+00:00', 1, 0)")
     db.commit()
-    squad = [{"element": pid, "position": pos} for pid, pos in
-             [(1, "GKP"), (2, "DEF"), (3, "MID"), (4, "FWD")]]
+    squad = [{"element": pid, "position": slot, "is_captain": False,
+              "is_vice_captain": False}
+             for pid, slot in [(1, 1), (2, 2), (3, 3), (4, 4)]]
     assert opt.select(db, squad) is None

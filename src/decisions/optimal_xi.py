@@ -32,15 +32,25 @@ def _xp(conn, gw, element):
     row = conn.execute(
         "SELECT xp FROM xp WHERE player_id=? AND gw=? AND model_version=?",
         (element, gw, MODEL_VERSION)).fetchone()
-    return row["xp"] if row else 0.0
+    if row is None:
+        return 0.0
+    return row["xp"] if isinstance(row, dict) or hasattr(row, "keys") else row[0]
 
 
-def can_form_xi(squad):
+def can_form_xi(conn, squad):
     """Quick sanity check: does the squad have the position counts to form
-    any valid XI? Used by the caller to short-circuit before scoring."""
+    any valid XI? Resolves player positions via the players table."""
+    ids = [p["element"] for p in squad]
+    if not ids:
+        return False
+    placeholders = ",".join("?" * len(ids))
+    cur = conn.execute(
+        "SELECT position FROM players WHERE id IN (" + placeholders + ")",
+        ids)
     counts = {"GKP": 0, "DEF": 0, "MID": 0, "FWD": 0}
-    for p in squad:
-        counts[p["position"]] += 1
+    for row in cur.fetchall():
+        pos = row["position"] if isinstance(row, dict) or hasattr(row, "keys") else row[0]
+        counts[pos] += 1
     return (counts["GKP"] >= 1 and counts["DEF"] >= 3 and counts["MID"] >= 3
             and counts["FWD"] >= 1)
 
@@ -72,13 +82,17 @@ def _best_formation(squad_with_xp):
 def select(conn, squad):
     """Pick the optimal XI from the squad.
 
+    Accepts the raw `fetch_current_picks` shape — picks carry an integer
+    `position` (slot 1-15), not a player-position string. Player
+    positions are resolved via the players table.
+
     Returns a dict:
         {
-          "xi": [element, ...]            # 10 starters, ordered GK + DEF + MID + FWD
+          "xi": [element, ...]            # 11 starters (10 outfield + GK)
           "formation": "D-M-F",
           "captain_id": element,
           "vice_id": element,
-          "bench": [element, ...]         # 5 bench, GK first (will go to slot 12)
+          "bench": [element, ...]         # 4 bench, GK first (slot 12)
           "bench_slots": {element: slot}  # element -> 12..15
           "starter_slots": {element: slot} # element -> 1..11
           "total_xp": float,
@@ -88,8 +102,32 @@ def select(conn, squad):
     gw = _next_gw(conn)
     if gw is None:
         return None
-    squad_with_xp = [(p["element"], p["position"], _xp(conn, gw, p["element"]))
-                     for p in squad]
+    # Resolve each player's position (DEF/MID/FWD/GKP) from the players
+    # table. The squad's own `position` field is the squad slot (1-15),
+    # not the player's role — don't trust it for selection logic.
+    ids = [p["element"] for p in squad]
+    if not ids:
+        return None
+    placeholders = ",".join("?" * len(ids))
+    cur = conn.execute(
+        "SELECT id, position FROM players WHERE id IN (" + placeholders + ")",
+        ids)
+    pos_map = {}
+    for row in cur.fetchall():
+        eid = row["id"] if isinstance(row, dict) or hasattr(row, "keys") else row[0]
+        pos = row["position"] if isinstance(row, dict) or hasattr(row, "keys") else row[1]
+        pos_map[eid] = pos
+    # Drop players whose position isn't a valid FPL role (defensive —
+    # shouldn't happen with real FPL data but possible in tests).
+    squad_with_xp = []
+    for p in squad:
+        eid = p["element"]
+        pos = pos_map.get(eid)
+        if pos not in ("GKP", "DEF", "MID", "FWD"):
+            continue
+        squad_with_xp.append((eid, pos, _xp(conn, gw, eid)))
+    if not squad_with_xp:
+        return None
     best = _best_formation(squad_with_xp)
     if best is None:
         return None
@@ -103,23 +141,18 @@ def select(conn, squad):
                 + groups["MID"][:m] + groups["FWD"][:f])
     starter_ids = [eid for eid, _ in starters]
     starter_set = set(starter_ids)
-    # captain/vice = top-2 xP among starters (the captain must start; if
-    # they wouldn't make the top-XI, they get force-included below — but
-    # they were chosen by `_best_formation` so they're always starters).
-    captain_id = starter_ids[0]
-    # vice_id = the second-highest xP starter that isn't the captain
+    # captain/vice = top-2 xP among starters. The captain was chosen by
+    # `_best_formation` (top-xP GK, then top-xP at each position), so
+    # they always start; same for vice.
     sorted_by_xp = sorted(starters, key=lambda x: -x[1])
+    captain_id = sorted_by_xp[0][0]
     vice_id = next(eid for eid, _ in sorted_by_xp if eid != captain_id)
-    # bench = the 5 leftover players, ordered GK first then by xP desc.
-    # GK first so the sub-GK anchors slot 12 (FPL's auto-sub convention).
     bench_with_meta = [(eid, pos, xp) for eid, pos, xp in squad_with_xp
                        if eid not in starter_set]
     bench_with_meta.sort(key=lambda x: (0 if x[1] == "GKP" else 1, -x[2]))
     bench_sorted = [eid for eid, _, _ in bench_with_meta]
     bench_slots = {eid: 12 + i for i, eid in enumerate(bench_sorted)}
-    # Starter slots: GK=1, DEF=2..1+d, MID=2+d..1+d+m, FWD=2+d+m..1+d+m+f.
     pos_to_slot_lo = {"GKP": 1, "DEF": 2, "MID": 2 + d, "FWD": 2 + d + m}
-    pos_to_count = {"GKP": 1, "DEF": d, "MID": m, "FWD": f}
     starter_slots = {}
     counts = {"GKP": 0, "DEF": 0, "MID": 0, "FWD": 0}
     for eid in starter_ids:
