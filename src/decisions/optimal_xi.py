@@ -1,11 +1,16 @@
-"""Optimal-XI selection (v0.26).
+"""Optimal-XI selection (v0.26, captain scoring v0.28).
 
 From the user's existing 15 picks, choose the 10 starters with the
 highest next-GW xP that form a valid FPL formation (1 GK + 3-5 DEF +
 3-5 MID + 1-3 FWD = 7 valid formations). No transfers, no budget
 changes, no chip decisions (B3).
 
-Captain/vice = top-2 xP among the chosen 10 starters. Bench = the 5
+Captain/vice = top-2 among the chosen 10 starters by the captain
+ranker's adjusted score (`captain._score` — xP + ceiling term, minus
+the pre-season defensive penalty), NOT raw xP. This keeps the
+armband consistent with the `captain` command: a clean-sheet-heavy
+defender/GK no longer takes the armband over an attacker with a
+modest xP edge (v0.28; live GW3 26/27 evidence). Bench = the 5
 leftover players, ordered by xP desc, with the leftover GK anchoring
 slot 12.
 
@@ -15,7 +20,9 @@ so the caller behaves as before.
 """
 from itertools import product
 
+from src.analytics import ratings
 from src.analytics.xp import MODEL_VERSION_V2 as MODEL_VERSION
+from src.decisions import captain as captain_mod
 from src.decisions.transfers import _next_gw
 
 
@@ -35,6 +42,29 @@ def _xp(conn, gw, element):
     if row is None:
         return 0.0
     return row["xp"] if isinstance(row, dict) or hasattr(row, "keys") else row[0]
+
+
+def _captain_score(conn, gw, element, pos, xp, pre_season):
+    """Ranker-adjusted captain score for a starter (v0.28).
+
+    Mirrors the `captain` command's score — xP + ceiling term
+    (0.15 × goal involvement), minus the pre-season GKP/DEF penalty
+    while the SF window is not majority-live. Constants come from
+    `captain_mod` (single source of truth). This is the ONLY thing that
+    differs from raw-xP ordering; XI/bench selection stays pure xP.
+    """
+    row = conn.execute(
+        "SELECT xgoals, xassists FROM xp WHERE player_id=? AND gw=? AND model_version=?",
+        (element, gw, MODEL_VERSION)).fetchone()
+    if row is None:
+        xgoals = xassists = 0.0
+    elif isinstance(row, dict) or hasattr(row, "keys"):
+        xgoals, xassists = row["xgoals"] or 0.0, row["xassists"] or 0.0
+    else:
+        xgoals, xassists = row[0] or 0.0, row[1] or 0.0
+    return captain_mod._score({"position": pos, "xp": xp,
+                               "xgoals": xgoals, "xassists": xassists},
+                              pre_season=pre_season)
 
 
 def can_form_xi(conn, squad):
@@ -141,12 +171,18 @@ def select(conn, squad):
                 + groups["MID"][:m] + groups["FWD"][:f])
     starter_ids = [eid for eid, _ in starters]
     starter_set = set(starter_ids)
-    # captain/vice = top-2 xP among starters. The captain was chosen by
-    # `_best_formation` (top-xP GK, then top-xP at each position), so
-    # they always start; same for vice.
-    sorted_by_xp = sorted(starters, key=lambda x: -x[1])
-    captain_id = sorted_by_xp[0][0]
-    vice_id = next(eid for eid, _ in sorted_by_xp if eid != captain_id)
+    # captain/vice = top-2 by the captain ranker's ADJUSTED score among
+    # starters (v0.28). The captain was chosen by `_best_formation`
+    # (top-xP GK, then top-xP at each position), so they always start;
+    # same for vice.
+    pre_season = ratings.sf_live_pairs(conn) < ratings.SF_LIVE_MIN
+    def _score_starter(eid):
+        pos = next(p for e, p, _ in squad_with_xp if e == eid)
+        xp = next(x for e, _, x in squad_with_xp if e == eid)
+        return _captain_score(conn, gw, eid, pos, xp, pre_season)
+    sorted_starters = sorted(starter_ids, key=_score_starter, reverse=True)
+    captain_id = sorted_starters[0]
+    vice_id = sorted_starters[1]
     bench_with_meta = [(eid, pos, xp) for eid, pos, xp in squad_with_xp
                        if eid not in starter_set]
     bench_with_meta.sort(key=lambda x: (0 if x[1] == "GKP" else 1, -x[2]))
